@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    # A real Postgres instance for the whole job — not mocked, not SQLite.
+    # This is deliberate: the migration from SQLite to Postgres surfaced two
+    # real bugs (async transactions, Drizzle's separate migration-tracking
+    # schema) that only showed up when actually running against Postgres,
+    # so CI runs against the same thing production would use.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fleet_ops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fleet_ops
+      # A separate database, isolated from DATABASE_URL above — the test
+      # suite drops and recreates its schema on every run (see
+      # tests/globalSetup.ts), so it must never point at the same database
+      # as dev/build.
+      DATABASE_URL_TEST: postgresql://postgres:postgres@localhost:5432/fleet_ops_test
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Create test database
+        # The postgres service image only creates the POSTGRES_DB named
+        # above (fleet_ops); the separate test database needs creating
+        # explicitly, same as a fresh local setup would via `createdb`.
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE fleet_ops_test;"
+
+      - name: Apply migrations to the dev database
+        run: npm run db:migrate
+
+      - name: Build
+        run: npm run build
+
+      - name: Run test suite
+        run: npm test

@@ -1,0 +1,1 @@
+ALTER TABLE "vehicles" ADD COLUMN "home_warehouse_id" text;
