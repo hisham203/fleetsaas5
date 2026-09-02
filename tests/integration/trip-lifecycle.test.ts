@@ -1,19 +1,35 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
+import { createIsolatedDriverAndVehicle } from "../helpers/testFixtures";
 
+// Test isolation fix: this file previously hardcoded khalid@demo-water.co
+// and a single "whichever vehicle happens to be AVAILABLE" lookup, both
+// cached once in beforeAll and reused across every test. That's fragile
+// in a real CI run — other test files draw from the same small shared
+// seeded pool, execution order isn't guaranteed, and one earlier failure
+// anywhere can leave a shared driver/vehicle stuck busy for everything
+// after it. Every driver/vehicle used below is created fresh, specifically
+// for this file, and touched by nothing else — this is test isolation,
+// not weaker validation: the same real availability/capacity checks in
+// the application are exercised exactly as before, just against
+// guaranteed-uncontended fixtures instead of a shared pool.
 describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
   let dispatcherCookie: string;
-  let khalidCookie: string; // correct driver for this test's trip
-  let fahadCookie: string; // a different driver, used for the ownership check
   let tenantId: string;
   let mainWarehouseId: string;
-  let availableVehicleId: string;
-  let availableDriverId: string; // Khalid's driver-profile id
+
+  // Dedicated to this file, never touched by any other test.
+  let driverACookie: string;
+  let driverAId: string;
+  let vehicleAId: string; // normal capacity, used by the happy-path test
+  let driverBId: string; // a second dedicated driver, for the wrong-driver-access test
+  let driverBCookie: string;
+  let smallVehicleId: string; // deliberately small capacity, for the capacity-rejection test
+  let smallVehicleCapacity: number;
+  let vehicleCId: string; // dedicated third vehicle, for the wrong-driver-access test — independent of vehicleA so test order never matters
 
   beforeAll(async () => {
     dispatcherCookie = await loginAs("dispatch@demo-water.co", "password123");
-    khalidCookie = await loginAs("khalid@demo-water.co", "password123");
-    fahadCookie = await loginAs("fahad@demo-water.co", "password123");
 
     const { GET: tenantGet } = await import("@/app/api/tenant/route");
     tenantId = (await (await tenantGet(makeRequest("/api/tenant", { cookie: dispatcherCookie }))).json()).id;
@@ -22,13 +38,32 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     const warehouses = await (await warehousesGet(makeRequest("/api/warehouses", { cookie: dispatcherCookie }))).json();
     mainWarehouseId = warehouses.find((w: any) => w.isDefault).id;
 
-    const { GET: driversGet } = await import("@/app/api/drivers/route");
-    const drivers = await (await driversGet(makeRequest("/api/drivers", { cookie: dispatcherCookie }))).json();
-    availableDriverId = drivers.find((d: any) => d.user.email === "khalid@demo-water.co").id;
+    const driverA = await createIsolatedDriverAndVehicle(tenantId, "lifecycle-a");
+    driverACookie = driverA.driverCookie;
+    driverAId = driverA.driverId;
+    vehicleAId = driverA.vehicleId;
 
-    const { GET: vehiclesGet } = await import("@/app/api/vehicles/route");
-    const vehicles = await (await vehiclesGet(makeRequest("/api/vehicles", { cookie: dispatcherCookie }))).json();
-    availableVehicleId = vehicles.find((v: any) => v.status === "AVAILABLE").id;
+    const driverB = await createIsolatedDriverAndVehicle(tenantId, "lifecycle-b");
+    driverBId = driverB.driverId;
+    driverBCookie = driverB.driverCookie;
+    vehicleCId = driverB.vehicleId; // reuse this fixture call's vehicle as the dedicated "vehicleC"
+
+    // A dedicated, deliberately small-capacity vehicle so the capacity
+    // test reliably reaches capacity validation rather than an
+    // availability check — it's freshly created and used by nothing else.
+    const { db } = await import("@/lib/db/client");
+    const { vehicles } = await import("@/lib/db/schema");
+    const { genId } = await import("@/lib/helpers");
+    smallVehicleId = genId();
+    smallVehicleCapacity = 5;
+    await db.insert(vehicles).values({
+      id: smallVehicleId,
+      tenantId,
+      plateNumber: `TEST-SMALLCAP-${smallVehicleId.slice(0, 6).toUpperCase()}`,
+      vehicleType: "Refill Van",
+      capacityUnits: smallVehicleCapacity,
+      status: "AVAILABLE",
+    });
   });
 
   async function createFreshOrder(qty: number) {
@@ -47,19 +82,15 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
   }
 
   it("BR-02: rejects a trip whose combined bottle load exceeds vehicle capacity", async () => {
-    const { GET: vehiclesGet } = await import("@/app/api/vehicles/route");
-    const vehicles = await (await vehiclesGet(makeRequest("/api/vehicles", { cookie: dispatcherCookie }))).json();
-    const smallVehicle = vehicles.find((v: any) => v.status === "AVAILABLE" && v.capacityUnits != null);
-
-    const bigOrderId = await createFreshOrder(smallVehicle.capacityUnits + 50);
+    const bigOrderId = await createFreshOrder(smallVehicleCapacity + 50);
 
     const { POST: createTrip } = await import("@/app/api/trips/route");
     const res = await createTrip(makeRequest("/api/trips", {
       method: "POST",
       cookie: dispatcherCookie,
       body: {
-        driverId: availableDriverId,
-        vehicleId: smallVehicle.id,
+        driverId: driverAId,
+        vehicleId: smallVehicleId,
         warehouseId: mainWarehouseId,
         orderIds: [bigOrderId],
       },
@@ -76,7 +107,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     const tripRes = await createTrip(makeRequest("/api/trips", {
       method: "POST",
       cookie: dispatcherCookie,
-      body: { driverId: availableDriverId, vehicleId: availableVehicleId, warehouseId: mainWarehouseId, orderIds: [orderId] },
+      body: { driverId: driverAId, vehicleId: vehicleAId, warehouseId: mainWarehouseId, orderIds: [orderId] },
     }));
     expect(tripRes.status).toBe(201);
     const trip = await tripRes.json();
@@ -117,7 +148,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     // Driver arrives and delivers.
     const { PATCH: stopAction } = await import("@/app/api/trips/[id]/stops/[stopId]/route");
     const arriveRes = await stopAction(
-      makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: khalidCookie, body: { action: "arrive" } }),
+      makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: driverACookie, body: { action: "arrive" } }),
       { params: { id: trip.id, stopId } }
     );
     expect(arriveRes.status).toBe(200);
@@ -125,7 +156,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     const deliverRes = await stopAction(
       makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, {
         method: "PATCH",
-        cookie: khalidCookie,
+        cookie: driverACookie,
         body: { action: "deliver", deliveredQty: 3, emptiesCollected: 3, recipientName: "Test Recipient" },
       }),
       { params: { id: trip.id, stopId } }
@@ -137,8 +168,12 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     expect(deliverBody.invoice.total).toBeCloseTo(27.6, 2);
     expect(deliverBody.invoice.status).toBe("PAID"); // CASH payment
 
-    // Close the trip out — also confirms it frees the vehicle/driver back to
-    // AVAILABLE (BR-08), which later tests in this suite rely on.
+    // Close the trip out — also confirms it frees the vehicle/driver back
+    // to AVAILABLE (BR-08). Since vehicleA/driverA are dedicated to this
+    // file and used only here, this no longer needs to matter for any
+    // other test's setup the way the old shared-pool version did — this
+    // assertion is kept because it's still real, correct behavior worth
+    // verifying, not because anything else depends on it.
     const completeRes = await tripAction(
       makeRequest(`/api/trips/${trip.id}`, { method: "PATCH", cookie: dispatcherCookie, body: { action: "complete" } }),
       { params: { id: trip.id } }
@@ -148,36 +183,27 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
 
     const { GET: vehiclesGet2 } = await import("@/app/api/vehicles/route");
     const vehiclesAfter = await (await vehiclesGet2(makeRequest("/api/vehicles", { cookie: dispatcherCookie }))).json();
-    expect(vehiclesAfter.find((v: any) => v.id === availableVehicleId).status).toBe("AVAILABLE");
+    expect(vehiclesAfter.find((v: any) => v.id === vehicleAId).status).toBe("AVAILABLE");
   });
 
   it("a driver cannot act on a trip assigned to a different driver", async () => {
     const orderId = await createFreshOrder(2);
-
-    const { GET: vehiclesGet } = await import("@/app/api/vehicles/route");
-    const vehicles = await (await vehiclesGet(makeRequest("/api/vehicles", { cookie: dispatcherCookie }))).json();
-    const vehicle = vehicles.find((v: any) => v.status === "AVAILABLE");
-
-    const { GET: driversGet } = await import("@/app/api/drivers/route");
-    const drivers = await (await driversGet(makeRequest("/api/drivers", { cookie: dispatcherCookie }))).json();
-    const fahadDriver = drivers.find((d: any) => d.user.email === "fahad@demo-water.co" && d.status === "AVAILABLE");
-    if (!fahadDriver) return; // skip gracefully if Fahad isn't free at this point in the suite
 
     const { POST: createTrip } = await import("@/app/api/trips/route");
     const trip = await (
       await createTrip(makeRequest("/api/trips", {
         method: "POST",
         cookie: dispatcherCookie,
-        body: { driverId: fahadDriver.id, vehicleId: vehicle.id, warehouseId: mainWarehouseId, orderIds: [orderId] },
+        body: { driverId: driverBId, vehicleId: vehicleCId, warehouseId: mainWarehouseId, orderIds: [orderId] },
       }))
     ).json();
 
     const stopId = trip.stops[0].id;
 
-    // Khalid (wrong driver) tries to act on Fahad's trip.
+    // driverA (wrong driver) tries to act on driverB's trip.
     const { PATCH: stopAction } = await import("@/app/api/trips/[id]/stops/[stopId]/route");
     const res = await stopAction(
-      makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: khalidCookie, body: { action: "arrive" } }),
+      makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: driverACookie, body: { action: "arrive" } }),
       { params: { id: trip.id, stopId } }
     );
     expect(res.status).toBe(403);
@@ -185,22 +211,22 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     // GPS ping should be blocked the same way.
     const { PATCH: gpsPing } = await import("@/app/api/trips/[id]/gps/route");
     const gpsRes = await gpsPing(
-      makeRequest(`/api/trips/${trip.id}/gps`, { method: "PATCH", cookie: khalidCookie, body: { lat: 24.7, lng: 46.6 } }),
+      makeRequest(`/api/trips/${trip.id}/gps`, { method: "PATCH", cookie: driverACookie, body: { lat: 24.7, lng: 46.6 } }),
       { params: { id: trip.id } }
     );
     expect(gpsRes.status).toBe(403);
 
-    // Clean up: let the correct driver (Fahad) actually resolve and close
-    // this trip, so the vehicle/driver are freed back to AVAILABLE for
-    // later tests in the suite rather than left stuck ON_TRIP/IN_TRIP.
+    // Clean up: let the correct driver (driverB) actually resolve and
+    // close this trip. Not required by any other test here (vehicleC is
+    // dedicated and unused elsewhere), but good hygiene regardless.
     await stopAction(
-      makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: fahadCookie, body: { action: "arrive" } }),
+      makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: driverBCookie, body: { action: "arrive" } }),
       { params: { id: trip.id, stopId } }
     );
     await stopAction(
       makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, {
         method: "PATCH",
-        cookie: fahadCookie,
+        cookie: driverBCookie,
         body: { action: "deliver", deliveredQty: 2, emptiesCollected: 2, recipientName: "Cleanup" },
       }),
       { params: { id: trip.id, stopId } }

@@ -1,15 +1,27 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
+import { createIsolatedDriverAndVehicle } from "../helpers/testFixtures";
 
+// Test isolation fix: this file previously hardcoded khalid@demo-water.co
+// as "the" driver, looked up fresh (not cached) but still drawn from the
+// same small shared seeded pool every other test file also reaches into.
+// Sharing that pool is what made this file's own literal error message
+// ("Khalid not available — check test ordering") a real, observed CI
+// failure — a completely unrelated test file leaving the shared driver
+// busy is enough to break this one. A dedicated driver+vehicle, created
+// once here and touched by nothing else, removes the shared pool
+// entirely; the actual availability/business logic being tested is
+// unchanged.
 describe("delivery exception workflow (BR-11)", () => {
   let dispatcherCookie: string;
   let driverCookie: string;
+  let driverId: string;
+  let vehicleId: string;
   let tenantId: string;
   let warehouseId: string;
 
   beforeAll(async () => {
     dispatcherCookie = await loginAs("dispatch@demo-water.co", "password123");
-    driverCookie = await loginAs("khalid@demo-water.co", "password123");
 
     const { GET: tenantGet } = await import("@/app/api/tenant/route");
     tenantId = (await (await tenantGet(makeRequest("/api/tenant", { cookie: dispatcherCookie }))).json()).id;
@@ -17,6 +29,11 @@ describe("delivery exception workflow (BR-11)", () => {
     const { GET: warehousesGet } = await import("@/app/api/warehouses/route");
     const warehouses = await (await warehousesGet(makeRequest("/api/warehouses", { cookie: dispatcherCookie }))).json();
     warehouseId = warehouses.find((w: any) => w.isDefault).id;
+
+    const isolated = await createIsolatedDriverAndVehicle(tenantId, "exceptions");
+    driverCookie = isolated.driverCookie;
+    driverId = isolated.driverId;
+    vehicleId = isolated.vehicleId;
   });
 
   async function createDeliveredToStopTrip(qty: number) {
@@ -33,21 +50,12 @@ describe("delivery exception workflow (BR-11)", () => {
       }))
     ).json();
 
-    const { GET: driversGet } = await import("@/app/api/drivers/route");
-    const drivers = await (await driversGet(makeRequest("/api/drivers", { cookie: dispatcherCookie }))).json();
-    const driver = drivers.find((d: any) => d.user.email === "khalid@demo-water.co" && d.status === "AVAILABLE");
-    if (!driver) throw new Error("Khalid not available — check test ordering");
-
-    const { GET: vehiclesGet } = await import("@/app/api/vehicles/route");
-    const vehicles = await (await vehiclesGet(makeRequest("/api/vehicles", { cookie: dispatcherCookie }))).json();
-    const vehicle = vehicles.find((v: any) => v.status === "AVAILABLE");
-
     const { POST: createTrip } = await import("@/app/api/trips/route");
     const trip = await (
       await createTrip(makeRequest("/api/trips", {
         method: "POST",
         cookie: dispatcherCookie,
-        body: { driverId: driver.id, vehicleId: vehicle.id, warehouseId, orderIds: [order.id] },
+        body: { driverId, vehicleId, warehouseId, orderIds: [order.id] },
       }))
     ).json();
 
