@@ -264,10 +264,17 @@ two visibly different businesses rather than the same data twice:
   so the Executive Dashboard, driver/vehicle scorecards, and SLA monitor
   all compute genuine numbers from this data — nothing is hardcoded or
   faked to make a KPI look non-zero.
+- BR-23 (Task, Expense & Field Activity) is seeded too — 10 tasks and 10
+  expenses for Demo Water Co., 8 of each for Acme, with realistic mixed
+  statuses (open, in progress, completed, overdue, cancelled for tasks;
+  pending, approved, rejected for expenses) so the Admin console's Field
+  Ops tab shows a real working operation on first login rather than "No
+  tasks assigned yet."
 - `tests/integration/seed-data-quality.test.ts` guards this: it fails if
   a future change reverts the seed to an all-pending, zero-revenue state,
-  or reintroduces an unrealistic cost-per-km from a cross-country haul
-  distance (the exact bug caught while building this dataset).
+  reintroduces an unrealistic cost-per-km from a cross-country haul
+  distance, or lets the Field Ops tab go back to empty (the exact bugs
+  caught while building this dataset).
 
 ### Authentication
 
@@ -366,7 +373,7 @@ real login call. This exercises the actual route logic — auth checks,
 tenant scoping, business rules — without the overhead or flakiness of a
 live server.
 
-**What's covered** (221 tests across 33 files):
+**What's covered** (233 tests across 34 files):
 - `tests/unit/` — pure logic with no database: SLA status calculation (all
   five states), VAT/invoice math, Google Maps route-optimization fallback
   behavior, the report-dataset registry's column whitelist validation

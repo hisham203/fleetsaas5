@@ -19,6 +19,8 @@ import {
   epods,
   invoices,
   exceptions,
+  tasks,
+  expenseClaims,
 } from "../lib/db/schema";
 import { genId, genNumber, calcInvoiceTotals } from "../lib/helpers";
 import { hashPassword } from "../lib/auth";
@@ -146,6 +148,8 @@ async function seedHistoricalDelivery(params: {
       status: "OPEN",
     });
   }
+
+  return { tripId, orderId, outcome: params.outcome };
 }
 
 // Deterministic outcome pattern rather than Math.random(): about 1 in 12
@@ -344,6 +348,7 @@ export async function seedDemoData() {
   // vehicles/drivers and all 8 customers for realistic coverage; B2B
   // customers order in bulk (8-15 bottles), B2C in small quantities (1-4).
   const TENANT1_TRIP_COUNT = 56;
+  let tenant1FailedTrip: { tripId: string; driverId: string; vehicleId: string } | null = null;
   for (let i = 0; i < TENANT1_TRIP_COUNT; i++) {
     const dayOffset = Math.floor((i / TENANT1_TRIP_COUNT) * HISTORY_DAYS);
     const hourOfDay = 8 + (i % 9); // business hours, 8am-4pm
@@ -352,11 +357,13 @@ export async function seedDemoData() {
     const customerIdx = i % customerDefs.length;
     const cust = customerDefs[customerIdx];
     const qty = cust.type === "B2B" ? 8 + (i % 8) : 1 + (i % 4);
+    const tripDriverId = driverRowIds[i % driverRowIds.length];
+    const tripVehicleId = vehicleIds[i % vehicleIds.length];
 
-    await seedHistoricalDelivery({
+    const result = await seedHistoricalDelivery({
       tenantId,
-      driverId: driverRowIds[i % driverRowIds.length],
-      vehicleId: vehicleIds[i % vehicleIds.length],
+      driverId: tripDriverId,
+      vehicleId: tripVehicleId,
       warehouseId: i % 3 === 0 ? northWarehouseId : mainWarehouseId,
       customerId: customerIds[customerIdx],
       address: cust.address,
@@ -370,6 +377,12 @@ export async function seedDemoData() {
       createdAt,
       outcome: outcomeForIndex(i),
     });
+    // Remember the most recent failed delivery — used below to give the
+    // "failed delivery follow-up" task/expense a genuine trip link instead
+    // of just a plausible-sounding but disconnected reason string.
+    if (result.outcome === "FAILED") {
+      tenant1FailedTrip = { tripId: result.tripId, driverId: tripDriverId, vehicleId: tripVehicleId };
+    }
   }
 
   // BR-13/14/15: fuel/maintenance/tyre history spread across all 5
@@ -426,6 +439,281 @@ export async function seedDemoData() {
       completedAt: new Date(historyStart + m.dayOffset * 24 * 60 * 60_000),
     }))
   );
+
+  // ---------- BR-23: Task, Expense & Field Activity Management ----------
+  // Without this, the Field Ops tab shows "No tasks assigned yet" /
+  // "Nothing pending review" on first login despite the feature being
+  // fully built — a genuine demo gap, not a code gap. Statuses and due
+  // dates are deliberately mixed: some closed out historically (matching
+  // the rest of the seeded timeline), some still open/in-progress "right
+  // now" so the tab looks like a live operation, not just a closed
+  // archive. Tasks have no dedicated OVERDUE or REJECTED status in the
+  // schema (only ASSIGNED | IN_PROGRESS | COMPLETED | CANCELLED) — an
+  // "overdue" task here is represented honestly as ASSIGNED with a dueAt
+  // in the past, not a fabricated status value.
+  const t1TaskDefs: {
+    driverId: string;
+    vehicleId?: string;
+    type: "INSPECTION" | "COLLECTION" | "VISIT" | "REFUEL" | "EXCEPTION_HANDLING" | "OTHER";
+    title: string;
+    notes?: string;
+    status: "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+    dueOffsetDays: number; // relative to `now` — negative means overdue
+    createdOffsetDays: number; // relative to `now`
+    completed?: boolean;
+    completionNotes?: string;
+  }[] = [
+    {
+      driverId: driverRowIds[0],
+      type: "COLLECTION",
+      title: "Cash collection follow-up — Al Malaz Family",
+      notes: "Customer paid 3 days late last cycle; confirm cash handed to cashier this time.",
+      status: "COMPLETED",
+      dueOffsetDays: -6,
+      createdOffsetDays: -7,
+      completed: true,
+      completionNotes: "Collected SAR 32 cash on delivery, handed to warehouse cashier same day.",
+    },
+    {
+      driverId: tenant1FailedTrip?.driverId ?? driverRowIds[1],
+      vehicleId: tenant1FailedTrip?.vehicleId,
+      type: "EXCEPTION_HANDLING",
+      title: "Failed delivery follow-up — reschedule with customer",
+      notes: "Customer was unavailable at delivery address. Call to confirm a new delivery window.",
+      status: "COMPLETED",
+      dueOffsetDays: -4,
+      createdOffsetDays: -5,
+      completed: true,
+      completionNotes: "Reached customer, rescheduled for the following day. Redelivered successfully.",
+    },
+    {
+      driverId: driverRowIds[1],
+      type: "INSPECTION",
+      title: "Warehouse stock check — North Depot Al Yasmin",
+      notes: "Confirm full/empty 19L bottle counts match the system before next week's restock order.",
+      status: "ASSIGNED",
+      dueOffsetDays: 2,
+      createdOffsetDays: -1,
+    },
+    {
+      driverId: driverRowIds[2],
+      vehicleId: van3Id,
+      type: "OTHER",
+      title: "Vehicle cleaning — RUH-3391",
+      notes: "Interior and bottle rack cleaning before tomorrow's Al Olaya Grocers run.",
+      status: "IN_PROGRESS",
+      dueOffsetDays: 0,
+      createdOffsetDays: 0,
+    },
+    {
+      driverId: driverRowIds[3],
+      type: "OTHER",
+      title: "Driver document follow-up — submit updated license copy",
+      notes: "License renewal was mentioned last week; still missing from the driver file.",
+      status: "ASSIGNED",
+      dueOffsetDays: 3,
+      createdOffsetDays: -2,
+    },
+    {
+      driverId: driverRowIds[4],
+      type: "VISIT",
+      title: "Customer complaint follow-up — Diplomatic Quarter Residence",
+      notes: "Customer reported a late delivery last week. Visit to apologize and confirm satisfaction.",
+      status: "COMPLETED",
+      dueOffsetDays: -3,
+      createdOffsetDays: -4,
+      completed: true,
+      completionNotes: "Visited, offered a complimentary bottle next cycle. Customer satisfied.",
+    },
+    {
+      driverId: driverRowIds[0],
+      vehicleId: van1Id,
+      type: "REFUEL",
+      title: "Submit fuel receipt from yesterday's fill-up",
+      status: "COMPLETED",
+      dueOffsetDays: -1,
+      createdOffsetDays: -2,
+      completed: true,
+      completionNotes: "Receipt submitted, matches the fuel log entry.",
+    },
+    {
+      driverId: driverRowIds[3],
+      vehicleId: van4Id,
+      type: "OTHER",
+      title: "Confirm AC compressor repair invoice with workshop",
+      notes: "Cross-check the SAR 620 invoice against the quoted price before it's marked paid.",
+      status: "ASSIGNED",
+      dueOffsetDays: 2,
+      createdOffsetDays: -1,
+    },
+    {
+      driverId: driverRowIds[1],
+      type: "INSPECTION",
+      title: "Inspect spare tyre stock at North Depot",
+      status: "ASSIGNED",
+      dueOffsetDays: -2, // overdue — slipped past its due date, still open
+      createdOffsetDays: -6,
+    },
+    {
+      driverId: driverRowIds[2],
+      type: "VISIT",
+      title: "Escort auditor visit — Al Rajhi Office Tower",
+      notes: "Cancelled: customer rescheduled the audit to next month.",
+      status: "CANCELLED",
+      dueOffsetDays: 1,
+      createdOffsetDays: -3,
+    },
+  ];
+
+  for (const d of t1TaskDefs) {
+    await db.insert(tasks).values({
+      id: genId(),
+      tenantId,
+      driverId: d.driverId,
+      vehicleId: d.vehicleId,
+      tripId: d.title.startsWith("Failed delivery") ? tenant1FailedTrip?.tripId : undefined,
+      type: d.type,
+      title: d.title,
+      notes: d.notes,
+      status: d.status,
+      assignedByUserId: dispatcherUserId,
+      dueAt: new Date(now + d.dueOffsetDays * 24 * 60 * 60_000),
+      startedAt: d.status === "IN_PROGRESS" || d.completed ? new Date(now + d.createdOffsetDays * 24 * 60 * 60_000 + 60 * 60_000) : undefined,
+      completedAt: d.completed ? new Date(now + d.dueOffsetDays * 24 * 60 * 60_000) : undefined,
+      completionNotes: d.completionNotes,
+      createdAt: new Date(now + d.createdOffsetDays * 24 * 60 * 60_000),
+    });
+  }
+
+  const t1ExpenseDefs: {
+    driverId: string;
+    vehicleId: string;
+    tripId?: string;
+    reason?: string;
+    category: "FUEL" | "TOLL" | "MAINTENANCE" | "OTHER";
+    amount: number;
+    description?: string;
+    receiptDescription?: string;
+    status: "PENDING" | "APPROVED" | "REJECTED";
+    reviewNotes?: string;
+    createdOffsetDays: number;
+  }[] = [
+    {
+      driverId: driverRowIds[0],
+      vehicleId: van1Id,
+      reason: "Fuel refill during Riyadh north delivery route",
+      category: "FUEL",
+      amount: 185,
+      receiptDescription: "Fuel station receipt, Al Yasmin district",
+      status: "APPROVED",
+      createdOffsetDays: -2,
+    },
+    {
+      driverId: driverRowIds[1],
+      vehicleId: van2Id,
+      reason: "Northern Ring Road toll during delivery run",
+      category: "TOLL",
+      amount: 15,
+      status: "APPROVED",
+      createdOffsetDays: -5,
+    },
+    {
+      driverId: driverRowIds[2],
+      vehicleId: van3Id,
+      reason: "Roadside flat tyre repair, mobile mechanic — cash paid",
+      category: "MAINTENANCE",
+      amount: 150,
+      receiptDescription: "Handwritten receipt from mobile mechanic",
+      status: "APPROVED",
+      createdOffsetDays: -10,
+    },
+    {
+      driverId: driverRowIds[3],
+      vehicleId: van4Id,
+      reason: "Fuel refill before Al Rajhi Office Tower bulk delivery",
+      category: "FUEL",
+      amount: 210,
+      status: "PENDING",
+      createdOffsetDays: -1,
+    },
+    {
+      driverId: driverRowIds[4],
+      vehicleId: van5Id,
+      reason: "Parking fee at Diplomatic Quarter customer site",
+      category: "OTHER",
+      amount: 45,
+      status: "PENDING",
+      createdOffsetDays: 0,
+    },
+    {
+      driverId: driverRowIds[0],
+      vehicleId: van1Id,
+      reason: "Wiper blade replacement",
+      category: "MAINTENANCE",
+      amount: 90,
+      status: "REJECTED",
+      reviewNotes: "This looks like a personal vehicle item — please resubmit with the fleet vehicle's workshop invoice.",
+      createdOffsetDays: -14,
+    },
+    {
+      driverId: driverRowIds[1],
+      vehicleId: van2Id,
+      reason: "King Fahd Road toll, second delivery run of the day",
+      category: "TOLL",
+      amount: 20,
+      status: "APPROVED",
+      createdOffsetDays: -8,
+    },
+    {
+      driverId: driverRowIds[2],
+      vehicleId: van3Id,
+      reason: "Fuel refill, mid-week restock run",
+      category: "FUEL",
+      amount: 195,
+      status: "APPROVED",
+      createdOffsetDays: -12,
+    },
+    {
+      driverId: driverRowIds[3],
+      vehicleId: van4Id,
+      reason: "Car wash before VIP customer delivery",
+      category: "OTHER",
+      amount: 60,
+      status: "PENDING",
+      createdOffsetDays: -1,
+    },
+    {
+      driverId: tenant1FailedTrip?.driverId ?? driverRowIds[4],
+      vehicleId: tenant1FailedTrip?.vehicleId ?? van5Id,
+      tripId: tenant1FailedTrip?.tripId,
+      reason: tenant1FailedTrip ? undefined : "Emergency roadside assistance after breakdown",
+      category: "MAINTENANCE",
+      amount: 350,
+      receiptDescription: "Roadside assistance invoice",
+      status: "APPROVED",
+      createdOffsetDays: -5,
+    },
+  ];
+
+  for (const e of t1ExpenseDefs) {
+    await db.insert(expenseClaims).values({
+      id: genId(),
+      tenantId,
+      driverId: e.driverId,
+      vehicleId: e.vehicleId,
+      tripId: e.tripId,
+      reason: e.reason,
+      category: e.category,
+      amount: e.amount,
+      description: e.description,
+      receiptDescription: e.receiptDescription,
+      status: e.status,
+      reviewedByUserId: e.status !== "PENDING" ? adminUserId : undefined,
+      reviewedAt: e.status !== "PENDING" ? new Date(now + (e.createdOffsetDays + 1) * 24 * 60 * 60_000) : undefined,
+      reviewNotes: e.reviewNotes,
+      createdAt: new Date(now + e.createdOffsetDays * 24 * 60 * 60_000),
+    });
+  }
 
   // ==========================================================
   // Tenant 2: Acme Fuel Delivery Co. — Jeddah/Dammam wholesale fuel
@@ -572,6 +860,7 @@ export async function seedDemoData() {
   // Company Switcher shows a visibly different business, not a smaller
   // copy of the same one.
   const TENANT2_TRIP_COUNT = 30;
+  let tenant2FailedTrip: { tripId: string; driverId: string; vehicleId: string } | null = null;
   for (let i = 0; i < TENANT2_TRIP_COUNT; i++) {
     const dayOffset = Math.floor((i / TENANT2_TRIP_COUNT) * HISTORY_DAYS);
     const hourOfDay = 7 + (i % 8);
@@ -583,11 +872,13 @@ export async function seedDemoData() {
     // depot, not hauled ~860km from Jeddah — matters for a believable
     // estimated distance/cost-per-km, not just plate-number realism.
     const originWarehouseId = customerIdx === 1 ? acmeDammamWarehouseId : acmeWarehouseId;
+    const tripDriverId = acmeDriverRowIds[i % acmeDriverRowIds.length];
+    const tripVehicleId = acmeVehicleIds[i % acmeVehicleIds.length];
 
-    await seedHistoricalDelivery({
+    const result = await seedHistoricalDelivery({
       tenantId: tenant2Id,
-      driverId: acmeDriverRowIds[i % acmeDriverRowIds.length],
-      vehicleId: acmeVehicleIds[i % acmeVehicleIds.length],
+      driverId: tripDriverId,
+      vehicleId: tripVehicleId,
       warehouseId: originWarehouseId,
       customerId: acmeCustomerIds[customerIdx],
       address: cust.address,
@@ -601,6 +892,9 @@ export async function seedDemoData() {
       createdAt,
       outcome: outcomeForIndex(i),
     });
+    if (result.outcome === "FAILED") {
+      tenant2FailedTrip = { tripId: result.tripId, driverId: tripDriverId, vehicleId: tripVehicleId };
+    }
   }
 
   const fuelFillsTenant2: { vehicleId: string; dayOffset: number; liters: number; costSar: number; odometer: number }[] = [
@@ -634,6 +928,230 @@ export async function seedDemoData() {
     openedAt: new Date(historyStart + 9 * 24 * 60 * 60_000),
     completedAt: new Date(historyStart + 10 * 24 * 60 * 60_000),
   });
+
+  // BR-23 tasks/expenses for Acme — same rationale as Tenant 1 above,
+  // scoped to wholesale fuel delivery operations rather than retail water.
+  const t2TaskDefs: {
+    driverId: string;
+    vehicleId?: string;
+    type: "INSPECTION" | "COLLECTION" | "VISIT" | "REFUEL" | "EXCEPTION_HANDLING" | "OTHER";
+    title: string;
+    notes?: string;
+    status: "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+    dueOffsetDays: number;
+    createdOffsetDays: number;
+    completed?: boolean;
+    completionNotes?: string;
+  }[] = [
+    {
+      driverId: acmeDriverRowIds[0],
+      vehicleId: tanker1Id,
+      type: "INSPECTION",
+      title: "Tanker inspection — JED-4471 pre-trip check",
+      status: "COMPLETED",
+      dueOffsetDays: -3,
+      createdOffsetDays: -4,
+      completed: true,
+      completionNotes: "Pressure valves and hose couplings checked, no issues found.",
+    },
+    {
+      driverId: acmeDriverRowIds[1],
+      vehicleId: tanker2Id,
+      type: "OTHER",
+      title: "Loading confirmation — Jeddah Depot",
+      notes: "Confirm diesel volume loaded matches the dispatch manifest before departure.",
+      status: "COMPLETED",
+      dueOffsetDays: -6,
+      createdOffsetDays: -6,
+      completed: true,
+      completionNotes: "Loaded volume confirmed against manifest, signed off.",
+    },
+    {
+      driverId: acmeDriverRowIds[2],
+      type: "VISIT",
+      title: "Site access coordination — Dammam depot security",
+      notes: "Coordinate gate access window for tomorrow's delivery to Corniche Fuel Station.",
+      status: "ASSIGNED",
+      dueOffsetDays: 1,
+      createdOffsetDays: -1,
+    },
+    {
+      driverId: tenant2FailedTrip?.driverId ?? acmeDriverRowIds[0],
+      vehicleId: tenant2FailedTrip?.vehicleId,
+      type: "EXCEPTION_HANDLING",
+      title: "Delivery exception follow-up — reschedule fuel drop",
+      notes: "Customer was unavailable at delivery window. Reschedule and confirm new time.",
+      status: "COMPLETED",
+      dueOffsetDays: -5,
+      createdOffsetDays: -6,
+      completed: true,
+      completionNotes: "Rescheduled with site manager, redelivered successfully the next day.",
+    },
+    {
+      driverId: acmeDriverRowIds[0],
+      vehicleId: tanker1Id,
+      type: "REFUEL",
+      title: "Submit loading receipt from Jeddah Depot fill",
+      status: "ASSIGNED",
+      dueOffsetDays: 2,
+      createdOffsetDays: -1,
+    },
+    {
+      driverId: acmeDriverRowIds[1],
+      vehicleId: tanker2Id,
+      type: "INSPECTION",
+      title: "Complete monthly tanker safety checklist",
+      status: "IN_PROGRESS",
+      dueOffsetDays: 1,
+      createdOffsetDays: 0,
+    },
+    {
+      driverId: acmeDriverRowIds[2],
+      type: "OTHER",
+      title: "Renew hazardous materials transport permit",
+      status: "ASSIGNED",
+      dueOffsetDays: -3, // overdue
+      createdOffsetDays: -10,
+    },
+    {
+      driverId: acmeDriverRowIds[0],
+      type: "VISIT",
+      title: "Escort regulatory inspector visit",
+      notes: "Cancelled: client rescheduled the inspection to next quarter.",
+      status: "CANCELLED",
+      dueOffsetDays: 2,
+      createdOffsetDays: -2,
+    },
+  ];
+
+  for (const d of t2TaskDefs) {
+    await db.insert(tasks).values({
+      id: genId(),
+      tenantId: tenant2Id,
+      driverId: d.driverId,
+      vehicleId: d.vehicleId,
+      tripId: d.title.startsWith("Delivery exception") ? tenant2FailedTrip?.tripId : undefined,
+      type: d.type,
+      title: d.title,
+      notes: d.notes,
+      status: d.status,
+      assignedByUserId: acmeDispatcherId,
+      dueAt: new Date(now + d.dueOffsetDays * 24 * 60 * 60_000),
+      startedAt: d.status === "IN_PROGRESS" || d.completed ? new Date(now + d.createdOffsetDays * 24 * 60 * 60_000 + 60 * 60_000) : undefined,
+      completedAt: d.completed ? new Date(now + d.dueOffsetDays * 24 * 60 * 60_000) : undefined,
+      completionNotes: d.completionNotes,
+      createdAt: new Date(now + d.createdOffsetDays * 24 * 60 * 60_000),
+    });
+  }
+
+  const t2ExpenseDefs: {
+    driverId: string;
+    vehicleId: string;
+    tripId?: string;
+    reason?: string;
+    category: "FUEL" | "TOLL" | "MAINTENANCE" | "OTHER";
+    amount: number;
+    receiptDescription?: string;
+    status: "PENDING" | "APPROVED" | "REJECTED";
+    reviewNotes?: string;
+    createdOffsetDays: number;
+  }[] = [
+    {
+      driverId: acmeDriverRowIds[0],
+      vehicleId: tanker1Id,
+      reason: "Jeddah-Dammam highway toll",
+      category: "TOLL",
+      amount: 25,
+      status: "APPROVED",
+      createdOffsetDays: -6,
+    },
+    {
+      driverId: acmeDriverRowIds[0],
+      vehicleId: tanker1Id,
+      reason: "Diesel loading at Jeddah Depot for onward delivery",
+      category: "FUEL",
+      amount: 800,
+      receiptDescription: "Depot loading receipt",
+      status: "PENDING",
+      createdOffsetDays: -1,
+    },
+    {
+      driverId: acmeDriverRowIds[1],
+      vehicleId: tanker2Id,
+      reason: "Tanker valve seal replacement, roadside",
+      category: "MAINTENANCE",
+      amount: 280,
+      status: "APPROVED",
+      createdOffsetDays: -9,
+    },
+    {
+      driverId: acmeDriverRowIds[2],
+      vehicleId: tanker3Id,
+      reason: "Dammam Corniche road toll",
+      category: "TOLL",
+      amount: 30,
+      status: "APPROVED",
+      createdOffsetDays: -13,
+    },
+    {
+      driverId: acmeDriverRowIds[1],
+      vehicleId: tanker2Id,
+      reason: "Parking fee at Jeddah Depot",
+      category: "OTHER",
+      amount: 40,
+      status: "PENDING",
+      createdOffsetDays: 0,
+    },
+    {
+      driverId: acmeDriverRowIds[1],
+      vehicleId: tanker2Id,
+      reason: "Windshield wiper replacement",
+      category: "MAINTENANCE",
+      amount: 120,
+      status: "REJECTED",
+      reviewNotes: "This appears to be a personal vehicle item — please resubmit with the tanker's workshop invoice.",
+      createdOffsetDays: -16,
+    },
+    {
+      driverId: acmeDriverRowIds[2],
+      vehicleId: tanker3Id,
+      reason: "Diesel loading, Dammam depot fill",
+      category: "FUEL",
+      amount: 750,
+      status: "APPROVED",
+      createdOffsetDays: -11,
+    },
+    {
+      driverId: tenant2FailedTrip?.driverId ?? acmeDriverRowIds[0],
+      vehicleId: tenant2FailedTrip?.vehicleId ?? tanker1Id,
+      tripId: tenant2FailedTrip?.tripId,
+      reason: tenant2FailedTrip ? undefined : "Emergency tanker breakdown assistance",
+      category: "MAINTENANCE",
+      amount: 500,
+      receiptDescription: "Roadside assistance invoice — Dammam route",
+      status: "APPROVED",
+      createdOffsetDays: -6,
+    },
+  ];
+
+  for (const e of t2ExpenseDefs) {
+    await db.insert(expenseClaims).values({
+      id: genId(),
+      tenantId: tenant2Id,
+      driverId: e.driverId,
+      vehicleId: e.vehicleId,
+      tripId: e.tripId,
+      reason: e.reason,
+      category: e.category,
+      amount: e.amount,
+      receiptDescription: e.receiptDescription,
+      status: e.status,
+      reviewedByUserId: e.status !== "PENDING" ? acmeAdminId : undefined,
+      reviewedAt: e.status !== "PENDING" ? new Date(now + (e.createdOffsetDays + 1) * 24 * 60 * 60_000) : undefined,
+      reviewNotes: e.reviewNotes,
+      createdAt: new Date(now + e.createdOffsetDays * 24 * 60 * 60_000),
+    });
+  }
 
   // ==========================================================
   // Company Switcher: a real platform-level admin

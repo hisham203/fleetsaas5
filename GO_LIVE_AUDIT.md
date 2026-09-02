@@ -41,7 +41,7 @@ code.
 | BR-20 | SLA & Escalation Management | **Done** | Live SLA computation, persisted escalations, acknowledge/resolve audit trail | Dispatch SLA monitor + Escalations panel | `/api/sla`, `/api/escalations/*` | `escalations` | `escalations.test.ts`, `sla.test.ts` | AT_RISK/BREACHED orders seeded | — | none blocking |
 | BR-21 | Rich Analytics & Report Builder | **Done** | 9 whitelisted datasets, CSV export, saved reports | Admin Reports tab | `/api/reports/*` | `savedReports` | `reports.test.ts`, `reportDatasets.test.ts` | Rich underlying data | P2 | Scheduled/emailed reports |
 | BR-22 | Workflow Automation Engine | **Done** | Real rule engine, 6 event types, anti-spam dedup, audit log | Admin Automation tab | `/api/automation/*` | `automationRules`, `automationLogs` | `automation.test.ts` (unit + integration) | Configurable live | — | none blocking |
-| BR-23 | Task, Expense & Field Activity | **Done (code), empty (demo)** | Full task assignment + expense approval workflow works | Admin Field Ops tab + Driver app | `/api/tasks/*`, `/api/expenses/*` | `tasks`, `expenseClaims` | `tasks.test.ts`, `expenses.test.ts` | **Zero seeded — both tabs show empty on first login** | P1 (demo gap, not a code gap) | Add sample tasks/expenses to `seedData.ts` |
+| BR-23 | Task, Expense & Field Activity | **Done** | Full task assignment + expense approval workflow works, now genuinely demonstrable | Admin Field Ops tab + Driver app | `/api/tasks/*`, `/api/expenses/*` | `tasks`, `expenseClaims` | `tasks.test.ts`, `expenses.test.ts`, `seed-data-quality.test.ts` (6 new assertions) | **Closed** — 10 tasks/10 expenses seeded for Demo Water Co., 8/8 for Acme, verified live via the real API, not just row counts | — | none blocking |
 | BR-24 | Industry Operational Scenarios | **Done (water), shallow (fuel)** | Subscriptions/refills/empty-bottle collection genuinely modeled; fuel sector reuses the same order schema with different pricing, no sector-specific fields | Both tenants | shared order API | `orders` | `seed-data-quality.test.ts` | Both tenants seeded | P2 | Sector-specific order fields for fuel (drum type, hazmat class, etc.) if pursuing fuel-sector customers specifically |
 | APP-01 | Admin Web Platform | **Done (mostly)** | All major tabs present and functional | `/admin` | many | many | broad coverage | rich | P2 | Cross-tenant "Tenants" management screen |
 | APP-02 | Dispatcher Console | **Done (mostly)** | Live queue, map, SLA, exceptions, loading gate | `/dispatch` | many | many | `trip-lifecycle.test.ts` | rich | P2 | Real-time push (WebSockets) instead of polling; drag-drop planning |
@@ -51,7 +51,7 @@ code.
 | APP-06 | Customer B2B Portal | **Done** | Multi-location, bulk orders, statements | `/b2b` | several | several | `customer-locations.test.ts` | Jarir/Al Rajhi portal logins seeded | — | none blocking |
 | APP-07 | Executive Dashboard | **Done** | 13 KPIs, real comparative analysis, driver/vehicle ranking, CSV export | Admin Executive tab | `/api/executive/dashboard` | reads across many tables | `executiveDashboard.test.ts`, `executive-dashboard.test.ts`, `seed-data-quality.test.ts` | Fully credible KPIs, confirmed live by the user | — | Scheduled reports/PDF export |
 
-**Score: 15 of 31 modules Done, 12 Partial, 4 Missing** (BR-16, APP-04, APP-05 fully missing; APP-03 partial-bordering-missing on the "mobile app" framing specifically).
+**Score: 16 of 31 modules Done, 11 Partial, 4 Missing** (BR-16, APP-04, APP-05 fully missing; APP-03 partial-bordering-missing on the "mobile app" framing specifically).
 
 ---
 
@@ -89,14 +89,15 @@ low-connectivity areas.
 5. **Driver app is web-only, no offline tolerance** — a real risk if field connectivity is spotty.
 6. **BR-16 Safety & Security is completely unbuilt** — often an RFQ-mandatory checkbox for GCC logistics tenders.
 7. **No proactive maintenance alerts** — purely manual/reactive today.
-8. **BR-23 (Tasks/Expenses) has zero demo data** — fully built in code but looks empty/unfinished in a live demo walkthrough.
+8. ~~BR-23 (Tasks/Expenses) has zero demo data~~ **Resolved**: 10 tasks/10 expenses seeded for Demo Water Co., 8/8 for Acme, verified live via the real API with genuine trip-linkage for the failed-delivery scenario, not just synthetic-sounding labels.
 9. **No payment gateway** — `ONLINE` payment method is a label with no real processor behind it.
 10. **No cross-tenant "Tenants" management screen** — today, provisioning a new tenant only happens via self-service `/signup`; there's no way for a platform operator to administer tenants directly.
+11. **No automated demo-data reset for hosted staging** — applying this richer seed to an already-seeded Railway database requires a manual wipe-and-reseed (documented in `STAGING_REPORT.md`), not a one-command refresh.
 
 ## Top 10 next Claude implementation tasks
 
 1. Configure and verify a real `GOOGLE_MAPS_API_KEY` in staging; confirm actual optimized routing end-to-end.
-2. Seed `tasks` and `expenseClaims` sample data so BR-23 isn't empty in a demo.
+2. ~~Seed `tasks` and `expenseClaims` sample data so BR-23 isn't empty in a demo~~ **Done** — see the updated BR-23 row above.
 3. Verify ERP sync against a real or trial Odoo instance.
 4. Design and scope a minimal photo-upload path for ePOD (this requires picking a storage provider first — a genuine architecture decision, not a quick patch).
 5. Build proactive maintenance-due alerts (odometer/date threshold → automation engine event, reusing BR-22's existing infrastructure).

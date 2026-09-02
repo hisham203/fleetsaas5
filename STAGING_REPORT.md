@@ -107,6 +107,21 @@ a full wipe-and-reseed (not just re-running `db:seed`, which fails on
 duplicate-key constraints against already-seeded data) to pick up the
 richer dataset.
 
+**Update (Tasks & Expenses demo data pass)**: the Go-Live Product Audit
+found BR-23 (Task, Expense & Field Activity Management) fully built in
+code but seeded with zero demo data — the Field Ops tab showed "No tasks
+assigned yet" on first login despite the feature working correctly.
+`scripts/seedData.ts` now seeds 10 tasks and 10 expenses for Demo Water
+Co. and 8 of each for Acme, with realistic mixed statuses (including a
+genuine trip-linked "failed delivery follow-up" example, not just a
+plausible-sounding label) — verified via the real API, not just row
+counts. This is included in the same seed run as everything else, so
+**no additional reseed step is needed beyond the wipe-and-reseed above**
+if you're already applying the richer dataset for the first time; if
+you already reseeded for the Clean Demo Dataset pass specifically and
+want just the tasks/expenses addition, the same wipe-and-reseed sequence
+applies (there is no incremental/partial seed option).
+
 ## 7. Build / start result
 
 - `npm run build`: **succeeded**, all 63 API routes and 8 pages

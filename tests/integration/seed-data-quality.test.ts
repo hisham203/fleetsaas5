@@ -83,4 +83,98 @@ describe("seed data quality — credible demo dataset (not a regression test for
       expect(failureRate).toBeLessThan(0.2); // realistic, not a dataset dominated by failures
     }
   });
+
+  // BR-23 was flagged in the Go-Live Product Audit as "built in code, empty
+  // in demo" — the Field Ops tab showed "No tasks assigned yet" / "Nothing
+  // pending review" on first login despite the feature working correctly.
+  // These assertions guard against that regressing silently in the future.
+  describe("BR-23 Tasks & Expenses — no longer empty in the demo", () => {
+    it("Demo Water Co. has a realistic, varied set of seeded tasks", async () => {
+      const { GET } = await import("@/app/api/tasks/route");
+      const tasks = await (await GET(makeRequest("/api/tasks", { cookie: waterAdminCookie }))).json();
+
+      expect(tasks.length).toBeGreaterThanOrEqual(8);
+      expect(tasks.length).toBeLessThanOrEqual(12);
+
+      const statuses = new Set(tasks.map((t: any) => t.status));
+      expect(statuses.size).toBeGreaterThan(1); // not every task stuck in one status
+
+      // Every task must resolve to a real driver — a dangling/broken
+      // driver reference would silently render as a blank name in the UI.
+      for (const t of tasks) {
+        expect(t.driver?.user?.name).toBeTruthy();
+      }
+    });
+
+    it("Demo Water Co. has a realistic, varied set of seeded expenses", async () => {
+      const { GET } = await import("@/app/api/expenses/route");
+      const expenses = await (await GET(makeRequest("/api/expenses", { cookie: waterAdminCookie }))).json();
+
+      expect(expenses.length).toBeGreaterThanOrEqual(8);
+      expect(expenses.length).toBeLessThanOrEqual(12);
+
+      const statuses = new Set(expenses.map((e: any) => e.status));
+      expect(statuses.size).toBeGreaterThan(1);
+      // All three real expense statuses should appear at least once —
+      // an all-PENDING or all-APPROVED set wouldn't demo the approval
+      // workflow at all.
+      expect(statuses.has("APPROVED")).toBe(true);
+      expect(statuses.has("PENDING")).toBe(true);
+      expect(statuses.has("REJECTED")).toBe(true);
+
+      for (const e of expenses) {
+        expect(e.driver?.user?.name).toBeTruthy();
+        expect(e.vehicle?.plateNumber).toBeTruthy();
+        expect(e.amount).toBeGreaterThan(0);
+        // A sanity ceiling — this is a demo of realistic operational
+        // expenses (fuel, tolls, minor repairs), not five-figure claims.
+        expect(e.amount).toBeLessThan(2000);
+      }
+    });
+
+    it("Acme Fuel Delivery Co. has a realistic, varied set of seeded tasks", async () => {
+      const { GET } = await import("@/app/api/tasks/route");
+      const tasks = await (await GET(makeRequest("/api/tasks", { cookie: acmeAdminCookie }))).json();
+
+      expect(tasks.length).toBeGreaterThanOrEqual(6);
+      expect(tasks.length).toBeLessThanOrEqual(10);
+      expect(new Set(tasks.map((t: any) => t.status)).size).toBeGreaterThan(1);
+      for (const t of tasks) {
+        expect(t.driver?.user?.name).toBeTruthy();
+      }
+    });
+
+    it("Acme Fuel Delivery Co. has a realistic, varied set of seeded expenses", async () => {
+      const { GET } = await import("@/app/api/expenses/route");
+      const expenses = await (await GET(makeRequest("/api/expenses", { cookie: acmeAdminCookie }))).json();
+
+      expect(expenses.length).toBeGreaterThanOrEqual(6);
+      expect(expenses.length).toBeLessThanOrEqual(10);
+      const statuses = new Set(expenses.map((e: any) => e.status));
+      expect(statuses.has("APPROVED")).toBe(true);
+      expect(statuses.has("PENDING")).toBe(true);
+      expect(statuses.has("REJECTED")).toBe(true);
+      for (const e of expenses) {
+        expect(e.amount).toBeGreaterThan(0);
+      }
+    });
+
+    it("Acme's expenses are priced at wholesale fuel scale, distinctly larger than Demo Water Co.'s retail scale", async () => {
+      const { GET: expensesGet } = await import("@/app/api/expenses/route");
+      const waterExpenses = await (await expensesGet(makeRequest("/api/expenses", { cookie: waterAdminCookie }))).json();
+      const acmeExpenses = await (await expensesGet(makeRequest("/api/expenses", { cookie: acmeAdminCookie }))).json();
+
+      const avg = (arr: any[]) => arr.reduce((s, e) => s + e.amount, 0) / arr.length;
+      expect(avg(acmeExpenses)).toBeGreaterThan(avg(waterExpenses) * 1.5);
+    });
+
+    it("a task claiming to be a real 'failed delivery follow-up' is genuinely linked to a real failed trip, not just a plausible-sounding label", async () => {
+      const { GET } = await import("@/app/api/tasks/route");
+      const tasks = await (await GET(makeRequest("/api/tasks", { cookie: waterAdminCookie }))).json();
+      const followUp = tasks.find((t: any) => t.title.startsWith("Failed delivery follow-up"));
+      expect(followUp).toBeTruthy();
+      expect(followUp.tripId).toBeTruthy();
+      expect(followUp.trip?.status).toBe("COMPLETED"); // the trip itself completed; the delivery attempt within it failed
+    });
+  });
 });
