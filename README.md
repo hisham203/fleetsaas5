@@ -373,7 +373,7 @@ real login call. This exercises the actual route logic — auth checks,
 tenant scoping, business rules — without the overhead or flakiness of a
 live server.
 
-**What's covered** (233 tests across 34 files):
+**What's covered** (249 tests across 36 files):
 - `tests/unit/` — pure logic with no database: SLA status calculation (all
   five states), VAT/invoice math, Google Maps route-optimization fallback
   behavior, the report-dataset registry's column whitelist validation
@@ -506,6 +506,17 @@ live server.
     score/vehicle cost (not flat filler data), and a sanity ceiling on
     cost-per-km that would catch a regression into the unrealistic
     cross-country-haul-distance bug found while building this dataset.
+  - **Contract Management schema foundation ("A1")** — every new table
+    exists with correct nullability; tenant-scoped tables carry
+    `tenant_id`, and the tables scoped transitively via a parent
+    relationship (`contract_sites`, `contract_periods`, `invoice_orders`)
+    correctly follow this codebase's existing `trip_stops` precedent
+    instead. Most importantly: a full real order→trip→delivery→invoice
+    flow is re-run end-to-end and proven byte-for-byte unaffected —
+    `invoices.order_id` is confirmed still `NOT NULL` and `UNIQUE`, and
+    `invoice_orders` stays empty throughout, since nothing yet writes to
+    it. Contract Management itself is schema-only at this stage — no
+    API, UI, pricing engine, or invoicing behavior exists yet.
 
 **What's not covered yet** — a few lower-risk edges: update/delete on
 customers and vehicles (only create/list are exercised), and some of the

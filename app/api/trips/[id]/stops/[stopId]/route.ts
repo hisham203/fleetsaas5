@@ -25,13 +25,21 @@ const deliverSchema = z.object({
 // BR-10: Electronic Proof of Delivery — a stop cannot be considered Delivered
 // without an ePOD record (geo + timestamp + recipient/qty). BR-11 covers the
 // failure/partial path. On successful delivery this also triggers BR-18 billing.
+//
+// Role note: DISPATCHER is included alongside ADMIN and DRIVER because the
+// Dispatch console's Live trips card offers a "Mark delivered"/"Mark failed"
+// fallback for resolving a stop directly from dispatch (e.g. when a driver
+// can't complete it themselves) — the page this console lives on
+// (app/dispatch/page.tsx) is explicitly built for the Dispatcher role, so
+// excluding it here would make that exact feature 401 for its own intended
+// user.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; stopId: string }> }
 ) {
   const { id, stopId } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DRIVER"])) {
+  if (!hasRole(session, ["ADMIN", "DISPATCHER", "DRIVER"])) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;

@@ -15,6 +15,9 @@ export default function DispatchPage() {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [trips, setTrips] = useState<any[]>([]);
   const [focusTripId, setFocusTripId] = useState<string | null>(null);
+  const [focusToken, setFocusToken] = useState(0);
+  const [resetToken, setResetToken] = useState(0);
+  const [resolvingStopId, setResolvingStopId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [driverId, setDriverId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
@@ -163,6 +166,28 @@ export default function DispatchPage() {
     load();
   }
 
+  // Resolves a stop directly from the Dispatch console — a fallback path
+  // for when a stop needs closing out without going through the driver
+  // app's own arrive/deliver flow (e.g. the driver phoned it in). Uses the
+  // exact same stop-action endpoint and payload shape the driver app uses
+  // (action: "deliver" | "fail") — no new API, no new contract. A "Mark
+  // delivered" quick action defaults to the full ordered quantity, since
+  // this is a dispatcher override, not the detailed ePOD capture flow.
+  async function resolveStop(tripId: string, stopId: string, order: any, action: "deliver" | "fail") {
+    setResolvingStopId(stopId);
+    const body =
+      action === "deliver"
+        ? { action: "deliver", deliveredQty: order.qtyOrdered, emptiesCollected: order.emptyBottlesToCollect ?? 0, recipientName: "Dispatcher-confirmed" }
+        : { action: "fail", failureReason: "Marked failed from Dispatch console" };
+    await fetch(`/api/trips/${tripId}/stops/${stopId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    setResolvingStopId(null);
+    load();
+  }
+
   if (sessionLoading || !session || !tenant) return <main className="min-h-screen bg-paper"><TopNav role="Dispatcher" /><p className="p-6 text-steel">Loading…</p></main>;
 
   return (
@@ -201,7 +226,12 @@ export default function DispatchPage() {
       )}
 
       <div className="px-6 pt-6">
-        <h3 className="font-medium mb-3">Live Dispatch Map</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium">Live Dispatch Map</h3>
+          <button onClick={() => setResetToken((x) => x + 1)} className="text-xs text-steel hover:text-ink font-medium">
+            Reset map
+          </button>
+        </div>
         <LiveMap
           trips={trips
             .filter((t) => t.status === "DISPATCHED" || t.status === "IN_PROGRESS")
@@ -214,6 +244,8 @@ export default function DispatchPage() {
               };
             })}
           focusTripId={focusTripId}
+          focusToken={focusToken}
+          resetToken={resetToken}
         />
       </div>
 
@@ -327,60 +359,103 @@ export default function DispatchPage() {
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <h3 className="font-medium mb-3">Live trips</h3>
           <div className="space-y-3 max-h-[500px] overflow-auto">
-            {activeTrips.map((t) => (
-              <div key={t.id} className="border border-slate-100 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-xs">{t.tripNumber}</span>
-                  <StatusBadge status={t.status} />
-                </div>
-                <p className="text-sm">{t.driver.user.name} · {t.vehicle.plateNumber}</p>
-                <p className="text-steel text-xs mb-2">
-                  {t.stops.length} stop(s)
-                  {t.status === "PLANNED" && (t.loadingConfirmed ? " · Loaded" : " · Awaiting warehouse loading")}
-                </p>
-                <ul className="text-xs text-steel space-y-1 mb-2">
-                  {t.stops.map((s: any) => (
-                    <li key={s.id} className="flex justify-between">
-                      <span>{s.sequence}. {s.order.customer?.name ?? s.orderId}</span>
-                      <StatusBadge status={s.status} />
-                    </li>
-                  ))}
-                </ul>
-                {(t.status === "DISPATCHED" || t.status === "IN_PROGRESS") && (() => {
-                  const firstStop = [...t.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
-                  const position = resolveTripMapPosition(t.currentLat, t.currentLng, firstStop?.order?.lat, firstStop?.order?.lng);
-                  return position ? (
+            {activeTrips.map((t) => {
+              // Matches the server's own definition exactly (see the
+              // "complete" action in app/api/trips/[id]/route.ts) — a stop
+              // is unresolved while PENDING or ARRIVED. Keeping this in
+              // sync means the button's enabled/disabled state never
+              // promises something the server will actually reject, or
+              // blocks something the server would actually allow.
+              const unresolvedStops = t.stops.filter((s: any) => s.status === "PENDING" || s.status === "ARRIVED");
+              const canResolveFromDispatch = t.status === "DISPATCHED" || t.status === "IN_PROGRESS";
+
+              return (
+                <div key={t.id} className="border border-slate-100 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-xs">{t.tripNumber}</span>
+                    <StatusBadge status={t.status} />
+                  </div>
+                  <p className="text-sm">{t.driver.user.name} · {t.vehicle.plateNumber}</p>
+                  <p className="text-steel text-xs mb-2">
+                    {t.stops.length} stop(s)
+                    {t.status === "PLANNED" && (t.loadingConfirmed ? " · Loaded" : " · Awaiting warehouse loading")}
+                  </p>
+                  <ul className="text-xs text-steel space-y-1.5 mb-2">
+                    {t.stops.map((s: any) => (
+                      <li key={s.id} className="border-b border-slate-50 pb-1.5 last:border-0 last:pb-0">
+                        <div className="flex justify-between items-center">
+                          <span>{s.sequence}. {s.order.customer?.name ?? s.orderId}</span>
+                          <StatusBadge status={s.status} />
+                        </div>
+                        {canResolveFromDispatch && (s.status === "PENDING" || s.status === "ARRIVED") && (
+                          <div className="flex gap-1.5 mt-1">
+                            <button
+                              onClick={() => resolveStop(t.id, s.id, s.order, "deliver")}
+                              disabled={resolvingStopId === s.id}
+                              className="flex-1 bg-ok text-white rounded px-2 py-1 text-[11px] font-medium disabled:opacity-40"
+                            >
+                              {resolvingStopId === s.id ? "…" : "Mark delivered"}
+                            </button>
+                            <button
+                              onClick={() => resolveStop(t.id, s.id, s.order, "fail")}
+                              disabled={resolvingStopId === s.id}
+                              className="flex-1 border border-slate-200 text-danger rounded px-2 py-1 text-[11px] font-medium disabled:opacity-40"
+                            >
+                              {resolvingStopId === s.id ? "…" : "Mark failed"}
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {(t.status === "DISPATCHED" || t.status === "IN_PROGRESS") && (() => {
+                    const firstStop = [...t.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
+                    const position = resolveTripMapPosition(t.currentLat, t.currentLng, firstStop?.order?.lat, firstStop?.order?.lng);
+                    return position ? (
+                      <button
+                        onClick={() => {
+                          setFocusTripId(t.id);
+                          setFocusToken((x) => x + 1);
+                        }}
+                        className="w-full border border-slate-200 rounded-lg py-1.5 text-xs font-medium text-aquaDark mb-2"
+                      >
+                        View on map
+                      </button>
+                    ) : (
+                      <p className="text-warn text-xs mb-2">No coordinates available</p>
+                    );
+                  })()}
+                  {t.status === "PLANNED" && !t.loadingConfirmed && (
                     <button
-                      onClick={() => setFocusTripId(t.id)}
-                      className="w-full border border-slate-200 rounded-lg py-1.5 text-xs font-medium text-aquaDark mb-2"
+                      onClick={() => confirmLoading(t.id)}
+                      disabled={loadingTripId === t.id}
+                      className="w-full bg-warn text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
                     >
-                      View on map
+                      {loadingTripId === t.id ? "Confirming…" : "Confirm warehouse loading"}
                     </button>
-                  ) : (
-                    <p className="text-warn text-xs mb-2">No coordinates available</p>
-                  );
-                })()}
-                {t.status === "PLANNED" && !t.loadingConfirmed && (
-                  <button
-                    onClick={() => confirmLoading(t.id)}
-                    disabled={loadingTripId === t.id}
-                    className="w-full bg-warn text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
-                  >
-                    {loadingTripId === t.id ? "Confirming…" : "Confirm warehouse loading"}
-                  </button>
-                )}
-                {t.status === "PLANNED" && t.loadingConfirmed && (
-                  <button onClick={() => dispatchTrip(t.id)} className="w-full bg-ink text-white rounded-lg py-1.5 text-xs font-medium">
-                    Dispatch trip
-                  </button>
-                )}
-                {t.status === "DISPATCHED" && (
-                  <button onClick={() => completeTrip(t.id)} className="w-full bg-ok text-white rounded-lg py-1.5 text-xs font-medium">
-                    Close trip
-                  </button>
-                )}
-              </div>
-            ))}
+                  )}
+                  {t.status === "PLANNED" && t.loadingConfirmed && (
+                    <button onClick={() => dispatchTrip(t.id)} className="w-full bg-ink text-white rounded-lg py-1.5 text-xs font-medium">
+                      Dispatch trip
+                    </button>
+                  )}
+                  {t.status === "DISPATCHED" && (
+                    <>
+                      <button
+                        onClick={() => completeTrip(t.id)}
+                        disabled={unresolvedStops.length > 0}
+                        className="w-full bg-ok text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Close trip
+                      </button>
+                      {unresolvedStops.length > 0 && (
+                        <p className="text-steel text-xs mt-1 text-center">Resolve all pending stops before closing this trip.</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
             {activeTrips.length === 0 && <p className="text-steel text-sm">No active trips.</p>}
           </div>
         </div>

@@ -148,6 +148,15 @@ export const customerLocations = pgTable("customer_locations", {
   lng: real("lng"),
   contactName: text("contact_name"),
   contactPhone: text("contact_phone"),
+  // Contract Management A1 (schema foundation only — see contract_pricing_rules
+  // below): structured, tenant-governed codes a site is assigned once, used
+  // by the future pricing engine to match a contract rate. Deliberately not
+  // free text and not computed live from lat/lng — see the Contract
+  // Management Schema Design docs for why. All nullable: assigning these is
+  // out of scope for A1, and every existing site has none of them today.
+  cityCode: text("city_code"),
+  zoneCode: text("zone_code"),
+  distanceBandCode: text("distance_band_code"),
   createdAt: createdAt(),
 });
 
@@ -177,6 +186,15 @@ export const orders = pgTable("orders", {
   discountAmount: real("discount_amount").notNull().default(0), // BR-18: flat SAR discount, applied to the subtotal before VAT
   failureReason: text("failure_reason"),
   previousOrderId: text("previous_order_id"), // BR-11: set when this order is a reschedule/reassign follow-up
+  // Contract Management A1 (schema foundation only): which contract this
+  // order draws against, if any. Nullable — null means an individual/
+  // fixed-tariff order or a non-contract order, which is every order that
+  // exists today and remains fully valid and unaffected. Order creation
+  // does NOT yet validate, default, or act on this field in any way — that
+  // is a later task (order/contract attachment), explicitly out of scope
+  // for A1. This column exists so it can be migrated once, safely, ahead
+  // of that logic being built.
+  contractId: text("contract_id"),
   completedAt: timestamp("completed_at", { mode: "date" }), // BR-20: when delivered/failed, for SLA MET/MISSED calc
   createdAt: createdAt(),
 });
@@ -271,6 +289,140 @@ export const creditNotes = pgTable("credit_notes", {
   amount: real("amount").notNull(),
   reason: text("reason").notNull(),
   createdByUserId: text("created_by_user_id").notNull(),
+  createdAt: createdAt(),
+});
+
+// ---------- Contract Management — Schema Foundation (A1) ----------
+// SCOPE NOTE: this section adds tables/columns only. No API route, UI,
+// pricing-matching logic, order/contract attachment behavior, or monthly
+// invoice generation exists yet — those are separate, later tasks (B
+// through G in the Contract Management Schema Design docs). Every table
+// below is purely additive: nothing existing reads from or depends on
+// them, so their presence has zero effect on any current behavior.
+//
+// Deliberately NOT touched by this section: the `invoices` table above.
+// `invoices.orderId` remains NOT NULL and UNIQUE, exactly as it is today —
+// that change (task "A2") is a separate, not-yet-approved step requiring
+// its own audit first, since it's the one change in this whole design
+// that touches something already working correctly in production. Every
+// order continues to get exactly one invoice at delivery time, unchanged.
+
+// A company customer's commercial agreement. Individual/home customers
+// never have a row here — they use a tenant-default fixed tariff via
+// contract_pricing_rules with pricingScope = TENANT_DEFAULT instead.
+// type: ONE_TIME_TRIP_COUNT | MONTHLY_ACCUMULATED
+// status: DRAFT | ACTIVE | SUSPENDED | EXPIRED | COMPLETED | CANCELLED
+export const contracts = pgTable("contracts", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  customerId: text("customer_id").notNull(), // must be a COMPANY-type customer
+  contractNumber: text("contract_number").notNull().unique(),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("DRAFT"),
+  // true (default): covers every current AND future site of this customer,
+  // with zero rows needed in contract_sites. false: scope is restricted to
+  // whatever's listed in contract_sites below.
+  appliesToAllSites: boolean("applies_to_all_sites").notNull().default(true),
+  totalTripsPurchased: integer("total_trips_purchased"), // ONE_TIME_TRIP_COUNT only
+  tripsUsed: integer("trips_used").notNull().default(0), // ONE_TIME_TRIP_COUNT only; incremented on genuine delivery only, never on failed/cancelled (future task, not enforced by this schema alone)
+  startDate: timestamp("start_date", { mode: "date" }).notNull(),
+  endDate: timestamp("end_date", { mode: "date" }),
+  billingCadence: text("billing_cadence"), // MONTHLY_ACCUMULATED only, e.g. "MONTHLY"
+  notes: text("notes"),
+  createdByUserId: text("created_by_user_id"),
+  createdAt: createdAt(),
+});
+
+// Restricts a contract's scope to specific sites, only populated when
+// contracts.appliesToAllSites = false.
+export const contractSites = pgTable("contract_sites", {
+  id: text("id").primaryKey(),
+  contractId: text("contract_id").notNull(),
+  customerLocationId: text("customer_location_id").notNull(),
+  createdAt: createdAt(),
+});
+
+// One billing-cycle accumulation bucket for a MONTHLY_ACCUMULATED contract.
+// Not used by ONE_TIME_TRIP_COUNT contracts at all.
+// status: OPEN | INVOICED
+export const contractPeriods = pgTable("contract_periods", {
+  id: text("id").primaryKey(),
+  contractId: text("contract_id").notNull(),
+  periodStart: timestamp("period_start", { mode: "date" }).notNull(),
+  periodEnd: timestamp("period_end", { mode: "date" }).notNull(),
+  status: text("status").notNull().default("OPEN"),
+  periodTrips: integer("period_trips").notNull().default(0), // denormalized running total, updated as deliveries complete (future task)
+  periodLiters: real("period_liters").notNull().default(0),
+  periodRevenue: real("period_revenue").notNull().default(0), // pre-VAT
+  invoiceId: text("invoice_id"), // set once month-end invoicing runs (future task) — intentionally NOT a foreign key constraint to invoices.id in Drizzle here, consistent with this schema's existing convention of app-level relation wiring over DB-level FK constraints
+  invoicedAt: timestamp("invoiced_at", { mode: "date" }),
+  invoicedByUserId: text("invoiced_by_user_id"),
+  createdAt: createdAt(),
+});
+
+// A tenant-defined reference table for distance-based pricing bands (e.g.
+// "0-10km — Central Riyadh"). Defined once per tenant, then referenced by
+// code from customerLocations and contract_pricing_rules — deliberately
+// not free text on either of those, to avoid drift/typo mismatches between
+// a site's assigned band and a pricing rule's band.
+export const distanceBands = pgTable("distance_bands", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  code: text("code").notNull(), // unique per tenant, e.g. "BAND_A" (uniqueness enforced at the application layer, not a DB constraint, consistent with this schema's existing conventions)
+  fromKm: real("from_km").notNull(),
+  toKm: real("to_km"), // null = open-ended upper bound
+  label: text("label").notNull(),
+  createdAt: createdAt(),
+});
+
+// The core rating table. A row with pricingScope = TENANT_DEFAULT and
+// contractId = null is a tenant-wide individual/fixed-tariff rate,
+// matched by tankerCapacityLtr alone. A row with pricingScope = CONTRACT
+// belongs to exactly one contract and may additionally match on
+// cityCode/zoneCode/distanceBandCode. None of this is queried or enforced
+// by any code yet — the future pricing engine (a separate task) is
+// responsible for the actual matching/specificity/tie-detection logic
+// described in the Contract Management Schema Design docs; this table
+// only defines where that logic's inputs will live.
+// pricingScope: TENANT_DEFAULT | CONTRACT
+// rateType: STANDARD | OVERAGE
+export const contractPricingRules = pgTable("contract_pricing_rules", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  pricingScope: text("pricing_scope").notNull(),
+  contractId: text("contract_id"), // required (app-validated) when pricingScope = CONTRACT; must be null when pricingScope = TENANT_DEFAULT
+  rateType: text("rate_type").notNull(),
+  cityCode: text("city_code"), // null = wildcard, matches any city
+  zoneCode: text("zone_code"), // null = wildcard within city
+  distanceBandCode: text("distance_band_code"), // null = wildcard
+  tankerCapacityLtr: integer("tanker_capacity_ltr"), // null = wildcard; otherwise expected to be 18000/21000/28000
+  pricePerTrip: real("price_per_trip"), // at most one of pricePerTrip/pricePerLiter set (app-enforced)
+  pricePerLiter: real("price_per_liter"),
+  vatRate: real("vat_rate").notNull().default(0.15),
+  effectiveStartDate: timestamp("effective_start_date", { mode: "date" }),
+  effectiveEndDate: timestamp("effective_end_date", { mode: "date" }),
+  createdAt: createdAt(),
+});
+
+// Join table for a future monthly consolidated invoice covering many
+// orders — NOT used by any invoice generation logic today. Every invoice
+// created by the current system continues to go through the existing
+// one-order-one-invoice path (invoices.orderId) entirely unchanged; this
+// table exists now, empty, so it's already in place once that later task
+// (month-end invoice generation) is built, without needing its own
+// migration at that point.
+export const invoiceOrders = pgTable("invoice_orders", {
+  id: text("id").primaryKey(),
+  invoiceId: text("invoice_id").notNull(),
+  orderId: text("order_id").notNull(),
+  // Frozen at generation time — deliberately not re-computed from
+  // contract_pricing_rules on read, so a historical invoice's amount can
+  // never silently change if a pricing rule is edited later. Same
+  // principle already used by invoices.discountAmount above (copied from
+  // the order at invoice time, per its own comment, for exactly this
+  // reason).
+  lineAmount: real("line_amount").notNull(),
+  lineVatAmount: real("line_vat_amount").notNull(),
   createdAt: createdAt(),
 });
 
@@ -647,6 +799,9 @@ export const ordersRelations = relations(orders, ({ one }) => ({
   tenant: one(tenants, { fields: [orders.tenantId], references: [tenants.id] }),
   customer: one(customers, { fields: [orders.customerId], references: [customers.id] }),
   location: one(customerLocations, { fields: [orders.locationId], references: [customerLocations.id] }),
+  // Contract Management A1: schema relation only — no order-creation code
+  // reads or writes this yet (a later task, "order/contract attachment").
+  contract: one(contracts, { fields: [orders.contractId], references: [contracts.id] }),
   tripStop: one(tripStops, { fields: [orders.id], references: [tripStops.orderId] }),
   invoice: one(invoices, { fields: [orders.id], references: [invoices.orderId] }),
 }));
@@ -712,4 +867,39 @@ export const invoicesRelations = relations(invoices, ({ one, many }) => ({
 export const creditNotesRelations = relations(creditNotes, ({ one }) => ({
   invoice: one(invoices, { fields: [creditNotes.invoiceId], references: [invoices.id] }),
   customer: one(customers, { fields: [creditNotes.customerId], references: [customers.id] }),
+}));
+
+// ---------- Contract Management — Schema Foundation (A1) relations ----------
+// Purely descriptive schema relations for Drizzle's query builder — no
+// application code queries through these yet.
+
+export const contractsRelations = relations(contracts, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [contracts.tenantId], references: [tenants.id] }),
+  customer: one(customers, { fields: [contracts.customerId], references: [customers.id] }),
+  sites: many(contractSites),
+  periods: many(contractPeriods),
+  pricingRules: many(contractPricingRules),
+}));
+
+export const contractSitesRelations = relations(contractSites, ({ one }) => ({
+  contract: one(contracts, { fields: [contractSites.contractId], references: [contracts.id] }),
+  customerLocation: one(customerLocations, { fields: [contractSites.customerLocationId], references: [customerLocations.id] }),
+}));
+
+export const contractPeriodsRelations = relations(contractPeriods, ({ one }) => ({
+  contract: one(contracts, { fields: [contractPeriods.contractId], references: [contracts.id] }),
+}));
+
+export const distanceBandsRelations = relations(distanceBands, ({ one }) => ({
+  tenant: one(tenants, { fields: [distanceBands.tenantId], references: [tenants.id] }),
+}));
+
+export const contractPricingRulesRelations = relations(contractPricingRules, ({ one }) => ({
+  tenant: one(tenants, { fields: [contractPricingRules.tenantId], references: [tenants.id] }),
+  contract: one(contracts, { fields: [contractPricingRules.contractId], references: [contracts.id] }),
+}));
+
+export const invoiceOrdersRelations = relations(invoiceOrders, ({ one }) => ({
+  invoice: one(invoices, { fields: [invoiceOrders.invoiceId], references: [invoices.id] }),
+  order: one(orders, { fields: [invoiceOrders.orderId], references: [orders.id] }),
 }));

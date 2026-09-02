@@ -76,21 +76,41 @@ only placeholders.
   migration file was read; none uses pgcrypto, postgis, or similar.
 - **Migration process**: `npm run db:migrate` runs Drizzle's migrate()
   against DATABASE_URL. Plain SQL files in `drizzle/*.sql`, numbered
-  0000-0010 as of this pass, tracked in a separate `drizzle` Postgres
+  0000-0011 as of this pass, tracked in a separate `drizzle` Postgres
   schema.
   - **Production migration warning**: migrations are additive-only by
     convention (verified — no DROP COLUMN or destructive statements in
-    any of the 11 files). Run migrations before deploying code that
+    any of the 12 files). Run migrations before deploying code that
     depends on new columns/tables, and snapshot the database first —
     Drizzle has no built-in rollback command.
+  - **Migration 0011 — Contract Management Schema Foundation ("A1")**:
+    adds 6 new, currently-empty tables (`contracts`, `contract_sites`,
+    `contract_periods`, `distance_bands`, `contract_pricing_rules`,
+    `invoice_orders`) and 4 new nullable columns (`orders.contract_id`;
+    `customer_locations.city_code`, `.zone_code`, `.distance_band_code`)
+    — groundwork for a bulk-water-tanker contract/pricing model under
+    active design. **Contract Management is not complete and not usable
+    yet**: no API route, UI, pricing-matching engine, order/contract
+    attachment logic, or monthly invoice generation exists. A later,
+    separate, not-yet-approved step ("A2") will make `invoices.order_id`
+    nullable to support consolidated monthly invoices — **this migration
+    deliberately does not touch that column, or `invoices` at all.**
+    Confirmed via direct inspection: `invoices.order_id` remains `NOT
+    NULL` with its `UNIQUE` constraint intact, and existing
+    one-order-one-invoice generation was re-verified end-to-end and is
+    unaffected.
 - **Seed process**: `npm run db:seed` is a demo/development seed —
   fictional companies, users, and a shared `password123` password baked
   into the script. Creates two tenants with ~35 days of realistic
   historical delivery data each (56 and 30 trips respectively) so the
   Executive Dashboard and scorecards show credible numbers immediately —
-  see README's "Demo dataset" section for the full scenario. **Never run
-  this against a database with real customer data.** There's no separate
-  "bootstrap the first real tenant" script; use `/signup` for that instead.
+  see README's "Demo dataset" section for the full scenario. **This seed
+  script was not modified by the Contract Management A1 migration** — the
+  6 new tables above are seeded with nothing, for either existing tenant.
+  A bulk-water-tanker-specific seed tenant is separate, later, unstarted
+  work. **Never run this against a database with real customer data.**
+  There's no separate "bootstrap the first real tenant" script; use
+  `/signup` for that instead.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

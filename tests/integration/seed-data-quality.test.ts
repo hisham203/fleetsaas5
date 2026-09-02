@@ -93,8 +93,14 @@ describe("seed data quality — credible demo dataset (not a regression test for
       const { GET } = await import("@/app/api/tasks/route");
       const tasks = await (await GET(makeRequest("/api/tasks", { cookie: waterAdminCookie }))).json();
 
+      // Lower bound only, deliberately — other test files in this suite
+      // legitimately create their own tasks/expenses against this same
+      // shared tenant as part of testing the API itself (see tasks.test.ts,
+      // expenses.test.ts), so the real count grows depending on which
+      // other tests ran first. An upper bound here would be asserting
+      // something that was never actually a guarantee. What matters for
+      // this test's purpose — proving the demo isn't empty — is the floor.
       expect(tasks.length).toBeGreaterThanOrEqual(8);
-      expect(tasks.length).toBeLessThanOrEqual(12);
 
       const statuses = new Set(tasks.map((t: any) => t.status));
       expect(statuses.size).toBeGreaterThan(1); // not every task stuck in one status
@@ -110,8 +116,9 @@ describe("seed data quality — credible demo dataset (not a regression test for
       const { GET } = await import("@/app/api/expenses/route");
       const expenses = await (await GET(makeRequest("/api/expenses", { cookie: waterAdminCookie }))).json();
 
+      // Lower bound only — see the comment on the tasks assertion above;
+      // the same reasoning applies here.
       expect(expenses.length).toBeGreaterThanOrEqual(8);
-      expect(expenses.length).toBeLessThanOrEqual(12);
 
       const statuses = new Set(expenses.map((e: any) => e.status));
       expect(statuses.size).toBeGreaterThan(1);
@@ -137,7 +144,6 @@ describe("seed data quality — credible demo dataset (not a regression test for
       const tasks = await (await GET(makeRequest("/api/tasks", { cookie: acmeAdminCookie }))).json();
 
       expect(tasks.length).toBeGreaterThanOrEqual(6);
-      expect(tasks.length).toBeLessThanOrEqual(10);
       expect(new Set(tasks.map((t: any) => t.status)).size).toBeGreaterThan(1);
       for (const t of tasks) {
         expect(t.driver?.user?.name).toBeTruthy();
@@ -149,7 +155,6 @@ describe("seed data quality — credible demo dataset (not a regression test for
       const expenses = await (await GET(makeRequest("/api/expenses", { cookie: acmeAdminCookie }))).json();
 
       expect(expenses.length).toBeGreaterThanOrEqual(6);
-      expect(expenses.length).toBeLessThanOrEqual(10);
       const statuses = new Set(expenses.map((e: any) => e.status));
       expect(statuses.has("APPROVED")).toBe(true);
       expect(statuses.has("PENDING")).toBe(true);

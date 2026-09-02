@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { resolveTripMapPosition } from "@/lib/mapPosition";
 
+const DEFAULT_CENTER = { lat: 24.7136, lng: 46.6753 }; // Riyadh
+const DEFAULT_ZOOM = 11;
+
 type TrackedTrip = {
   id: string;
   tripNumber: string;
@@ -27,11 +30,29 @@ type TrackedTrip = {
 // map — route creation/dispatch/delivery all work fine without it, this is
 // purely a visualization layer on top.
 //
-// `focusTripId`: when the caller sets this (e.g. a "View on map" button
-// elsewhere on the page), the map pans/zooms to that trip's marker and
-// briefly bounces it — a purely visual aid connecting a list item to its
-// position on the map, no data changes as a result.
-export default function LiveMap({ trips, focusTripId }: { trips: TrackedTrip[]; focusTripId?: string | null }) {
+// `focusTripId` + `focusToken`: when the caller wants to focus a trip (e.g.
+// a "View on map" button elsewhere on the page), it sets focusTripId AND
+// increments focusToken. The focus effect below depends ONLY on
+// `focusToken`, deliberately not on `trips` — trips refreshes periodically
+// (a normal data poll), and if the effect depended on that array too, it
+// would re-pan/re-zoom/re-bounce on every single refresh, which is exactly
+// the "sticky, can't zoom out" bug this was built to fix. A poll updating
+// marker positions (the separate effect above) never re-triggers a focus;
+// only an explicit new focusToken does — so once the user pans or zooms
+// away themselves, the map stays put until they click "View on map" again.
+// `resetToken`: increments to recenter the map on its default view (e.g. a
+// "Reset map" button) without touching any trip data.
+export default function LiveMap({
+  trips,
+  focusTripId,
+  focusToken,
+  resetToken,
+}: {
+  trips: TrackedTrip[];
+  focusTripId?: string | null;
+  focusToken?: number;
+  resetToken?: number;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<Record<string, google.maps.Marker>>({});
@@ -61,8 +82,8 @@ export default function LiveMap({ trips, focusTripId }: { trips: TrackedTrip[]; 
     if (!ready || !containerRef.current) return;
     if (!mapRef.current) {
       mapRef.current = new google.maps.Map(containerRef.current, {
-        center: { lat: 24.7136, lng: 46.6753 }, // Riyadh
-        zoom: 11,
+        center: DEFAULT_CENTER,
+        zoom: DEFAULT_ZOOM,
         disableDefaultUI: true,
         zoomControl: true,
       });
@@ -99,11 +120,19 @@ export default function LiveMap({ trips, focusTripId }: { trips: TrackedTrip[]; 
     });
   }, [ready, trips]);
 
-  // Focus behavior — reacts to the caller setting focusTripId. Purely a
-  // camera move + a brief bounce on the existing marker; it never adds,
-  // removes, or moves data, just where the map is currently looking.
+  // Focus behavior — fires exactly once per focusToken change (i.e. once
+  // per "View on map" click), never as a side effect of trips refreshing.
+  // A purely visual camera move + a brief bounce on the existing marker;
+  // never adds, removes, or moves data.
+  //
+  // focusTripId is deliberately not in the dependency array: the button
+  // that triggers this always sets focusTripId and bumps focusToken in the
+  // same click handler, so by the time this effect runs, focusTripId is
+  // already current for this render — the point of keying off focusToken
+  // alone is specifically to NOT re-run this effect for any other reason
+  // (e.g. focusTripId happening to be read again on an unrelated render).
   useEffect(() => {
-    if (!focusTripId || !mapRef.current) return;
+    if (!focusToken || !focusTripId || !mapRef.current) return;
     const marker = markersRef.current[focusTripId];
     if (!marker) return;
     const position = marker.getPosition();
@@ -114,7 +143,17 @@ export default function LiveMap({ trips, focusTripId }: { trips: TrackedTrip[]; 
     marker.setAnimation(google.maps.Animation.BOUNCE);
     const stop = setTimeout(() => marker.setAnimation(null), 1400);
     return () => clearTimeout(stop);
-  }, [focusTripId, trips]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above: focusTripId is read fresh but must not itself retrigger this effect
+  }, [focusToken]);
+
+  // Reset behavior — fires exactly once per resetToken change (a "Reset
+  // map" button), recentering on the default view. Independent of focus
+  // and of trips data for the same reason as above.
+  useEffect(() => {
+    if (!resetToken || !mapRef.current) return;
+    mapRef.current.panTo(DEFAULT_CENTER);
+    mapRef.current.setZoom(DEFAULT_ZOOM);
+  }, [resetToken]);
 
   if (!apiKey) {
     return (
