@@ -83,16 +83,21 @@ only placeholders.
     any of the 12 files). Run migrations before deploying code that
     depends on new columns/tables, and snapshot the database first —
     Drizzle has no built-in rollback command.
-  - **Migration 0011 — Contract Management Schema Foundation ("A1")**:
-    adds 6 new, currently-empty tables (`contracts`, `contract_sites`,
+  - **Migrations 0011-0014 — Contract Management Schema Foundation
+    ("A1" + "A1.5")**: 6 tables (`contracts`, `contract_site_scope`,
     `contract_periods`, `distance_bands`, `contract_pricing_rules`,
-    `invoice_orders`) and 4 new nullable columns (`orders.contract_id`;
-    `customer_locations.city_code`, `.zone_code`, `.distance_band_code`)
-    — groundwork for a bulk-water-tanker contract/pricing model under
-    active design. **Contract Management is not complete and not usable
-    yet**: no API route, UI, pricing-matching engine, order/contract
-    attachment logic, or monthly invoice generation exists. A later,
-    separate, not-yet-approved step ("A2") will make `invoices.order_id`
+    `invoice_line_items` — the last two names reflect an A1.5 refinement
+    pass; `contract_sites`/`invoice_orders` no longer exist) and nullable
+    columns on `orders` (`contract_id`, `invoice_id`) and
+    `customer_locations` (`city_code`, `zone_code`, `distance_band_code`)
+    — groundwork for a bulk-water-tanker contract/pricing model.
+    **Task B added a real Contract API** (`/api/contracts` and its
+    sub-routes) — creation, listing, status transitions, and site-scope
+    assignment, all tenant-isolated and tested. **Contract Management is
+    still not complete and not customer-usable**: no pricing-matching
+    engine, no order/contract attachment (creating an order still never
+    touches a contract), no UI, and no monthly invoice generation exist
+    yet. A later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
     nullable to support consolidated monthly invoices — **this migration
     deliberately does not touch that column, or `invoices` at all.**
     Confirmed via direct inspection: `invoices.order_id` remains `NOT
