@@ -219,15 +219,55 @@ any of the demo credentials below (all seeded with `password123`):
 |---|---|---|
 | Admin | admin@demo-water.co | Demo Water Co. |
 | Dispatcher | dispatch@demo-water.co | Demo Water Co. |
-| Driver | khalid@demo-water.co (or fahad@demo-water.co) | Demo Water Co. |
+| Driver | khalid@demo-water.co (5 total: khalid, fahad, nasser, turki, bandar) | Demo Water Co. |
 | B2B Portal | portal@jarir-demo.co (or portal@alrajhi-demo.co) | Demo Water Co. |
 | Admin (2nd company) | admin@acme-fuel-demo.co | Acme Fuel Delivery Co. |
+| Dispatcher (2nd company) | dispatch@acme-fuel-demo.co | Acme Fuel Delivery Co. |
+| Driver (2nd company) | saeed@acme-fuel-demo.co (3 total: saeed, majed, faris) | Acme Fuel Delivery Co. |
 | Platform Admin (Company Switcher) | platform-admin@fleetops-demo.co | Home: Demo Water Co. — granted: Acme Fuel Delivery Co. |
 
-The second company (Acme) is seeded on purpose — log in as its admin and
-confirm you see none of Demo Water Co.'s customers, vehicles, or orders.
+**All demo accounts share the password `password123` — this is intentionally
+public, documented, demo-only data, never a real credential.** The second
+company (Acme) is seeded on purpose — log in as its admin and confirm you
+see none of Demo Water Co.'s customers, vehicles, or orders. Both tenants
+come seeded with ~35 days of realistic delivery history (56 historical
+trips for Demo Water Co., 30 for Acme — see "Demo dataset" below) so the
+Executive Dashboard, driver/vehicle scorecards, and SLA compliance all
+show real, non-zero numbers immediately, not an empty state.
 Or click **Set up your account** on the login page to onboard a brand-new
 company yourself via `/signup`.
+
+### Demo dataset
+
+Built for a credible investor/customer demo, not just enough rows to
+avoid an empty screen. Both tenants are Saudi/GCC operations with real
+district/city names (Riyadh for Demo Water Co.; Jeddah and Dammam for
+Acme) and deliberately different economics, so the Company Switcher shows
+two visibly different businesses rather than the same data twice:
+
+- **Demo Water Co.** (retail bottled water, Riyadh): 5 vehicles, 5
+  drivers, 8 customers (a mix of B2C households and B2B accounts like
+  Jarir Bookstore and Al Rajhi Office Tower), 2 warehouses. 56 historical
+  deliveries over the past 35 days (~92% delivered, ~7% failed, ~88% SLA
+  compliance) plus a handful of live pending orders for the Dispatcher
+  console to work with right now.
+- **Acme Fuel Delivery Co.** (wholesale fuel, Jeddah/Dammam): 3 tanker
+  vehicles, 3 drivers, 3 B2B customers, 2 warehouses (Jeddah and a
+  regional Dammam depot — deliveries to the Dammam customer are routed
+  from there, not hauled ~860km from Jeddah, so the estimated
+  distance/cost-per-km stays realistic). 30 historical deliveries over the
+  same 35-day window, priced as bulk wholesale transactions rather than
+  retail bottles — noticeably higher revenue per delivery than Demo Water
+  Co., on purpose.
+- Every historical delivery is built from the same order → trip → stop →
+  epod/invoice shapes the real API produces (see `scripts/seedData.ts`),
+  so the Executive Dashboard, driver/vehicle scorecards, and SLA monitor
+  all compute genuine numbers from this data — nothing is hardcoded or
+  faked to make a KPI look non-zero.
+- `tests/integration/seed-data-quality.test.ts` guards this: it fails if
+  a future change reverts the seed to an all-pending, zero-revenue state,
+  or reintroduces an unrealistic cost-per-km from a cross-country haul
+  distance (the exact bug caught while building this dataset).
 
 ### Authentication
 
@@ -326,7 +366,7 @@ real login call. This exercises the actual route logic — auth checks,
 tenant scoping, business rules — without the overhead or flakiness of a
 live server.
 
-**What's covered** (215 tests across 32 files):
+**What's covered** (218 tests across 33 files):
 - `tests/unit/` — pure logic with no database: SLA status calculation (all
   five states), VAT/invoice math, Google Maps route-optimization fallback
   behavior, the report-dataset registry's column whitelist validation
@@ -453,6 +493,12 @@ live server.
     (login, Company Switcher, rate limiting, a genuinely mocked health
     check failure) actually emit these events with real data, not just
     that the logger functions work when called directly.
+  - **Seed data quality** — both tenants' Executive Dashboards show real,
+    non-trivial activity (not all-zero), realistic-but-imperfect SLA
+    compliance and failure rates, more than one distinct driver
+    score/vehicle cost (not flat filler data), and a sanity ceiling on
+    cost-per-km that would catch a regression into the unrealistic
+    cross-country-haul-distance bug found while building this dataset.
 
 **What's not covered yet** — a few lower-risk edges: update/delete on
 customers and vehicles (only create/list are exercised), and some of the

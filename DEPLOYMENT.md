@@ -83,9 +83,12 @@ only placeholders.
     Drizzle has no built-in rollback command.
 - **Seed process**: `npm run db:seed` is a demo/development seed —
   fictional companies, users, and a shared `password123` password baked
-  into the script. **Never run this against a database with real
-  customer data.** There's no separate "bootstrap the first real tenant"
-  script; use `/signup` for that instead.
+  into the script. Creates two tenants with ~35 days of realistic
+  historical delivery data each (56 and 30 trips respectively) so the
+  Executive Dashboard and scorecards show credible numbers immediately —
+  see README's "Demo dataset" section for the full scenario. **Never run
+  this against a database with real customer data.** There's no separate
+  "bootstrap the first real tenant" script; use `/signup` for that instead.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

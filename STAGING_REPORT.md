@@ -94,6 +94,19 @@ disposable pre-launch environment with `NODE_ENV=production` set) — not
 a workaround, the intended path. Seed completed successfully, creating
 both demo tenants.
 
+**Update (Clean Demo Dataset pass)**: `scripts/seedData.ts` was
+substantially rewritten after this report was first written — both
+tenants now come with ~35 days of realistic historical delivery data
+(56 and 30 completed/failed trips respectively) instead of only live
+pending orders, specifically so the Executive Dashboard shows credible
+non-zero KPIs out of the box. Full scenario detail is in README's "Demo
+dataset" section. The reseed commands in the "How to complete this for
+real" section below have been updated accordingly — if your Railway
+staging database already has the older, thinner seed applied, it needs
+a full wipe-and-reseed (not just re-running `db:seed`, which fails on
+duplicate-key constraints against already-seeded data) to pick up the
+richer dataset.
+
 ## 7. Build / start result
 
 - `npm run build`: **succeeded**, all 63 API routes and 8 pages
@@ -217,9 +230,29 @@ still-open dependency findings) are addressed.
 7. Decide deliberately whether to seed demo data (see Section 6 above
    for why the guard requires an explicit override) — appropriate for a
    staging environment used for demos, never for real customer data.
+
+   **If this environment already has the older, thinner seed applied**
+   (from before the Clean Demo Dataset pass), re-running `npm run
+   db:seed` alone will fail on duplicate-key constraints — it doesn't
+   wipe first. To pick up the richer dataset, wipe and reseed
+   deliberately (via Railway's CLI, `railway run`, so these execute with
+   the real staging `DATABASE_URL`):
+
+   ```bash
+   railway run bash -c "psql \$DATABASE_URL -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;'"
+   railway run npm run db:migrate
+   railway run bash -c "ALLOW_SEED_IN_PRODUCTION=true npm run db:seed"
+   ```
+
+   This is destructive to whatever's currently in that database — correct
+   for a demo/staging environment with only seeded data in it, never run
+   this against anything with real customer data.
 8. Point the platform's health check at `/api/health`.
 9. Re-run the exact smoke tests in Section 8 above against the real
    URL, and confirm HTTPS actually loads (`https://` in the browser,
    no certificate warning) — the one check this local exercise could
-   not perform.
+   not perform. Also confirm the Executive Dashboard for both tenants
+   shows non-zero KPIs (see README's "Demo dataset" section for what to
+   expect: roughly 2,600 SAR revenue for Demo Water Co., roughly 20,000
+   SAR for Acme).
 10. Record the resulting URL in Section 2 above.
