@@ -8,13 +8,15 @@ it says so. Where something is missing, it's listed as missing.
 
 **Last verified**: a fresh-scratch install, lint, migrate, seed, build,
 test, `next start` in production mode, and a live HTTP smoke test were
-all run against this exact codebase while writing this document. Four
+all run against this exact codebase while writing this document. Five
 follow-on passes added rate limiting to the auth endpoints (Section E's
 "Rate Limiting" subsection), a backup/restore strategy (see
 BACKUP_RESTORE.md and Section J rows 14-19), structured logging
 (Section E's "Logging & Observability" subsection and Section J rows
-20-21), and a Next.js 14→15.5.24 security migration (Section E's
-"Next.js 15 Migration" subsection and Section J rows 22-30), each
+20-21), a Next.js 14→15.5.24 security migration (Section E's
+"Next.js 15 Migration" subsection and Section J rows 22-30), and closing
+a test-coverage gap in the Google Maps integration ahead of configuring
+real API keys on Railway (see STAGING_REPORT.md Section 12a), each
 re-verifying the full command sequence plus their own dedicated live
 tests. Full results are in Section J.
 
@@ -52,8 +54,8 @@ Every row below was found by grepping the actual codebase for
 |---|---|---|---|---|---|
 | DATABASE_URL | Yes | Yes | Postgres connection string for the app's main database. lib/db/client.ts throws immediately on startup if unset. | postgresql://user:password@host:5432/dbname | Used |
 | DATABASE_URL_TEST | Yes, only for `npm test` | No | A separate Postgres database the test suite drops and recreates on every run — must never equal DATABASE_URL. | postgresql://user:password@host:5432/dbname_test | Used |
-| GOOGLE_MAPS_API_KEY | No | Recommended | Server-side key for the Directions API (trip route optimization/ETA). Without it, trips fall back to selection-order stops — the app still works, just degraded. Never expose to the browser. | AIzaSy... | Used, optional, degrades gracefully |
-| NEXT_PUBLIC_GOOGLE_MAPS_API_KEY | No | Recommended | Browser-side key for the Maps JS SDK (Dispatcher live map). Compiled into client JS and visible to anyone — restrict via HTTP referrer in Google Cloud Console rather than treating as secret. | AIzaSy... | Used, optional, degrades to a placeholder |
+| GOOGLE_MAPS_API_KEY | No | Recommended | Server-side key for the Directions API (trip route optimization/ETA). Without it, trips fall back to selection-order stops — the app still works, just degraded. Never expose to the browser. **Independent of the variable below — either can be set without the other.** | AIzaSy... | Used, optional, degrades gracefully |
+| NEXT_PUBLIC_GOOGLE_MAPS_API_KEY | No | Recommended | Browser-side key for the Maps JS SDK (Dispatcher live map). Compiled into client JS and visible to anyone — restrict via HTTP referrer in Google Cloud Console rather than treating as secret. **Independent of the variable above.** See `STAGING_REPORT.md` Section 12a for exact Railway configuration and verification steps. | AIzaSy... | Used, optional, degrades to a placeholder |
 | NODE_ENV | Set automatically by Next.js | Same — don't set manually | Gates DB pool caching in lib/db/client.ts, and (as of this pass) whether session/switch cookies are marked `secure`. | production | Used |
 | PORT | No | Optional | Standard Next.js behavior — next start binds here if set, default 3000. Not read directly by app code. | 3000 | Used (framework-level) |
 | ALLOW_SEED_IN_PRODUCTION | No | No (never set this in real production) | Explicit escape hatch for `scripts/seed.ts`'s production guard — see BACKUP_RESTORE.md's "Never seed production" section. Only ever needed for a disposable pre-launch environment that happens to have NODE_ENV=production set. | true | Used, added in this pass |
@@ -572,6 +574,25 @@ corrected field. Rows 22-30 above document the complete before/during/
 after verification sequence, including two build failures encountered
 and resolved along the way (not hidden). React, ReactDOM, TypeScript,
 ESLint, Drizzle, Tailwind, and Vitest were all confirmed unchanged.
+
+**Added in the follow-on Google Maps configuration pass**: no application
+code changed — `lib/googleMaps.ts` and `components/LiveMap.tsx` were
+already correctly built and already degrade gracefully without a key
+(confirmed by re-reading both files line by line, not assumed). What was
+missing was test coverage for the actual *successful* API-response path:
+every existing test hit either the no-key or single-stop fallback, so a
+real bug in parsing `waypoint_order` or summing leg durations could have
+shipped undetected. 3 new tests in `tests/unit/googleMaps.test.ts` close
+this — a mocked realistic success response, a mocked non-OK API status,
+and a mocked network failure, all verified passing. `STAGING_REPORT.md`
+gained a full "Configuring real Google Maps on Railway" section (12a)
+with exact steps and a verification method that needed no new code, since
+`estimatedDurationMinutes` being non-null on a real trip is already a
+reliable, existing signal that a real API call succeeded. Full suite
+(221 tests as of this pass) reverified passing. No API key was available
+in this environment to test against the real Google API end-to-end —
+that verification is documented precisely for you to perform once real
+keys are in Railway's Variables tab.
 
 The table above reflects the final state after all of these changes,
 re-verified end to end.

@@ -188,13 +188,71 @@ replacement for scheduled, provider-managed backups.
    works correctly without one (confirmed — route optimization and the
    live map both degrade gracefully), but route optimization and the
    live vehicle map won't show their full functionality in a real
-   staging demo without one.
+   staging demo without one. **See the dedicated section below for exact
+   Railway configuration and verification steps** — this environment has
+   no Google Cloud account access either, so obtaining and entering the
+   actual key values is a step only you can perform.
 3. Every item already listed as a P0/P1 blocker in `DEPLOYMENT.md`
    still applies once real hosting exists (confirm the platform's own
    backup feature is enabled, the dependency vulnerabilities noted
    there, no structured logging outside auth/security routes, etc.) —
    this exercise didn't change any of those, and doesn't re-litigate
    them here.
+
+## 12a. Configuring real Google Maps on Railway
+
+Two **independent** environment variables, each optional on its own —
+you can set either without the other, and each degrades gracefully if
+missing (confirmed by the existing test suite and by direct code
+inspection, not assumed):
+
+| Variable | Purpose | What breaks without it | Where it's read |
+|---|---|---|---|
+| `GOOGLE_MAPS_API_KEY` | Server-side — calls the Directions API to optimize multi-stop trip order and compute an ETA (BR-06) | Trips still create fine; stops just keep their original (unoptimized) order and no ETA is shown | `lib/googleMaps.ts`, never sent to the browser |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Browser-side — loads the Maps JavaScript SDK for the Dispatcher console's live vehicle map (BR-12) | The map area shows a plain text placeholder instead of an interactive map; nothing else is affected | `components/LiveMap.tsx` — **this one is compiled into client-side JS and visible to anyone who views page source, by Next.js's own `NEXT_PUBLIC_` design.** This is expected, not a leak — restrict it via HTTP referrer in Google Cloud Console rather than treating it as secret. `GOOGLE_MAPS_API_KEY` (no `NEXT_PUBLIC_` prefix) must never be used for this purpose. |
+
+**Exact Railway steps:**
+
+1. In Google Cloud Console, create (or reuse) a project with the
+   **Directions API** and **Maps JavaScript API** enabled, and generate
+   an API key for each purpose (or one key enabled for both, if you
+   prefer — Google allows this; just apply an HTTP referrer restriction
+   to whichever key you use client-side).
+2. In your Railway project, open the web app service → **Variables** tab.
+3. Add `GOOGLE_MAPS_API_KEY` with the server-side key's real value.
+4. Add `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` with the browser-side key's
+   real value.
+5. **Never paste either value into a commit, a Slack message, this chat,
+   or a screenshot.** Railway's Variables tab is the only place these
+   values should exist outside Google Cloud Console itself.
+6. Redeploy (Railway redeploys automatically on a variable change for
+   most setups; trigger one manually if it doesn't).
+
+**Verifying it actually worked (no code change needed for this — the
+signal already exists in the data)**:
+
+- **Route optimization**: create a trip with 2+ stops via the Dispatcher
+  console (or `POST /api/trips` directly), then check the created trip's
+  `estimatedDurationMinutes` field. `null` means it's still falling back;
+  a real number means a genuine Directions API call succeeded. This is
+  already documented in README's "Trying authentication, route
+  optimization, and live tracking" section — the same check applies here,
+  just against the real Railway URL instead of localhost.
+- **Live map**: open the Dispatcher console after dispatching a trip —
+  an interactive map with a moving vehicle marker means the browser key
+  works; the placeholder text means it's still missing or misconfigured
+  (e.g., an HTTP referrer restriction that doesn't include your actual
+  Railway domain).
+- **No key leakage**: confirm via your browser's dev tools Network tab
+  that `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` appears only in the expected
+  `maps.googleapis.com/maps/api/js?key=...` script request (expected,
+  by design) and that `GOOGLE_MAPS_API_KEY` never appears in any
+  browser-visible request at all — it's server-side only. Check
+  Railway's log viewer for the same deploy and confirm neither key
+  appears in any log line (confirmed by direct code inspection that
+  nothing in `lib/googleMaps.ts` or `components/LiveMap.tsx` logs
+  anything at all, so there's no code path that could leak either key
+  into logs).
 
 ## 13. Recommendation
 

@@ -5,6 +5,7 @@ import TopNav from "@/components/TopNav";
 import StatusBadge from "@/components/StatusBadge";
 import LiveMap from "@/components/LiveMap";
 import { useRequireSession } from "@/lib/useSession";
+import { resolveTripMapPosition } from "@/lib/mapPosition";
 
 export default function DispatchPage() {
   const { session, loading: sessionLoading } = useRequireSession(["ADMIN", "DISPATCHER"]);
@@ -13,6 +14,7 @@ export default function DispatchPage() {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [trips, setTrips] = useState<any[]>([]);
+  const [focusTripId, setFocusTripId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [driverId, setDriverId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
@@ -199,8 +201,19 @@ export default function DispatchPage() {
       )}
 
       <div className="px-6 pt-6">
+        <h3 className="font-medium mb-3">Live Dispatch Map</h3>
         <LiveMap
-          trips={trips.filter((t) => t.status === "DISPATCHED" || t.status === "IN_PROGRESS")}
+          trips={trips
+            .filter((t) => t.status === "DISPATCHED" || t.status === "IN_PROGRESS")
+            .map((t) => {
+              const firstStop = [...t.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
+              return {
+                ...t,
+                fallbackLat: firstStop?.order?.lat ?? null,
+                fallbackLng: firstStop?.order?.lng ?? null,
+              };
+            })}
+          focusTripId={focusTripId}
         />
       </div>
 
@@ -333,6 +346,20 @@ export default function DispatchPage() {
                     </li>
                   ))}
                 </ul>
+                {(t.status === "DISPATCHED" || t.status === "IN_PROGRESS") && (() => {
+                  const firstStop = [...t.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
+                  const position = resolveTripMapPosition(t.currentLat, t.currentLng, firstStop?.order?.lat, firstStop?.order?.lng);
+                  return position ? (
+                    <button
+                      onClick={() => setFocusTripId(t.id)}
+                      className="w-full border border-slate-200 rounded-lg py-1.5 text-xs font-medium text-aquaDark mb-2"
+                    >
+                      View on map
+                    </button>
+                  ) : (
+                    <p className="text-warn text-xs mb-2">No coordinates available</p>
+                  );
+                })()}
                 {t.status === "PLANNED" && !t.loadingConfirmed && (
                   <button
                     onClick={() => confirmLoading(t.id)}

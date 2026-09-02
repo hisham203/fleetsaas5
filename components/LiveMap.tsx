@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { resolveTripMapPosition } from "@/lib/mapPosition";
 
 type TrackedTrip = {
   id: string;
   tripNumber: string;
   currentLat: number | null;
   currentLng: number | null;
+  // First stop's location — used as a marker position only when no GPS
+  // ping has landed yet (e.g. a trip dispatched seconds ago). Without
+  // this fallback, a just-dispatched trip has null currentLat/currentLng
+  // and its marker silently never appears, even though it's a real
+  // active trip. This never changes WHICH trips are shown — that's still
+  // decided entirely by the caller (app/dispatch/page.tsx) — it only
+  // affects whether a shown trip's marker can be placed somewhere.
+  fallbackLat: number | null;
+  fallbackLng: number | null;
   vehicle: { plateNumber: string };
   driver: { user: { name: string } };
 };
@@ -16,7 +26,12 @@ type TrackedTrip = {
 // env var isn't set, this renders a plain placeholder instead of a broken
 // map — route creation/dispatch/delivery all work fine without it, this is
 // purely a visualization layer on top.
-export default function LiveMap({ trips }: { trips: TrackedTrip[] }) {
+//
+// `focusTripId`: when the caller sets this (e.g. a "View on map" button
+// elsewhere on the page), the map pans/zooms to that trip's marker and
+// briefly bounces it — a purely visual aid connecting a list item to its
+// position on the map, no data changes as a result.
+export default function LiveMap({ trips, focusTripId }: { trips: TrackedTrip[]; focusTripId?: string | null }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<Record<string, google.maps.Marker>>({});
@@ -64,8 +79,11 @@ export default function LiveMap({ trips }: { trips: TrackedTrip[] }) {
     });
 
     trips.forEach((trip) => {
-      if (trip.currentLat == null || trip.currentLng == null) return;
-      const position = { lat: trip.currentLat, lng: trip.currentLng };
+      // Prefer a live GPS ping; fall back to the first stop's location so a
+      // trip that was just dispatched (no ping yet) still shows up
+      // somewhere sensible rather than not at all.
+      const position = resolveTripMapPosition(trip.currentLat, trip.currentLng, trip.fallbackLat, trip.fallbackLng);
+      if (!position) return;
       const label = `${trip.vehicle.plateNumber} — ${trip.driver.user.name}`;
 
       if (markersRef.current[trip.id]) {
@@ -80,6 +98,23 @@ export default function LiveMap({ trips }: { trips: TrackedTrip[] }) {
       }
     });
   }, [ready, trips]);
+
+  // Focus behavior — reacts to the caller setting focusTripId. Purely a
+  // camera move + a brief bounce on the existing marker; it never adds,
+  // removes, or moves data, just where the map is currently looking.
+  useEffect(() => {
+    if (!focusTripId || !mapRef.current) return;
+    const marker = markersRef.current[focusTripId];
+    if (!marker) return;
+    const position = marker.getPosition();
+    if (!position) return;
+
+    mapRef.current.panTo(position);
+    mapRef.current.setZoom(15);
+    marker.setAnimation(google.maps.Animation.BOUNCE);
+    const stop = setTimeout(() => marker.setAnimation(null), 1400);
+    return () => clearTimeout(stop);
+  }, [focusTripId, trips]);
 
   if (!apiKey) {
     return (
