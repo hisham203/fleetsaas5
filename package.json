@@ -15,7 +15,8 @@
     "db:restore": "tsx scripts/restore.ts",
     "setup": "npm run db:migrate && npm run db:seed",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "security:api": "tsx scripts/checkSensitiveExposure.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

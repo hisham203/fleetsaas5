@@ -15,6 +15,9 @@ export async function GET(req: NextRequest) {
 
   const rows = await db.query.invoices.findMany({
     where: eq(invoices.tenantId, tenantId),
+    // Verified safe in the Task S1 audit — only r.customer?.name is ever
+    // read below, never the raw object; it never reaches the response
+    // (see the .map() a few lines down). SECURITY_EXPOSURE_CHECK_ALLOW
     with: { customer: true },
     orderBy: desc(invoices.createdAt),
   });

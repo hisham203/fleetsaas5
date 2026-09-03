@@ -155,6 +155,20 @@ only placeholders.
     were all individually checked and confirmed already safe (each
     flattens to named fields or has its own existing safe-user helper) —
     not touched. No schema, business-logic, or UI changes.
+    **S2** added a permanent CI guard (`npm run security:api`, running
+    `scripts/checkSensitiveExposure.ts`) so a future route can't
+    reintroduce this same class of bug unnoticed — it scans `app/api/**`
+    for `user: true` / `customer: true` / `createdBy: true` /
+    `updatedBy: true` / `...user` / `...customer`, plus a narrower,
+    paren-depth-aware check for `passwordHash` reaching a
+    `NextResponse.json(...)` call specifically (deliberately not a bare
+    substring check — `passwordHash` has several legitimate internal
+    uses, like login verifying a password or signup hashing one before
+    insert, that never reach a response). Runs in GitHub Actions right
+    after lint, before the database/build/test steps. One pre-existing,
+    already-audited-safe line (`/api/erp/sync/status`) needed an explicit,
+    documented `SECURITY_EXPOSURE_CHECK_ALLOW` comment — the only
+    exception, not a broad allowlist.
     A later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
     nullable to support consolidated monthly invoices — **this migration
     deliberately does not touch that column, or `invoices` at all.**

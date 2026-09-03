@@ -53,6 +53,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Sensitive field exposure check
+        # S2: fails CI if API-facing code reintroduces the passwordHash /
+        # broad-eager-loading exposure pattern fixed in Task S1. Cheap and
+        # fast (no database needed), so it runs right after lint, before
+        # the database/build/test steps below.
+        run: npm run security:api
+
       - name: Create test database
         # The postgres service image only creates the POSTGRES_DB named
         # above (fleet_ops); the separate test database needs creating

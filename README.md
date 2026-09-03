@@ -373,7 +373,7 @@ real login call. This exercises the actual route logic — auth checks,
 tenant scoping, business rules — without the overhead or flakiness of a
 live server.
 
-**What's covered** (385 tests across 44 files):
+**What's covered** (396 tests across 45 files):
 - `tests/unit/` — pure logic with no database: SLA status calculation (all
   five states), VAT/invoice math, Google Maps route-optimization fallback
   behavior, the report-dataset registry's column whitelist validation
