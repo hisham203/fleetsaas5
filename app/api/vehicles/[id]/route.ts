@@ -8,14 +8,23 @@ import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
 const updateSchema = z.object({
-  homeWarehouseId: z.string().nullable(),
+  homeWarehouseId: z.string().nullable().optional(),
+  // Task H audit finding: the schema field has existed since Task D.5,
+  // but there was no way to edit it after a vehicle's creation — only
+  // homeWarehouseId was ever editable here. Both optional and
+  // independent, matching how they already work at creation time
+  // (POST /api/vehicles): a legacy bottle van never needs capacityLiters
+  // touched, and a tanker never needs capacityUnits touched.
+  capacityLiters: z.number().int().positive().nullable().optional(),
+  capacityUnits: z.number().int().positive().nullable().optional(),
 });
 
-// BR-09: sets or clears a vehicle's "home depot" — the warehouse the
-// Dispatcher's trip planner defaults to when this vehicle is selected
-// (still overridable per trip). Only this one field for now; a fuller
-// vehicle-edit endpoint is a reasonable future addition if more fields
-// need to become editable.
+// BR-09/Task H: sets or clears a vehicle's "home depot" (the warehouse
+// the Dispatcher's trip planner defaults to when this vehicle is
+// selected, still overridable per trip), and/or its capacity fields.
+// Each field is only touched when actually present in the request body —
+// a capacity-only edit never accidentally clears homeWarehouseId, and
+// vice versa.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
@@ -40,7 +49,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!warehouse) return NextResponse.json({ error: "Home warehouse not found" }, { status: 404 });
   }
 
-  await db.update(vehicles).set({ homeWarehouseId: parsed.data.homeWarehouseId }).where(eq(vehicles.id, id));
+  const updates: Record<string, unknown> = {};
+  if ("homeWarehouseId" in body) updates.homeWarehouseId = parsed.data.homeWarehouseId;
+  if ("capacityLiters" in body) updates.capacityLiters = parsed.data.capacityLiters;
+  if ("capacityUnits" in body) updates.capacityUnits = parsed.data.capacityUnits;
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(vehicles).set(updates).where(eq(vehicles.id, id));
+  }
   const updated = await db.query.vehicles.findFirst({ where: eq(vehicles.id, id) });
   return NextResponse.json(updated);
 }

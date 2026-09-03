@@ -167,6 +167,7 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Invoice #</th>
+              <th className="pb-2">Type</th>
               <th className="pb-2">Customer</th>
               <th className="pb-2">Subtotal</th>
               <th className="pb-2">Discount</th>
@@ -181,10 +182,20 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
             {invoices.map((inv) => {
               const creditedSoFar = (inv.creditNotes ?? []).reduce((s: number, c: any) => s + c.amount, 0);
               const isCash = inv.order?.paymentMethod === "CASH";
+              const isMonthly = inv.invoiceType === "MONTHLY_CONSOLIDATED";
               return (
                 <Fragment key={inv.id}>
                   <tr className="border-b border-slate-50">
                     <td className="py-2 font-mono text-xs">{inv.invoiceNumber}</td>
+                    <td className="py-2 text-xs">
+                      {isMonthly ? (
+                        <span title={inv.contractPeriod ? `Period: ${new Date(inv.contractPeriod.periodStart).toLocaleDateString()} – ${new Date(inv.contractPeriod.periodEnd).toLocaleDateString()}` : undefined}>
+                          Monthly{inv.lineItemsCount != null ? ` (${inv.lineItemsCount} orders)` : ""}
+                        </span>
+                      ) : (
+                        <span className="text-steel">Single order</span>
+                      )}
+                    </td>
                     <td className="py-2">{inv.customer.name}</td>
                     <td className="py-2">SAR {inv.subtotal.toFixed(2)}</td>
                     <td className="py-2">{inv.discountAmount > 0 ? `SAR ${inv.discountAmount.toFixed(2)}` : "—"}</td>
@@ -195,7 +206,9 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
                     </td>
                     <td className="py-2"><StatusBadge status={inv.status} /></td>
                     <td className="py-2">
-                      {isCash ? (
+                      {isMonthly ? (
+                        <span className="text-steel text-xs" title="Cash settlement applies to single-order invoices only">—</span>
+                      ) : isCash ? (
                         inv.cashSettled ? (
                           <span className="text-ok text-xs">Settled</span>
                         ) : (
@@ -215,7 +228,7 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
                   </tr>
                   {expandedId === inv.id && (
                     <tr>
-                      <td colSpan={9} className="bg-paper p-3">
+                      <td colSpan={10} className="bg-paper p-3">
                         <div className="flex gap-2 items-end">
                           <div>
                             <label className="text-xs text-steel">Amount (SAR)</label>
@@ -248,7 +261,7 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
               );
             })}
             {invoices.length === 0 && (
-              <tr><td colSpan={9} className="py-4 text-center text-steel">No invoices yet — complete a delivery to generate one.</td></tr>
+              <tr><td colSpan={10} className="py-4 text-center text-steel">No invoices yet — complete a delivery to generate one.</td></tr>
             )}
           </tbody>
         </table>
@@ -364,6 +377,44 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
     onChange();
   }
 
+  // Task H: capacityLiters/capacityUnits were only ever settable at
+  // creation — this closes that gap using the same click-to-edit pattern
+  // already used elsewhere in this admin UI (e.g. CustomersTab's
+  // contract rate), rather than introducing a new interaction style.
+  const [editingCapacityId, setEditingCapacityId] = useState<string | null>(null);
+  const [editCapacityLiters, setEditCapacityLiters] = useState("");
+  const [editCapacityUnits, setEditCapacityUnits] = useState("");
+  const [capacityUpdating, setCapacityUpdating] = useState(false);
+  const [capacityError, setCapacityError] = useState("");
+
+  function startEditCapacity(v: any) {
+    setEditingCapacityId(v.id);
+    setEditCapacityLiters(v.capacityLiters != null ? String(v.capacityLiters) : "");
+    setEditCapacityUnits(v.capacityUnits != null ? String(v.capacityUnits) : "");
+    setCapacityError("");
+  }
+
+  async function saveCapacity(vehicleId: string) {
+    setCapacityUpdating(true);
+    setCapacityError("");
+    const res = await fetch(`/api/vehicles/${vehicleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        capacityLiters: editCapacityLiters !== "" ? Number(editCapacityLiters) : null,
+        capacityUnits: editCapacityUnits !== "" ? Number(editCapacityUnits) : null,
+      }),
+    });
+    const data = await res.json();
+    setCapacityUpdating(false);
+    if (!res.ok) {
+      setCapacityError(typeof data.error === "string" ? data.error : "Failed to update capacity");
+      return;
+    }
+    setEditingCapacityId(null);
+    onChange();
+  }
+
   return (
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
@@ -383,7 +434,41 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
               <tr key={v.id} className="border-b border-slate-50">
                 <td className="py-2 font-mono text-xs">{v.plateNumber}</td>
                 <td className="py-2">{v.vehicleType}</td>
-                <td className="py-2">{v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : v.capacityUnits ? `${v.capacityUnits} units` : "—"}</td>
+                <td className="py-2">
+                  {editingCapacityId === v.id ? (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          className="w-20 border rounded px-1 py-0.5 text-xs"
+                          placeholder="Liters"
+                          value={editCapacityLiters}
+                          onChange={(e) => setEditCapacityLiters(e.target.value)}
+                        />
+                        <span className="text-steel text-xs">L</span>
+                        <input
+                          type="number"
+                          className="w-16 border rounded px-1 py-0.5 text-xs"
+                          placeholder="Units"
+                          value={editCapacityUnits}
+                          onChange={(e) => setEditCapacityUnits(e.target.value)}
+                        />
+                        <span className="text-steel text-xs">units</span>
+                      </div>
+                      {capacityError && <p className="text-danger text-xs">{capacityError}</p>}
+                      <div className="flex gap-2">
+                        <button disabled={capacityUpdating} onClick={() => saveCapacity(v.id)} className="text-aquaDark text-xs font-medium disabled:opacity-40">
+                          Save
+                        </button>
+                        <button onClick={() => setEditingCapacityId(null)} className="text-steel text-xs">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => startEditCapacity(v)} className="text-left hover:text-aquaDark">
+                      {v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : v.capacityUnits ? `${v.capacityUnits} units` : "Set capacity…"}
+                    </button>
+                  )}
+                </td>
                 <td className="py-2"><StatusBadge status={v.status} /></td>
                 <td className="py-2">
                   <select

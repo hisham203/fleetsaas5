@@ -401,6 +401,52 @@ only placeholders.
   be set at creation time, not edited afterward — a real, separate gap.
   No schema, migration, pricing engine, invoice, monthly billing, or ERP
   changes.
+- **Task H ("Configuration & Pilot Readiness Review")** — a full
+  configuration audit across every operational area (tenant/user setup,
+  drivers, vehicles, loading points, customers/sites, contracts, distance
+  bands, pricing rules, orders, dispatch, billing, reports, inventory),
+  producing this gap matrix:
+
+  | Area | Gap | Severity | Fixed now? | Needs schema/seed? |
+  |---|---|---|---|---|
+  | Vehicle capacity | No way to edit capacityLiters/capacityUnits after creation (creation-only) | High | **Yes** | No |
+  | Billing tab | invoiceType/contractPeriod already in the API response but never displayed | Medium | **Yes** | No |
+  | Contracts | No UI at all — create/manage only via API | High | No — deferred | No (UI-only, but large) |
+  | Pricing rules | No UI at all — create/manage only via API | High | No — deferred | No (UI-only, but large) |
+  | Distance bands | No UI at all — create/manage only via API | Medium | No — deferred | No (UI-only, but large) |
+  | Customer sites/locations | No UI to create/view sites or their cityCode/zoneCode/distanceBandCode | High | No — deferred | No (UI-only, but large) |
+  | Loading points (warehouses) | Can be created but not edited (name/address/coords) after creation | Low | No — deferred | No, but small |
+  | Driver/vehicle/customer creation | Fully functional | — | Already fine | — |
+  | Inventory tab empty state | Already shows a clear "No stock items yet." for a tracked-nothing loading point | — | Already fine | — |
+  | Executive Dashboard | Already free of bottle/unit-specific wording | — | Already fine | — |
+  | Dispatch/driver flow (G.2/G.3) | Bottle-shortage blocking, stuck button, misleading wording, driver empty-state | Critical | Already fixed (prior tasks) | No |
+
+  **Fixed this pass**: (1) `PATCH /api/vehicles/[id]` now accepts
+  `capacityLiters`/`capacityUnits` (the DB field already existed; this
+  is a Zod-schema and route addition only, each field independently
+  settable so editing one never touches the other), with a small
+  click-to-edit control in the admin vehicles table matching the same
+  interaction pattern already used elsewhere in this UI (e.g.
+  CustomersTab's contract rate). (2) The admin Billing tab now shows an
+  explicit "Type" column (Single order vs. Monthly, with the order count
+  and period on hover for monthly invoices) and disables the cash-settle
+  control with a tooltip explaining why for monthly invoices — using
+  fields `GET /api/invoices` has returned since Task E.1 but the UI never
+  surfaced.
+
+  **Deferred, not fixed**: full Contract Management UI (contracts,
+  pricing rules, distance bands, customer site/location management).
+  This is genuinely the single largest configuration gap found — every
+  one of these is currently API-only — but building real CRUD UI for all
+  four, with the cross-referencing they need (a contract needs a
+  customer, a pricing rule needs a contract or tenant scope, a customer
+  location needs city/zone/band codes), is a substantial feature build
+  in its own right, not a "small, safe addition." Recommended as its own
+  dedicated next task rather than attempted here. Loading-point editing
+  (name/address/coordinates after creation) is a smaller, lower-severity
+  gap deferred for the same reason — worth a few hours whenever the
+  Contract Management UI task happens, not urgent enough to justify on
+  its own.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive
