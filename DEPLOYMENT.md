@@ -268,13 +268,27 @@ only placeholders.
   see README's "Demo dataset" section for the full scenario — plus a
   third, "Riyadh Bulk Water Logistics" (Task F), seeded with contracts,
   pricing rules, and a modest set of orders/trips rather than a full
-  historical delivery run. **This seed
-  script was not modified by the Contract Management A1 migration** — the
-  6 new tables above are seeded with nothing, for either existing tenant.
-  A bulk-water-tanker-specific seed tenant is separate, later, unstarted
-  work. **Never run this against a database with real customer data.**
-  There's no separate "bootstrap the first real tenant" script; use
-  `/signup` for that instead.
+  historical delivery run. **Never run this against a database with real
+  customer data.** There's no separate "bootstrap the first real tenant"
+  script; use `/signup` for that instead.
+- **S3 hotfix — adding the Riyadh Bulk Water tenant to an already-seeded
+  database**: `npm run db:seed` (above) is NOT idempotent for Demo Water
+  Co./Acme — re-running it against a database that already has them fails
+  immediately on their duplicate emails, which is exactly what happened
+  attempting to add the newer Riyadh tenant to an already-seeded Railway
+  database. For that specific situation, run
+  **`npm run db:seed:riyadh-bulk-water`** instead (`ALLOW_SEED_IN_PRODUCTION=true`
+  required in production, same guard as `db:seed`) — it seeds ONLY the
+  Riyadh Bulk Water Logistics tenant (`scripts/seedRiyadhBulkWaterData.ts`,
+  find-or-create by stable identifiers: tenant name, user email, driver
+  userId, vehicle plate number, distance band code, customer name,
+  contract number), never touches Demo Water Co./Acme, and is genuinely
+  safe to run more than once — a second run reuses everything it finds
+  and creates nothing new, reported explicitly in its printed summary.
+  `scripts/seedData.ts`'s own `seedDemoData()` (used by `db:seed` and the
+  test suite) calls this same idempotent function internally, so nothing
+  about the full/test seed path changed — only this tenant's own
+  addability to an existing database was fixed.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive
