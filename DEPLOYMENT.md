@@ -93,11 +93,19 @@ only placeholders.
     — groundwork for a bulk-water-tanker contract/pricing model.
     **Task B added a real Contract API** (`/api/contracts` and its
     sub-routes) — creation, listing, status transitions, and site-scope
-    assignment, all tenant-isolated and tested. **Contract Management is
-    still not complete and not customer-usable**: no pricing-matching
-    engine, no order/contract attachment (creating an order still never
-    touches a contract), no UI, and no monthly invoice generation exist
-    yet. A later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
+    assignment, all tenant-isolated and tested. **Task C added a pure,
+    read-only Contract Pricing Engine** (`lib/contractPricing.ts`) plus
+    its management APIs (`/api/contract-pricing-rules` and
+    `/api/distance-bands`) — the engine can calculate a price from
+    contract/tenant-default rules with deterministic specificity/priority
+    matching and hard-fails on any ambiguity rather than guessing.
+    **Contract Management is still not complete and not customer-usable**:
+    the pricing engine is not called from anywhere — order creation, trip
+    completion, and invoice generation are all completely unaware it
+    exists. No order/contract attachment (creating an order still never
+    touches a contract), no `invoice_line_items` population, no UI, no
+    monthly invoice generation, and no ERP sync changes exist yet. A
+    later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
     nullable to support consolidated monthly invoices — **this migration
     deliberately does not touch that column, or `invoices` at all.**
     Confirmed via direct inspection: `invoices.order_id` remains `NOT
