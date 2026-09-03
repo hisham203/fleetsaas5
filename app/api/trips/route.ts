@@ -9,7 +9,7 @@ import { optimizeRoute } from "@/lib/googleMaps";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { z } from "zod";
 import { buildPricingPreviewForOrder } from "@/lib/contractEligibility";
-import { SAFE_USER_COLUMNS } from "@/lib/contractHelpers";
+import { SAFE_CUSTOMER_COLUMNS, SAFE_USER_COLUMNS } from "@/lib/contractHelpers";
 
 const createSchema = z.object({
   driverId: z.string(),
@@ -31,7 +31,10 @@ export async function GET(req: NextRequest) {
       driver: { with: { user: { columns: SAFE_USER_COLUMNS } } },
       vehicle: true,
       warehouse: true,
-      stops: { with: { order: { with: { customer: true } }, epod: true } },
+      // S1 audit: this embed was missed during Task D.5's driver.user fix
+      // in this same file — order.customer also returns every column,
+      // including passwordHash, until now.
+      stops: { with: { order: { with: { customer: { columns: SAFE_CUSTOMER_COLUMNS } } }, epod: true } },
     },
     orderBy: desc(trips.createdAt),
   });

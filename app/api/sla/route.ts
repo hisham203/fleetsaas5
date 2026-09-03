@@ -7,6 +7,7 @@ import { computeSlaStatus } from "@/lib/sla";
 import { checkAndCreateEscalations } from "@/lib/escalations";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, notInArray, and } from "drizzle-orm";
+import { SAFE_CUSTOMER_COLUMNS } from "@/lib/contractHelpers";
 
 // BR-20: SLA & Escalation Management — returns every order with its computed
 // due time and current SLA status, so the dispatcher can see what's at risk
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   const rows = await db.query.orders.findMany({
     where: and(eq(orders.tenantId, tenantId), notInArray(orders.status, ["CANCELLED"])),
-    with: { customer: true },
+    with: { customer: { columns: SAFE_CUSTOMER_COLUMNS } },
   });
 
   const withSla = rows.map((o) => ({

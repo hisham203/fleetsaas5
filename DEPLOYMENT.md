@@ -142,6 +142,19 @@ only placeholders.
     customer and, via a deep relation chain, a driver's user record,
     both now using the same shared safe-column constants. No schema,
     migration, or invoice-generation behavior changed.
+    **S1 audit** (a deliberate follow-up, since the pattern above had now
+    appeared four times incidentally): a systematic search across every
+    API route for `with: { user: true }` / `with: { customer: true }`
+    found and fixed 8 more confirmed exposures — `/api/drivers` (the
+    canonical driver-listing endpoint), `/api/tasks`, `/api/expenses`
+    (notably readable by DRIVER-role sessions too), `/api/exceptions`
+    (two separate embeds), `/api/trips` (a second leak in the same file
+    Task D.5 only partially fixed), `/api/escalations`, `/api/sla`, and
+    one unused-but-latent embed removed as cleanup. `lib/scorecards.ts`,
+    `lib/reportQuery.ts`, `lib/erp/sync.ts`, and the auth/`users` routes
+    were all individually checked and confirmed already safe (each
+    flattens to named fields or has its own existing safe-user helper) —
+    not touched. No schema, business-logic, or UI changes.
     A later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
     nullable to support consolidated monthly invoices — **this migration
     deliberately does not touch that column, or `invoices` at all.**

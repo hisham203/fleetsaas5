@@ -6,6 +6,7 @@ import { escalations } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { checkAndCreateEscalations } from "@/lib/escalations";
 import { eq, and, desc } from "drizzle-orm";
+import { SAFE_CUSTOMER_COLUMNS } from "@/lib/contractHelpers";
 
 // BR-20 Escalation Center. Every call here first runs the automatic
 // breach-check (see lib/escalations.ts) before listing, so simply opening
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   const rows = await db.query.escalations.findMany({
     where: and(...conditions),
-    with: { order: { with: { customer: true } } },
+    with: { order: { with: { customer: { columns: SAFE_CUSTOMER_COLUMNS } } } },
     orderBy: desc(escalations.createdAt),
   });
   return NextResponse.json(rows);

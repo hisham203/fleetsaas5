@@ -7,6 +7,7 @@ import { genId } from "@/lib/helpers";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
+import { SAFE_USER_COLUMNS } from "@/lib/contractHelpers";
 
 const createSchema = z.object({
   userId: z.string(),
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   const rows = await db.query.drivers.findMany({
     where: eq(drivers.tenantId, tenantId),
-    with: { user: true },
+    with: { user: { columns: SAFE_USER_COLUMNS } },
     orderBy: desc(drivers.createdAt),
   });
   return NextResponse.json(rows);
@@ -50,6 +51,6 @@ export async function POST(req: NextRequest) {
 
   const id = genId();
   await db.insert(drivers).values({ id, tenantId, ...parsed.data });
-  const created = await db.query.drivers.findFirst({ where: eq(drivers.id, id), with: { user: true } });
+  const created = await db.query.drivers.findFirst({ where: eq(drivers.id, id), with: { user: { columns: SAFE_USER_COLUMNS } } });
   return NextResponse.json(created, { status: 201 });
 }

@@ -59,7 +59,14 @@ export async function PATCH(
 
   const stop = await db.query.tripStops.findFirst({
     where: eq(tripStops.id, stopId),
-    with: { order: { with: { customer: true } } },
+    // S1 audit: this embed was fetched but never actually used anywhere in
+    // this function — only stop.order.customerId (a plain column, no
+    // embed needed) is referenced below. Removing it is pure cleanup: the
+    // customer object was never returned in any response here (every
+    // response in this file re-fetches its own plain, un-embedded rows),
+    // but leaving an unused, sensitive embed sitting around is a latent
+    // risk if a future change adds `stop` to a response without noticing.
+    with: { order: true },
   });
   if (!stop || stop.tripId !== id) {
     return NextResponse.json({ error: "Trip stop not found" }, { status: 404 });

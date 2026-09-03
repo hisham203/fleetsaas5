@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { exceptions } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and, desc } from "drizzle-orm";
+import { SAFE_CUSTOMER_COLUMNS, SAFE_USER_COLUMNS } from "@/lib/contractHelpers";
 
 // BR-11 / APP-02 Exception Center — every failed or partially-delivered
 // stop shows up here until a dispatcher applies a closing action.
@@ -23,8 +24,8 @@ export async function GET(req: NextRequest) {
   const rows = await db.query.exceptions.findMany({
     where: and(...conditions),
     with: {
-      order: { with: { customer: true } },
-      tripStop: { with: { trip: { with: { driver: { with: { user: true } }, vehicle: true } } } },
+      order: { with: { customer: { columns: SAFE_CUSTOMER_COLUMNS } } },
+      tripStop: { with: { trip: { with: { driver: { with: { user: { columns: SAFE_USER_COLUMNS } } }, vehicle: true } } } },
     },
     orderBy: desc(exceptions.createdAt),
   });
