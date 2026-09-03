@@ -315,7 +315,7 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
 
 function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
   const [plateNumber, setPlate] = useState("");
-  const [vehicleType, setType] = useState("Refill Van");
+  const [vehicleType, setType] = useState("Delivery Vehicle");
   const [capacityUnits, setCapacity] = useState(100);
   const [homeWarehouseId, setHomeWarehouseId] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -356,7 +356,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
               <th className="pb-2">Type</th>
               <th className="pb-2">Capacity</th>
               <th className="pb-2">Status</th>
-              <th className="pb-2">Home warehouse</th>
+              <th className="pb-2">Home warehouse / loading point</th>
             </tr>
           </thead>
           <tbody>
@@ -364,7 +364,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
               <tr key={v.id} className="border-b border-slate-50">
                 <td className="py-2 font-mono text-xs">{v.plateNumber}</td>
                 <td className="py-2">{v.vehicleType}</td>
-                <td className="py-2">{v.capacityUnits ? `${v.capacityUnits} bottles` : "—"}</td>
+                <td className="py-2">{v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : v.capacityUnits ? `${v.capacityUnits} units` : "—"}</td>
                 <td className="py-2"><StatusBadge status={v.status} /></td>
                 <td className="py-2">
                   <select
@@ -389,7 +389,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
         <div className="space-y-2">
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Plate number" value={plateNumber} onChange={(e) => setPlate(e.target.value)} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Vehicle type" value={vehicleType} onChange={(e) => setType(e.target.value)} />
-          <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Capacity (bottles)" value={capacityUnits} onChange={(e) => setCapacity(Number(e.target.value))} />
+          <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Capacity (units)" value={capacityUnits} onChange={(e) => setCapacity(Number(e.target.value))} />
           <select className="w-full border rounded-lg px-3 py-2 text-sm" value={homeWarehouseId} onChange={(e) => setHomeWarehouseId(e.target.value)}>
             <option value="">No default warehouse</option>
             {warehouses.map((w: any) => (
@@ -547,7 +547,7 @@ function CustomersTab({ tenant, customers, onChange }: any) {
               <th className="pb-2">Type</th>
               <th className="pb-2">Address</th>
               <th className="pb-2">Credit limit</th>
-              <th className="pb-2">Contract price/bottle</th>
+              <th className="pb-2">Contract rate</th>
             </tr>
           </thead>
           <tbody>
@@ -993,7 +993,7 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-medium">Warehouses &amp; stock</h3>
+          <h3 className="font-medium">Warehouses / Loading Points &amp; Stock</h3>
           <button onClick={() => setShowNewWarehouse((s) => !s)} className="text-xs text-aquaDark font-medium">
             {showNewWarehouse ? "Cancel" : "+ New warehouse"}
           </button>
@@ -1056,6 +1056,7 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
           <select className="w-full border rounded-lg px-3 py-2 text-sm" value={itemName} onChange={(e) => setItemName(e.target.value)}>
             <option>19L Bottle - Full</option>
             <option>19L Bottle - Empty</option>
+            <option>Bulk Water - Tanker Stock (Liters)</option>
           </select>
           <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Adjustment (+/-)" value={delta} onChange={(e) => setDelta(e.target.value === "" ? "" : Number(e.target.value))} />
           {error && <p className="text-danger text-xs">{error}</p>}

@@ -226,7 +226,7 @@ function StopCard({ stop, onArrive, onDeliver, onFail }: any) {
 
       {(stop.status === "DELIVERED" || stop.status === "PARTIALLY_DELIVERED") && stop.epod && (
         <p className="text-ok text-xs">
-          Delivered {stop.epod.deliveredQty} bottle(s){stop.epod.recipientName ? ` to ${stop.epod.recipientName}` : ""}
+          Delivered {stop.epod.deliveredQty} unit(s){stop.epod.recipientName ? ` to ${stop.epod.recipientName}` : ""}
         </p>
       )}
       {stop.status === "FAILED" && <p className="text-danger text-xs">Marked failed</p>}
@@ -250,12 +250,12 @@ function EpodModal({ stop, onClose, onSubmit }: any) {
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-steel">Bottles delivered</label>
+            <label className="text-xs text-steel">Quantity delivered</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm mt-1" value={deliveredQty} onChange={(e) => setQty(Number(e.target.value))} />
             {isPartial && <p className="text-warn text-xs mt-1">Less than ordered ({stop.order.qtyOrdered}) — will record as partial delivery.</p>}
           </div>
           <div>
-            <label className="text-xs text-steel">Empty bottles collected</label>
+            <label className="text-xs text-steel">Empties collected</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm mt-1" value={emptiesCollected} onChange={(e) => setEmpties(Number(e.target.value))} />
           </div>
           <div>

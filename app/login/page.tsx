@@ -83,6 +83,12 @@ export default function LoginPage() {
           <p className="pt-1 border-t border-slate-750 mt-2">
             Second tenant (proves isolation): admin@acme-fuel-demo.co / password123
           </p>
+          <p className="pt-1 border-t border-slate-750 mt-2 text-steel/70 uppercase tracking-wide">
+            Riyadh Bulk Water Logistics (bulk tanker delivery pilot)
+          </p>
+          <p>Admin: admin@riyadh-bulk-water.co / password123</p>
+          <p>Dispatcher: dispatch@riyadh-bulk-water.co / password123</p>
+          <p>Driver: mohammed@riyadh-bulk-water.co / password123</p>
         </div>
 
         <p className="text-steel text-xs mt-4 text-center">

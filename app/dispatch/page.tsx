@@ -269,7 +269,7 @@ export default function DispatchPage() {
                 ))}
               </select>
               <div className="flex gap-2">
-                <input type="number" min={1} className="w-1/2 border rounded-lg px-2 py-1.5 text-xs" placeholder="Bottles" value={newQty} onChange={(e) => setNewQty(Number(e.target.value))} />
+                <input type="number" min={1} className="w-1/2 border rounded-lg px-2 py-1.5 text-xs" placeholder="Quantity" value={newQty} onChange={(e) => setNewQty(Number(e.target.value))} />
                 <input type="number" min={0} className="w-1/2 border rounded-lg px-2 py-1.5 text-xs" placeholder="Empties to collect" value={newEmpties} onChange={(e) => setNewEmpties(Number(e.target.value))} />
               </div>
               <select className="w-full border rounded-lg px-2 py-1.5 text-xs" value={newPayment} onChange={(e) => setNewPayment(e.target.value)}>
@@ -312,7 +312,7 @@ export default function DispatchPage() {
         {/* Trip planner */}
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <h3 className="font-medium mb-3">Plan trip</h3>
-          <p className="text-steel text-xs mb-2">{selected.length} order(s) selected · {selectedLoad} bottles total</p>
+          <p className="text-steel text-xs mb-2">{selected.length} order(s) selected · {selectedLoad} units total</p>
           <div className="space-y-2">
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={driverId} onChange={(e) => setDriverId(e.target.value)}>
               <option value="">Select driver…</option>
@@ -331,7 +331,9 @@ export default function DispatchPage() {
             >
               <option value="">Select vehicle…</option>
               {availableVehicles.map((v) => (
-                <option key={v.id} value={v.id}>{v.plateNumber} ({v.capacityUnits} bottles)</option>
+                <option key={v.id} value={v.id}>
+                  {v.plateNumber} ({v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : v.capacityUnits ? `${v.capacityUnits} units` : "capacity unknown"})
+                </option>
               ))}
             </select>
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
@@ -378,7 +380,7 @@ export default function DispatchPage() {
                   <p className="text-sm">{t.driver.user.name} · {t.vehicle.plateNumber}</p>
                   <p className="text-steel text-xs mb-2">
                     {t.stops.length} stop(s)
-                    {t.status === "PLANNED" && (t.loadingConfirmed ? " · Loaded" : " · Awaiting warehouse loading")}
+                    {t.status === "PLANNED" && (t.loadingConfirmed ? " · Loaded" : " · Awaiting loading")}
                   </p>
                   <ul className="text-xs text-steel space-y-1.5 mb-2">
                     {t.stops.map((s: any) => (
@@ -431,7 +433,7 @@ export default function DispatchPage() {
                       disabled={loadingTripId === t.id}
                       className="w-full bg-warn text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
                     >
-                      {loadingTripId === t.id ? "Confirming…" : "Confirm warehouse loading"}
+                      {loadingTripId === t.id ? "Confirming…" : "Confirm loading"}
                     </button>
                   )}
                   {t.status === "PLANNED" && t.loadingConfirmed && (

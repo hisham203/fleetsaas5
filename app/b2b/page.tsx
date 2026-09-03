@@ -162,7 +162,7 @@ function BulkOrderTab({ tenant, customer, locations, onOrderPlaced }: any) {
             {selected[loc.id] && (
               <div className="flex gap-2 mt-2 ml-6">
                 <div className="flex-1">
-                  <label className="text-xs text-steel">Bottles</label>
+                  <label className="text-xs text-steel">Quantity</label>
                   <input
                     type="number"
                     min={1}
@@ -197,7 +197,7 @@ function BulkOrderTab({ tenant, customer, locations, onOrderPlaced }: any) {
 
         {selectedIds.length > 0 && (
           <p className="text-steel text-xs">
-            {selectedIds.length} location(s) · {totalBottles} bottles total · est. SAR {estimatedValue.toFixed(2)} incl. VAT
+            {selectedIds.length} location(s) · {totalBottles} units total · est. SAR {estimatedValue.toFixed(2)} incl. VAT
           </p>
         )}
 

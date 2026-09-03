@@ -289,6 +289,46 @@ only placeholders.
   test suite) calls this same idempotent function internally, so nothing
   about the full/test seed path changed — only this tenant's own
   addability to an existing database was fixed.
+- **Task G ("Pilot UI / Copy Cleanup")**: the login screen already showed
+  real Riyadh Bulk Water Logistics credentials (admin/dispatcher/driver,
+  verified against the actual seed script and confirmed as genuinely
+  working logins, not just displayed text) — no change was needed there.
+  A handful of high-visibility bottle-era labels were made neutral,
+  copy-only, no backend/schema change: "Contract price/bottle" →
+  "Contract rate" (admin billing tab header), "Bottles delivered" →
+  "Quantity delivered" and "Empty bottles collected" → "Empties collected"
+  (driver ePOD form), "Bottles" → "Quantity" and "{n} bottles total" →
+  "{n} units total" (B2B order creation), "Delivered N bottle(s)" →
+  "Delivered N unit(s)" (driver stop summary), and the admin Warehouses
+  tab header → "Warehouses / Loading Points & Stock". Deliberately NOT
+  changed: seeded inventory item names ("19L Bottle - Full/Empty") and
+  their dropdown options — these are real, functional data for tenants
+  that genuinely stock bottles (Demo Water Co./Acme), not incorrect
+  wording to clean up; and the generic word "warehouse" elsewhere in the
+  UI (dropdowns, buttons) — it's an industry-standard term that already
+  applies correctly to a tanker loading point too (the seeded Riyadh Bulk
+  Water warehouse row is itself named "Main Loading Point...", which
+  already displays correctly wherever a warehouse's own name is shown).
+  No schema, seed, pricing, invoice, or lifecycle changes.
+  **Follow-up pass**: extended the same copy cleanup to two screens the
+  original pass hadn't covered — the Admin vehicles table's "Home
+  warehouse" column header (→ "Home warehouse / loading point", matching
+  the same dual-naming convention already used on the Warehouses tab
+  header) and two Dispatch page labels ("Awaiting warehouse loading" →
+  "Awaiting loading", "Confirm warehouse loading" → "Confirm loading" —
+  both already redundant with the warehouse-selection dropdown shown
+  right next to them). Also added one new option to the inventory
+  "Adjust stock" dropdown — "Bulk Water - Tanker Stock (Liters)" —
+  alongside the two existing bottle options (kept exactly as they were,
+  consistent with the original pass's own reasoning: this doesn't remove
+  or rename anything genuinely accurate for Demo Water Co./Acme, it only
+  adds a usable choice for a tenant that has no relevant option at all
+  today, since Riyadh Bulk Water Logistics has no seeded inventory
+  items). Confirmed via direct testing that `v.capacityLiters ?
+  liters-display : v.capacityUnits ? units-display : "—"` (vehicles
+  table) already handles both business models correctly with zero
+  bottle-specific bias — no change needed there. Copy-only; no schema,
+  seed, pricing, invoice, or lifecycle changes in this follow-up either.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive
