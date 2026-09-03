@@ -9,22 +9,7 @@ import { optimizeRoute } from "@/lib/googleMaps";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { z } from "zod";
 import { buildPricingPreviewForOrder } from "@/lib/contractEligibility";
-
-// Security fix, found while implementing Task D.5: driver: { with: { user:
-// true } } returns every column on the user row, including passwordHash —
-// pre-existing since before Task D.5 touched this route at all, caught by
-// this task's own new test rather than left unfixed. Scoped to this
-// route's two embeds specifically (both GET and POST already return this
-// shape), not a broader refactor of every other route with the same
-// pattern elsewhere in this codebase.
-const SAFE_DRIVER_USER_COLUMNS = {
-  id: true,
-  tenantId: true,
-  name: true,
-  email: true,
-  role: true,
-  createdAt: true,
-} as const;
+import { SAFE_USER_COLUMNS } from "@/lib/contractHelpers";
 
 const createSchema = z.object({
   driverId: z.string(),
@@ -43,7 +28,7 @@ export async function GET(req: NextRequest) {
   const rows = await db.query.trips.findMany({
     where: eq(trips.tenantId, tenantId),
     with: {
-      driver: { with: { user: { columns: SAFE_DRIVER_USER_COLUMNS } } },
+      driver: { with: { user: { columns: SAFE_USER_COLUMNS } } },
       vehicle: true,
       warehouse: true,
       stops: { with: { order: { with: { customer: true } }, epod: true } },
@@ -142,7 +127,7 @@ export async function POST(req: NextRequest) {
 
   const full = await db.query.trips.findFirst({
     where: eq(trips.id, tripId),
-    with: { driver: { with: { user: { columns: SAFE_DRIVER_USER_COLUMNS } } }, vehicle: true, warehouse: true, stops: { with: { order: true } } },
+    with: { driver: { with: { user: { columns: SAFE_USER_COLUMNS } } }, vehicle: true, warehouse: true, stops: { with: { order: true } } },
   });
 
   // Task D.5: now that a real vehicle (and its real capacity) is known,

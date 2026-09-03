@@ -129,6 +129,19 @@ only placeholders.
     trip completion and invoice generation remain completely unaware any
     of this exists, no UI, no monthly invoice generation, and no ERP sync
     changes exist yet.
+    **S1 hotfix**: `GET /api/invoices` previously had no error handling at
+    all — an unexpected error anywhere in its query escaped as an
+    unhandled exception, producing a bare, empty-bodied 500 that the
+    Admin page's `Promise.all` couldn't recover from, freezing it on
+    "Loading…" forever. The route is now wrapped in try/catch and always
+    returns valid JSON, success or failure; the Admin page's six data
+    fetches now each degrade to an empty list independently instead of
+    one failure blocking the rest. This also fixed a third occurrence of
+    the same passwordHash-embedding pattern already found in the orders
+    and trips routes (Task D / D.5) — `/api/invoices` embedded both a
+    customer and, via a deep relation chain, a driver's user record,
+    both now using the same shared safe-column constants. No schema,
+    migration, or invoice-generation behavior changed.
     A later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
     nullable to support consolidated monthly invoices — **this migration
     deliberately does not touch that column, or `invoices` at all.**

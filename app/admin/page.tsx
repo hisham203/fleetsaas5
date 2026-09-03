@@ -19,6 +19,22 @@ export default function AdminPage() {
   const [tab, setTab] = useState<"overview" | "fleet" | "drivers" | "customers" | "billing" | "maintenance" | "inventory" | "reports" | "scorecards" | "erp" | "automation" | "fieldops" | "executive">("overview");
   const [loading, setLoading] = useState(true);
 
+  // S1 hotfix: a single failing/erroring endpoint (bad status, or a body
+  // that isn't valid JSON) used to reject the whole Promise.all below,
+  // which meant setLoading(false) never ran and the page stayed on
+  // "Loading…" forever — exactly the reported symptom. Each fetch below
+  // now degrades to an empty list on failure instead of throwing, so the
+  // rest of the page still loads normally even if one API is down.
+  const safeFetchJson = useCallback(async (url: string) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  }, []);
+
   const load = useCallback(async () => {
     if (!session) return;
     const tRes = await fetch("/api/tenant");
@@ -29,12 +45,12 @@ export default function AdminPage() {
     const t = await tRes.json();
     setTenant(t);
     const [c, v, d, inv, inventoryRows, wh] = await Promise.all([
-      fetch(`/api/customers?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/vehicles?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/drivers?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/invoices?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/inventory?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/warehouses?tenantId=${t.id}`).then((r) => r.json()),
+      safeFetchJson(`/api/customers?tenantId=${t.id}`),
+      safeFetchJson(`/api/vehicles?tenantId=${t.id}`),
+      safeFetchJson(`/api/drivers?tenantId=${t.id}`),
+      safeFetchJson(`/api/invoices?tenantId=${t.id}`),
+      safeFetchJson(`/api/inventory?tenantId=${t.id}`),
+      safeFetchJson(`/api/warehouses?tenantId=${t.id}`),
     ]);
     setCustomers(c);
     setVehicles(v);
@@ -43,7 +59,7 @@ export default function AdminPage() {
     setInventory(inventoryRows);
     setWarehouses(wh);
     setLoading(false);
-  }, [session]);
+  }, [session, safeFetchJson]);
 
   useEffect(() => {
     if (session) load();
