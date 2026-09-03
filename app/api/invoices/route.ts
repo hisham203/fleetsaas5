@@ -41,10 +41,27 @@ export async function GET(req: NextRequest) {
           },
         },
         creditNotes: true,
+        // Task E.1 audit: added so a caller can tell how many orders a
+        // monthly consolidated invoice actually covers — GET /api/invoices
+        // previously gave no way to see this short of a separate query.
+        lineItems: true,
+        // Also added: the billing period this invoice covers, for the
+        // monthly case (null for a normal single-order invoice). The
+        // contract_periods table has no sensitive fields, safe to embed
+        // directly.
+        contractPeriod: true,
       },
       orderBy: desc(invoices.createdAt),
     });
-    return NextResponse.json(rows);
+    // Task E.1: an explicit, unambiguous type label rather than making
+    // every caller re-derive "orderId null + contractPeriodId set means
+    // monthly" themselves — cheap to compute, already-fetched data only.
+    const withType = rows.map((r) => ({
+      ...r,
+      invoiceType: r.orderId != null ? "SINGLE_ORDER" : "MONTHLY_CONSOLIDATED",
+      lineItemsCount: r.lineItems.length,
+    }));
+    return NextResponse.json(withType);
   } catch (err) {
     // Never let this route return an empty-bodied 500 — the whole point
     // of this fix. Logged for real visibility, but the response itself

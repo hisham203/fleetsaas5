@@ -195,6 +195,43 @@ only placeholders.
     `invoice_line_items` so revenue from a monthly-billed order is no
     longer silently uncounted. Existing one-order-one-invoice generation
     was re-verified end-to-end and remains completely unaffected.
+    **Task E.1 ("Billing Reporting & Invoice Path Reconciliation Audit")**
+    was a systematic audit of every reporting/read path touching
+    invoices — found and fixed three real issues. Most significantly: the
+    delivery route (`app/api/trips/[id]/stops/[stopId]/route.ts`) was
+    unconditionally creating a standard, wrongly-priced per-order invoice
+    for **every** delivered order, including `MONTHLY_ACCUMULATED`
+    contract orders — meaning that order would later be billed a
+    **second time** when a monthly consolidated invoice was generated for
+    its period. Fixed narrowly: no invoice is created at delivery time
+    specifically for a `MONTHLY_ACCUMULATED` contract order; a
+    `ONE_TIME_TRIP_COUNT` contract order is deliberately left unchanged
+    (still gets the same standard-priced invoice as before — wrong price,
+    but not a double-bill; a separate, pre-existing, documented
+    limitation, not caused by this task, and out of scope to fix here).
+    Also fixed: `GET /api/customers/[id]/statement` was returning the
+    customer record raw, including `passwordHash` — a genuinely new
+    finding, missed by the S1/S2 sweep because that work specifically
+    targeted the `with: { customer: true } }` eager-load pattern, and
+    this route fetches the customer directly rather than as an embed.
+    Also added (minimal, explicitly requested): `GET /api/invoices` and
+    the report builder's invoices dataset now include an explicit
+    `invoiceType` (`SINGLE_ORDER` | `MONTHLY_CONSOLIDATED`) and
+    `lineItemsCount`, so a caller no longer has to re-derive which kind
+    of invoice they're looking at; `GET /api/invoices` also now embeds a
+    `contractPeriod` summary (start/end dates, status) for the monthly
+    case. Everything else audited — credit notes, scorecards' revenue
+    fallback, the Executive Dashboard, `settle-cash`, ERP sync, the
+    customer statement's monthly-invoice inclusion and null-order safety,
+    and the Admin Billing tab — was confirmed already correct and safe;
+    none of those were touched. A follow-up pass added dedicated tests
+    directly proving the two most important guarantees end-to-end: the
+    Executive Dashboard's revenue delta for a new monthly invoice equals
+    exactly that invoice's `total` (never double-counted against its own
+    `invoice_line_items`), and a driver's scorecard revenue is `0` before
+    a monthly invoice is generated and exactly the line's own total after
+    — proving the fallback path is used exactly once, not as an addition
+    to a nonexistent direct invoice.
 - **Seed process**: `npm run db:seed` is a demo/development seed —
   fictional companies, users, and a shared `password123` password baked
   into the script. Creates two tenants with ~35 days of realistic

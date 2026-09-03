@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { tripStops, epods, orders, invoices, inventoryItems, drivers, trips, exceptions } from "@/lib/db/schema";
+import { tripStops, epods, orders, invoices, inventoryItems, drivers, trips, exceptions, contracts } from "@/lib/db/schema";
 import { genId, genNumber, calcInvoiceTotals } from "@/lib/helpers";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { runAutomationRules } from "@/lib/automation";
@@ -125,6 +125,35 @@ export async function PATCH(
   const isPartial = data.action === "partial" || data.deliveredQty < stop.order.qtyOrdered;
   const orderStatus = isPartial ? "PARTIALLY_DELIVERED" : "DELIVERED";
 
+  // Task E.1 audit finding: this route previously created a standard,
+  // per-order invoice unconditionally — for EVERY delivered order,
+  // regardless of contractId. For a MONTHLY_ACCUMULATED contract, that
+  // order would later ALSO be picked up and billed again by
+  // POST /api/contracts/[id]/generate-monthly-invoice (which only
+  // excludes orders already present in invoice_line_items, not orders
+  // that already have a direct single-order invoice) — a genuine
+  // double-bill the customer would be charged twice for, and at the
+  // wrong (standard bottle) price the first time regardless. Skipping
+  // invoice creation here for exactly this one case is the narrow,
+  // correct fix: this order's real bill happens later, at the real
+  // contract price, via the monthly process it was always meant to go
+  // through.
+  //
+  // ONE_TIME_TRIP_COUNT contract orders are deliberately NOT touched by
+  // this fix and still get the same standard-priced invoice as before —
+  // that pricing is wrong for those orders too (no per-delivery
+  // invoicing path currently uses the contract pricing engine at all),
+  // but it is a separate, pre-existing gap this task did not create and
+  // is out of scope to fix here (building real contract-priced
+  // per-delivery invoicing is a feature addition, not a narrow
+  // correctness bug) — documented in the final report as a real,
+  // recommended follow-up, not silently left unmentioned.
+  let skipInvoiceForMonthlyContract = false;
+  if (stop.order.contractId) {
+    const contract = await db.query.contracts.findFirst({ where: eq(contracts.id, stop.order.contractId) });
+    if (contract?.type === "MONTHLY_ACCUMULATED") skipInvoiceForMonthlyContract = true;
+  }
+
   // BR-18: a flat discount is applied to the subtotal before VAT (clamped
   // at zero — a discount can never make the subtotal negative, e.g. on a
   // partial delivery where the billed portion is smaller than the
@@ -168,18 +197,20 @@ export async function PATCH(
       }
     }
 
-    await tx.insert(invoices).values({
-      id: invoiceId,
-      tenantId: stop.order.tenantId,
-      invoiceNumber,
-      orderId: stop.order.id,
-      customerId: stop.order.customerId,
-      subtotal,
-      discountAmount: stop.order.discountAmount,
-      vatAmount,
-      total,
-      status: invoiceStatus,
-    });
+    if (!skipInvoiceForMonthlyContract) {
+      await tx.insert(invoices).values({
+        id: invoiceId,
+        tenantId: stop.order.tenantId,
+        invoiceNumber,
+        orderId: stop.order.id,
+        customerId: stop.order.customerId,
+        subtotal,
+        discountAmount: stop.order.discountAmount,
+        vatAmount,
+        total,
+        status: invoiceStatus,
+      });
+    }
 
     // BR-11: a partial delivery is also an exception — the undelivered
     // portion needs the same Reschedule/Return/Reassign/Cancel handling a

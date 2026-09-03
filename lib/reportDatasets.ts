@@ -63,6 +63,7 @@ export const DATASETS: Record<string, DatasetDef> = {
     columns: [
       { key: "invoiceNumber", label: "Invoice #", type: "text" },
       { key: "customerName", label: "Customer", type: "text" },
+      { key: "invoiceType", label: "Invoice Type", type: "enum", enumValues: ["SINGLE_ORDER", "MONTHLY_CONSOLIDATED"] },
       { key: "subtotal", label: "Subtotal (SAR)", type: "number" },
       { key: "vatAmount", label: "VAT (SAR)", type: "number" },
       { key: "total", label: "Total (SAR)", type: "number" },

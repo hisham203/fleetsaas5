@@ -41,6 +41,9 @@ async function fetchInvoicesRows(tenantId: string): Promise<Row[]> {
   return rows.map((i) => ({
     invoiceNumber: i.invoiceNumber,
     customerName: i.customer?.name ?? null,
+    // Task E.1: distinguishes the two invoice paths in exports/reports —
+    // cheap to compute from already-fetched data, no new query needed.
+    invoiceType: i.orderId != null ? "SINGLE_ORDER" : "MONTHLY_CONSOLIDATED",
     subtotal: i.subtotal,
     vatAmount: i.vatAmount,
     total: i.total,
