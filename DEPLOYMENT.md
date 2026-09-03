@@ -116,10 +116,19 @@ only placeholders.
     explicitly and honestly, whether or not a wildcard-capacity rule still
     prices successfully. **Pricing preview creates nothing** — no invoice, no
     `invoice_line_items` row, and a contract's `tripsUsed` is only ever
-    read, never incremented, by any of this. **Contract Management is
-    still not complete and not customer-usable**: trip completion and
-    invoice generation remain completely unaware any of this exists, no
-    UI, no monthly invoice generation, and no ERP sync changes exist yet.
+    read, never incremented, by any of this. **Task D.5 improved pricing
+    accuracy once a vehicle is actually assigned**: `POST /api/trips`
+    recomputes `pricingPreview` for every contract-linked stop using the
+    assigned vehicle's real `capacityLiters` — order-creation-time preview
+    still reports `capacityKnown: false` (no vehicle exists yet at that
+    point, unchanged from Task D), while the trip-creation response can
+    now report `capacityKnown: true` and select a more specific,
+    capacity-matched pricing rule. Still creates nothing — no invoice, no
+    `invoice_line_items`, no pricing-rule or `tripsUsed` mutation.
+    **Contract Management is still not complete and not customer-usable**:
+    trip completion and invoice generation remain completely unaware any
+    of this exists, no UI, no monthly invoice generation, and no ERP sync
+    changes exist yet.
     A later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
     nullable to support consolidated monthly invoices — **this migration
     deliberately does not touch that column, or `invoices` at all.**

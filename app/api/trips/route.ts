@@ -8,6 +8,23 @@ import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { optimizeRoute } from "@/lib/googleMaps";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { z } from "zod";
+import { buildPricingPreviewForOrder } from "@/lib/contractEligibility";
+
+// Security fix, found while implementing Task D.5: driver: { with: { user:
+// true } } returns every column on the user row, including passwordHash —
+// pre-existing since before Task D.5 touched this route at all, caught by
+// this task's own new test rather than left unfixed. Scoped to this
+// route's two embeds specifically (both GET and POST already return this
+// shape), not a broader refactor of every other route with the same
+// pattern elsewhere in this codebase.
+const SAFE_DRIVER_USER_COLUMNS = {
+  id: true,
+  tenantId: true,
+  name: true,
+  email: true,
+  role: true,
+  createdAt: true,
+} as const;
 
 const createSchema = z.object({
   driverId: z.string(),
@@ -26,7 +43,7 @@ export async function GET(req: NextRequest) {
   const rows = await db.query.trips.findMany({
     where: eq(trips.tenantId, tenantId),
     with: {
-      driver: { with: { user: true } },
+      driver: { with: { user: { columns: SAFE_DRIVER_USER_COLUMNS } } },
       vehicle: true,
       warehouse: true,
       stops: { with: { order: { with: { customer: true } }, epod: true } },
@@ -125,8 +142,36 @@ export async function POST(req: NextRequest) {
 
   const full = await db.query.trips.findFirst({
     where: eq(trips.id, tripId),
-    with: { driver: { with: { user: true } }, vehicle: true, warehouse: true, stops: { with: { order: true } } },
+    with: { driver: { with: { user: { columns: SAFE_DRIVER_USER_COLUMNS } } }, vehicle: true, warehouse: true, stops: { with: { order: true } } },
   });
+
+  // Task D.5: now that a real vehicle (and its real capacity) is known,
+  // recompute pricing preview for every contract-linked order on this
+  // trip — more accurate than the order-creation-time preview, which
+  // never knows tanker capacity since no vehicle exists yet at that
+  // point. Purely additive to the response: never creates an invoice,
+  // never writes invoice_line_items, never mutates a pricing rule or
+  // tripsUsed, and never blocks trip creation — the trip above has
+  // already been created successfully by the time this runs. A
+  // non-contract order's stop is completely unaffected (no
+  // pricingPreview key at all, not even null), exactly as before.
+  if (full) {
+    for (const stop of full.stops as any[]) {
+      const preview = await buildPricingPreviewForOrder({
+        tenantId,
+        order: {
+          id: stop.order.id,
+          customerId: stop.order.customerId,
+          contractId: stop.order.contractId,
+          locationId: stop.order.locationId,
+          qtyOrdered: stop.order.qtyOrdered,
+          requestedTime: stop.order.requestedTime,
+        },
+        tankerCapacityLtr: vehicle.capacityLiters,
+      });
+      if (preview) stop.pricingPreview = preview;
+    }
+  }
 
   return NextResponse.json(full, { status: 201 });
 }

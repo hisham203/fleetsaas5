@@ -180,3 +180,67 @@ export async function buildPricingPreview(input: {
     };
   }
 }
+
+// Task D.5 — Vehicle Capacity Pricing Preview at Trip Assignment. The
+// single entry point trip creation calls, once per contract-linked order
+// on the trip, now that a real vehicle (and therefore its real capacity)
+// is known. Deliberately re-runs the FULL eligibility check (not just a
+// capacity lookup) — a contract that was ACTIVE at order-creation time
+// could have been suspended or cancelled by trip-creation time, and this
+// reuses the exact same, already-tested validateContractEligibility()
+// rather than trusting the order's stored contractId blindly. Returns
+// null (not a PricingPreview) when the order has no contract at all —
+// the caller skips attaching anything in that case, leaving a
+// non-contract order's stop completely unaffected, exactly as before.
+export async function buildPricingPreviewForOrder(params: {
+  tenantId: string;
+  order: {
+    id: string;
+    customerId: string;
+    contractId: string | null;
+    locationId: string | null;
+    qtyOrdered: number;
+    requestedTime: Date | null;
+  };
+  tankerCapacityLtr: number | null;
+}): Promise<PricingPreview | null> {
+  if (!params.order.contractId) return null;
+
+  let contract;
+  try {
+    contract = await validateContractEligibility({
+      tenantId: params.tenantId,
+      customerId: params.order.customerId,
+      contractId: params.order.contractId,
+      orderDate: params.order.requestedTime ?? new Date(),
+      customerLocationId: params.order.locationId,
+    });
+  } catch (err) {
+    if (err instanceof ContractEligibilityError) {
+      return {
+        available: false,
+        errorCode: err.code,
+        error: err.message,
+        capacityKnown: params.tankerCapacityLtr != null,
+      };
+    }
+    throw err;
+  }
+
+  const location = params.order.locationId
+    ? await db.query.customerLocations.findFirst({ where: (l, { eq: eqOp }) => eqOp(l.id, params.order.locationId!) })
+    : null;
+
+  return buildPricingPreview({
+    tenantId: params.tenantId,
+    customerId: params.order.customerId,
+    contractId: contract.id,
+    pricingDate: params.order.requestedTime ?? new Date(),
+    cityCode: location?.cityCode ?? null,
+    zoneCode: location?.zoneCode ?? null,
+    distanceBandCode: location?.distanceBandCode ?? null,
+    tankerCapacityLtr: params.tankerCapacityLtr,
+    rateType: determineRateType(contract),
+    quantityLiters: params.order.qtyOrdered,
+  });
+}
