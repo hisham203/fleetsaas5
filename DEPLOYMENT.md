@@ -99,13 +99,28 @@ only placeholders.
     `/api/distance-bands`) — the engine can calculate a price from
     contract/tenant-default rules with deterministic specificity/priority
     matching and hard-fails on any ambiguity rather than guessing.
-    **Contract Management is still not complete and not customer-usable**:
-    the pricing engine is not called from anywhere — order creation, trip
-    completion, and invoice generation are all completely unaware it
-    exists. No order/contract attachment (creating an order still never
-    touches a contract), no `invoice_line_items` population, no UI, no
-    monthly invoice generation, and no ERP sync changes exist yet. A
-    later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
+    **Task D connected orders to contracts**: `POST /api/orders` accepts
+    an optional `contractId` and `locationId` — the latter is an existing
+    column (`orders.locationId`, already wired to `customerLocations`)
+    that this route simply hadn't accepted as input before; no schema
+    change was needed. A contract is validated for eligibility (same
+    tenant, same customer, ACTIVE status, order date within range, and —
+    now genuinely enforced — site scope when `appliesToAllSites = false`)
+    before the order is created; an invalid explicit request rejects the
+    whole order. When a location is provided, its real `cityCode`/
+    `zoneCode`/`distanceBandCode` feed the pricing preview instead of
+    wildcards, so a more specific, location-matched rule is correctly
+    preferred over a generic one. Tanker capacity remains genuinely
+    unknown at order time (no vehicle is assigned until trip creation) —
+    the response's `pricingPreview.capacityKnown: false` says so
+    explicitly and honestly, whether or not a wildcard-capacity rule still
+    prices successfully. **Pricing preview creates nothing** — no invoice, no
+    `invoice_line_items` row, and a contract's `tripsUsed` is only ever
+    read, never incremented, by any of this. **Contract Management is
+    still not complete and not customer-usable**: trip completion and
+    invoice generation remain completely unaware any of this exists, no
+    UI, no monthly invoice generation, and no ERP sync changes exist yet.
+    A later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
     nullable to support consolidated monthly invoices — **this migration
     deliberately does not touch that column, or `invoices` at all.**
     Confirmed via direct inspection: `invoices.order_id` remains `NOT
