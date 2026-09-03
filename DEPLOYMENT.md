@@ -447,6 +447,47 @@ only placeholders.
   gap deferred for the same reason — worth a few hours whenever the
   Contract Management UI task happens, not urgent enough to justify on
   its own.
+- **Task I ("Contract Management Module Design & Implementation Plan")**
+  — the gap flagged at the end of Task H (Contract Management is
+  API-only) got its own dedicated module: **`/admin/contracts`**, a
+  genuinely standalone route (not a tab bolted onto the already very
+  large `app/admin/page.tsx`), linked from the main Admin page via its
+  own button rather than folded into the tab bar.
+
+  **Commercial-conditions review** — every factor this task asked about,
+  classified:
+
+  | Factor | Classification |
+  |---|---|
+  | Customer, contract type, status, start/end date, billing cadence | Supported now (schema + API exist) |
+  | appliesToAllSites, contract_site_scope, trips purchased/used/remaining | Supported now |
+  | Pricing scope/rate type, city/zone/distance-band/capacity matching, priority, effective dates | Supported now (via `lib/contractPricing.ts`) |
+  | Distance bands (code, label, range, active/retired) | Supported now |
+  | Payment due days, payment method on contract, invoice frequency, grace period, PO requirement, tax/VAT registration | **Needs schema later** — `contracts` has no payment-terms columns at all today; not implemented, documented as a future schema gap per this task's own instruction not to build fields the schema can't hold |
+  | Minimum monthly commitment, minimum trips, minimum invoice amount, included trips, free trips, discount % | Can be represented using existing pricing rules (e.g. a discount is just a lower `pricePerTrip`) for the simple cases; a true "minimum commitment" floor is **not** representable today — future feature |
+  | Fuel/distance/zone surcharge, waiting-time/urgent/night-weekend charge | Can be represented using existing pricing rules (each is just another rule row matched on the right dimensions) — no new mechanism needed, only UI to manage them (deferred, see below) |
+  | Cancellation/failed-delivery/reschedule fee | Not needed for the Riyadh pilot today — no fee concept exists elsewhere in billing either; future feature |
+  | Auto-renewal | Needs schema later — no renewal-tracking fields exist |
+  | Site access restrictions, delivery time windows, SLA requirement (per-contract) | Needs schema later — SLA today is tenant-wide (`slaMinutes` on orders), not contract-specific |
+  | Maximum daily/monthly trips, allowed tanker sizes, allowed loading points, driver/vehicle restrictions | Future enterprise feature — no current pilot need identified |
+  | Billing contact, contract attachment/document reference | Needs schema later — no such fields exist on `contracts` or `customers` |
+
+  **Module structure implemented (I.1 + a slice of I.2)**: a contract
+  list, a full read-only detail view (period/type-specific summaries,
+  trip usage with overage warnings, monthly billing period readiness,
+  site scope with city/zone/band and a clear warning when a
+  site-restricted contract has zero sites, pricing coverage with
+  STANDARD/OVERAGE presence and capacities covered), a basic create
+  form, and status transitions respecting the backend's exact allowed-
+  transition rules — all against the existing Contract/Pricing-Rules/
+  Distance-Bands APIs, unmodified. **Deferred** (each clearly labeled
+  "available via API only in this release" in the UI itself, not
+  silently missing): site-assignment UI, pricing-rule create/edit UI,
+  distance-band create/edit UI, and the monthly invoice generation UI —
+  matching the staged I.2 (remainder)/I.3/I.4/I.5 plan, each a
+  reasonable-sized follow-up rather than one large risky build.
+  No schema, migration, seed, pricing-engine, invoice, monthly-billing,
+  or ERP changes.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

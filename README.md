@@ -392,7 +392,7 @@ real login call. This exercises the actual route logic — auth checks,
 tenant scoping, business rules — without the overhead or flakiness of a
 live server.
 
-**What's covered** (476 tests across 53 files):
+**What's covered** (487 tests across 54 files):
 - `tests/unit/` — pure logic with no database: SLA status calculation (all
   five states), VAT/invoice math, Google Maps route-optimization fallback
   behavior, the report-dataset registry's column whitelist validation
@@ -665,6 +665,26 @@ creation will be blocked, per BR-04.
    duplicated ranking logic.
 5. Click **Export CSV** to download everything currently on screen —
    KPIs, the trend percentages, and both ranking tables.
+
+## Trying the Contract Management module (Task I)
+
+1. **Admin → "Contract Management →"** (a button next to the tab bar, not
+   one of the tabs itself — this is a genuinely separate module at its
+   own route, `/admin/contracts`). Log in as `admin@riyadh-bulk-water.co`
+   / `password123` to see the 4 real seeded contracts.
+2. Click a contract in the list to see its full detail: trip usage and
+   overage warnings for a trip-count contract, monthly billing period
+   readiness for a monthly one, site scope with city/zone/distance-band
+   for a site-restricted contract, and pricing coverage (STANDARD/OVERAGE
+   presence, tanker capacities covered).
+3. Try "+ New contract" — creates a real contract via the existing
+   Contract API. Site assignment, pricing-rule setup, and distance-band
+   management are deliberately not yet in this UI (each says so directly
+   on screen) — use the existing APIs for those until a follow-up task
+   builds them.
+4. Contract status transitions (e.g. DRAFT → ACTIVE) are available from
+   the detail view, respecting the same allowed-transition rules the API
+   already enforces.
 
 ## Trying the billing refinements (discounts, contract pricing, credit notes, cash settlement)
 

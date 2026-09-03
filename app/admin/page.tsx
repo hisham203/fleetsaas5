@@ -83,8 +83,8 @@ export default function AdminPage() {
 
   return (
     <Shell tenant={tenant} session={session}>
-      <div className="px-6 pt-4">
-        <div className="flex gap-1 border-b border-slate-200">
+      <div className="px-6 pt-4 flex items-center justify-between">
+        <div className="flex gap-1 border-b border-slate-200 flex-1">
           {(["overview", "fleet", "drivers", "customers", "billing", "maintenance", "inventory", "reports", "scorecards", "erp", "automation", "fieldops", "executive"] as const).map((t) => (
             <button
               key={t}
@@ -97,6 +97,15 @@ export default function AdminPage() {
             </button>
           ))}
         </div>
+        {/* Task I: Contract Management is a standalone module (its own
+            route, /admin/contracts), not one of the tabs above — this
+            link, rather than a tab entry, reflects that intentionally. */}
+        <a
+          href="/admin/contracts"
+          className="ml-3 mb-2 bg-aquaDark text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-aqua whitespace-nowrap"
+        >
+          Contract Management →
+        </a>
       </div>
 
       <div className="p-6">
