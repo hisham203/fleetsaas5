@@ -363,6 +363,44 @@ only placeholders.
      of the generic fallback. `vehicleId` remaining required (BR-23) was
      not changed — that's correct, intentional behavior.
   No schema, migration, seed, pricing, invoice, or ERP changes.
+- **Task G.3 ("Dispatcher Trip Assignment Fix + Vehicle Capacity Liters
+  UI Support")** — a precise root-cause chain, found and fixed:
+  Task F's own seed data left the Riyadh Bulk Water ad-hoc demo order in
+  `PENDING` status while **also** creating a real trip/tripStop for it
+  (intentional, to give the dispatch board something genuine to show) —
+  a real data-consistency bug, since it meant that order wrongly appeared
+  in the dispatcher's assignable queue. Selecting it and attempting to
+  create a trip hit `tripStops.orderId`'s unique constraint at the raw
+  database level — an uncaught exception with no try/catch anywhere in
+  `POST /api/trips`, producing an empty-bodied 500. The frontend's own
+  `res.json()` call then threw on that empty body, skipping
+  `setBusy(false)` entirely — permanently disabling "Create & assign
+  trip" for the rest of the session, for **any** subsequent selection,
+  not just the one that failed. Fixed at every layer: the seed order is
+  now correctly `ASSIGNED` (not `PENDING`); `POST /api/trips` gained a
+  proactive, direct guard against assigning an order already on any
+  non-completed trip (defense-in-depth beyond the pre-existing
+  `orders.status` check, which can drift out of sync exactly as this bug
+  proved) and a top-level try/catch so it always returns valid JSON; the
+  dispatch page's `createTrip()` now wraps its fetch/parse in
+  try/catch/finally so `busy` always resets regardless of what the
+  server returns. Also fixed a real but separate wording issue while in
+  this same code: the dispatch queue's order line dropped the misleading
+  "× {bottleSizeLtr}L" (a field that has never once been set to anything
+  but its schema default of 19, for any tenant, so nothing informative
+  was lost) in favor of neutral "N unit(s)", and "units total" became
+  "load(s) total" — both changes are global copy, not tenant-conditional.
+  Separately, **vehicle creation already fully supported
+  `capacityLiters` at the API level** (`POST /api/vehicles`'s schema
+  already had it) — only the admin UI form was missing the field
+  entirely. Added a clearly-labeled "Tanker capacity (liters)" input
+  alongside the existing "Capacity units" one, genuinely optional and
+  independent of it — a legacy bottle-van vehicle's creation flow is
+  completely unchanged. No general vehicle-edit UI exists in this app
+  (only a home-warehouse dropdown) to extend, so capacityLiters can only
+  be set at creation time, not edited afterward — a real, separate gap.
+  No schema, migration, pricing engine, invoice, monthly billing, or ERP
+  changes.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

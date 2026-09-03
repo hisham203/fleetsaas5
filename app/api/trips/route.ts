@@ -56,110 +56,148 @@ export async function POST(req: NextRequest) {
   }
   const tenantId = getSessionTenantId(session)!;
 
-  const body = await req.json();
-  const parsed = createSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-  const { driverId, vehicleId, warehouseId, orderIds } = parsed.data;
+  try {
+    const body = await req.json();
+    const parsed = createSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
+    const { driverId, vehicleId, warehouseId, orderIds } = parsed.data;
 
-  const vehicle = await db.query.vehicles.findFirst({ where: and(eq(vehicles.id, vehicleId), eq(vehicles.tenantId, tenantId)) });
-  const driver = await db.query.drivers.findFirst({ where: and(eq(drivers.id, driverId), eq(drivers.tenantId, tenantId)) });
-  const warehouse = await db.query.warehouses.findFirst({ where: and(eq(warehouses.id, warehouseId), eq(warehouses.tenantId, tenantId)) });
-  if (!vehicle || !driver) {
-    return NextResponse.json({ error: "Vehicle or driver not found" }, { status: 404 });
-  }
-  if (!warehouse) {
-    return NextResponse.json({ error: "Warehouse not found" }, { status: 404 });
-  }
-  if (vehicle.status !== "AVAILABLE") {
-    return NextResponse.json({ error: `Vehicle ${vehicle.plateNumber} is not available (${vehicle.status})` }, { status: 422 });
-  }
-  if (driver.status !== "AVAILABLE") {
-    return NextResponse.json({ error: "Driver is not available" }, { status: 422 });
-  }
-
-  const selectedOrders = await db.query.orders.findMany({ where: and(inArray(orders.id, orderIds), eq(orders.tenantId, tenantId)) });
-  if (selectedOrders.length !== orderIds.length) {
-    return NextResponse.json({ error: "One or more orders not found" }, { status: 404 });
-  }
-  const notPending = selectedOrders.filter((o) => o.status !== "PENDING" && o.status !== "VALIDATED");
-  if (notPending.length > 0) {
-    return NextResponse.json({ error: `Orders already in progress: ${notPending.map((o) => o.orderNumber).join(", ")}` }, { status: 422 });
-  }
-
-  // BR-02 capacity rule: total bottle units must not exceed vehicle capacity.
-  const totalUnits = selectedOrders.reduce((sum, o) => sum + o.qtyOrdered, 0);
-  if (vehicle.capacityUnits != null && totalUnits > vehicle.capacityUnits) {
-    return NextResponse.json(
-      { error: `Load (${totalUnits} bottles) exceeds vehicle capacity (${vehicle.capacityUnits})` },
-      { status: 422 }
-    );
-  }
-
-  // BR-06: optimize stop order as a round trip from the chosen warehouse.
-  let orderedStopIds = selectedOrders.map((o) => o.id);
-  let estimatedDurationMinutes: number | null = null;
-
-  const stopsWithCoords = selectedOrders.filter((o) => o.lat != null && o.lng != null);
-  if (stopsWithCoords.length === selectedOrders.length) {
-    const result = await optimizeRoute(
-      { lat: warehouse.lat, lng: warehouse.lng },
-      stopsWithCoords.map((o) => ({ id: o.id, lat: o.lat!, lng: o.lng! }))
-    );
-    orderedStopIds = result.orderedStopIds;
-    estimatedDurationMinutes = result.estimatedDurationMinutes;
-  }
-
-  const tripId = genId();
-  const tripNumber = genNumber("TRIP");
-
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(trips)
-      .values({ id: tripId, tenantId, tripNumber, driverId, vehicleId, warehouseId, status: "PLANNED", estimatedDurationMinutes });
-
-    for (const [idx, orderId] of orderedStopIds.entries()) {
-      await tx.insert(tripStops).values({ id: genId(), tripId, orderId, sequence: idx + 1 });
+    const vehicle = await db.query.vehicles.findFirst({ where: and(eq(vehicles.id, vehicleId), eq(vehicles.tenantId, tenantId)) });
+    const driver = await db.query.drivers.findFirst({ where: and(eq(drivers.id, driverId), eq(drivers.tenantId, tenantId)) });
+    const warehouse = await db.query.warehouses.findFirst({ where: and(eq(warehouses.id, warehouseId), eq(warehouses.tenantId, tenantId)) });
+    if (!vehicle || !driver) {
+      return NextResponse.json({ error: "Vehicle or driver not found" }, { status: 404 });
+    }
+    if (!warehouse) {
+      return NextResponse.json({ error: "Warehouse not found" }, { status: 404 });
+    }
+    if (vehicle.status !== "AVAILABLE") {
+      return NextResponse.json({ error: `Vehicle ${vehicle.plateNumber} is not available (${vehicle.status})` }, { status: 422 });
+    }
+    if (driver.status !== "AVAILABLE") {
+      return NextResponse.json({ error: "Driver is not available" }, { status: 422 });
     }
 
-    await tx.update(orders).set({ status: "ASSIGNED" }).where(inArray(orders.id, orderIds));
-    await tx.update(vehicles).set({ status: "IN_TRIP" }).where(eq(vehicles.id, vehicleId));
-    await tx.update(drivers).set({ status: "ON_TRIP" }).where(eq(drivers.id, driverId));
-  });
-
-  const full = await db.query.trips.findFirst({
-    where: eq(trips.id, tripId),
-    with: { driver: { with: { user: { columns: SAFE_USER_COLUMNS } } }, vehicle: true, warehouse: true, stops: { with: { order: true } } },
-  });
-
-  // Task D.5: now that a real vehicle (and its real capacity) is known,
-  // recompute pricing preview for every contract-linked order on this
-  // trip — more accurate than the order-creation-time preview, which
-  // never knows tanker capacity since no vehicle exists yet at that
-  // point. Purely additive to the response: never creates an invoice,
-  // never writes invoice_line_items, never mutates a pricing rule or
-  // tripsUsed, and never blocks trip creation — the trip above has
-  // already been created successfully by the time this runs. A
-  // non-contract order's stop is completely unaffected (no
-  // pricingPreview key at all, not even null), exactly as before.
-  if (full) {
-    for (const stop of full.stops as any[]) {
-      const preview = await buildPricingPreviewForOrder({
-        tenantId,
-        order: {
-          id: stop.order.id,
-          customerId: stop.order.customerId,
-          contractId: stop.order.contractId,
-          locationId: stop.order.locationId,
-          qtyOrdered: stop.order.qtyOrdered,
-          requestedTime: stop.order.requestedTime,
-        },
-        tankerCapacityLtr: vehicle.capacityLiters,
-      });
-      if (preview) stop.pricingPreview = preview;
+    const selectedOrders = await db.query.orders.findMany({ where: and(inArray(orders.id, orderIds), eq(orders.tenantId, tenantId)) });
+    if (selectedOrders.length !== orderIds.length) {
+      return NextResponse.json({ error: "One or more orders not found" }, { status: 404 });
     }
-  }
+    const notPending = selectedOrders.filter((o) => o.status !== "PENDING" && o.status !== "VALIDATED");
+    if (notPending.length > 0) {
+      return NextResponse.json({ error: `Orders already in progress: ${notPending.map((o) => o.orderNumber).join(", ")}` }, { status: 422 });
+    }
 
-  return NextResponse.json(full, { status: 201 });
+    // G.3 audit finding: orders.status !== PENDING/VALIDATED (above) is
+    // the primary guard, but it can drift out of sync with the real
+    // source of truth — tripStops.orderId is unique, so an order already
+    // on any non-completed trip is genuinely unassignable regardless of
+    // what its own status column says. Checking this directly, before
+    // attempting the insert, turns what would otherwise be a raw
+    // database unique-constraint violation (an uncaught exception,
+    // previously surfacing to the dispatcher as a silently-stuck button
+    // — see app/dispatch/page.tsx's fix this same pass) into a clear,
+    // expected 422 with the real reason.
+    const existingStops = await db.query.tripStops.findMany({
+      where: inArray(tripStops.orderId, orderIds),
+      with: { trip: true },
+    });
+    const alreadyAssigned = existingStops.filter((s) => s.trip.status !== "COMPLETED");
+    if (alreadyAssigned.length > 0) {
+      const orderNumbers = alreadyAssigned
+        .map((s) => selectedOrders.find((o) => o.id === s.orderId)?.orderNumber ?? s.orderId)
+        .join(", ");
+      return NextResponse.json(
+        { error: `Order(s) already assigned to an active trip: ${orderNumbers}` },
+        { status: 422 }
+      );
+    }
+
+    // BR-02 capacity rule: total bottle units must not exceed vehicle capacity.
+    const totalUnits = selectedOrders.reduce((sum, o) => sum + o.qtyOrdered, 0);
+    if (vehicle.capacityUnits != null && totalUnits > vehicle.capacityUnits) {
+      return NextResponse.json(
+        { error: `Load (${totalUnits} bottles) exceeds vehicle capacity (${vehicle.capacityUnits})` },
+        { status: 422 }
+      );
+    }
+
+    // BR-06: optimize stop order as a round trip from the chosen warehouse.
+    let orderedStopIds = selectedOrders.map((o) => o.id);
+    let estimatedDurationMinutes: number | null = null;
+
+    const stopsWithCoords = selectedOrders.filter((o) => o.lat != null && o.lng != null);
+    if (stopsWithCoords.length === selectedOrders.length) {
+      const result = await optimizeRoute(
+        { lat: warehouse.lat, lng: warehouse.lng },
+        stopsWithCoords.map((o) => ({ id: o.id, lat: o.lat!, lng: o.lng! }))
+      );
+      orderedStopIds = result.orderedStopIds;
+      estimatedDurationMinutes = result.estimatedDurationMinutes;
+    }
+
+    const tripId = genId();
+    const tripNumber = genNumber("TRIP");
+
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(trips)
+        .values({ id: tripId, tenantId, tripNumber, driverId, vehicleId, warehouseId, status: "PLANNED", estimatedDurationMinutes });
+
+      for (const [idx, orderId] of orderedStopIds.entries()) {
+        await tx.insert(tripStops).values({ id: genId(), tripId, orderId, sequence: idx + 1 });
+      }
+
+      await tx.update(orders).set({ status: "ASSIGNED" }).where(inArray(orders.id, orderIds));
+      await tx.update(vehicles).set({ status: "IN_TRIP" }).where(eq(vehicles.id, vehicleId));
+      await tx.update(drivers).set({ status: "ON_TRIP" }).where(eq(drivers.id, driverId));
+    });
+
+    const full = await db.query.trips.findFirst({
+      where: eq(trips.id, tripId),
+      with: { driver: { with: { user: { columns: SAFE_USER_COLUMNS } } }, vehicle: true, warehouse: true, stops: { with: { order: true } } },
+    });
+
+    // Task D.5: now that a real vehicle (and its real capacity) is known,
+    // recompute pricing preview for every contract-linked order on this
+    // trip — more accurate than the order-creation-time preview, which
+    // never knows tanker capacity since no vehicle exists yet at that
+    // point. Purely additive to the response: never creates an invoice,
+    // never writes invoice_line_items, never mutates a pricing rule or
+    // tripsUsed, and never blocks trip creation — the trip above has
+    // already been created successfully by the time this runs. A
+    // non-contract order's stop is completely unaffected (no
+    // pricingPreview key at all, not even null), exactly as before.
+    if (full) {
+      for (const stop of full.stops as any[]) {
+        const preview = await buildPricingPreviewForOrder({
+          tenantId,
+          order: {
+            id: stop.order.id,
+            customerId: stop.order.customerId,
+            contractId: stop.order.contractId,
+            locationId: stop.order.locationId,
+            qtyOrdered: stop.order.qtyOrdered,
+            requestedTime: stop.order.requestedTime,
+          },
+          tankerCapacityLtr: vehicle.capacityLiters,
+        });
+        if (preview) stop.pricingPreview = preview;
+      }
+    }
+
+    return NextResponse.json(full, { status: 201 });
+  } catch (err) {
+    // G.3 audit finding: this whole handler previously had no top-level
+    // try/catch at all. Any unexpected failure (a raw DB constraint
+    // violation being the concrete case found this pass, but this
+    // protects against any future one too) escaped as an unhandled
+    // exception, which Next.js turns into a bare, empty-bodied 500 —
+    // exactly what made the dispatcher's frontend crash on `res.json()`
+    // and get permanently stuck. Every path through this route now
+    // returns real, valid JSON, error or not.
+    console.error("POST /api/trips failed:", err);
+    return NextResponse.json({ error: "Failed to create trip" }, { status: 500 });
+  }
 }

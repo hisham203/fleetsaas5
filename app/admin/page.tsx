@@ -317,20 +317,39 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
   const [plateNumber, setPlate] = useState("");
   const [vehicleType, setType] = useState("Delivery Vehicle");
   const [capacityUnits, setCapacity] = useState(100);
+  // G.3: capacityLiters is genuinely optional and left blank by default —
+  // unlike capacityUnits (which every legacy vehicle needs and always
+  // sends), a bottle van has no meaningful liters figure, so this is
+  // only included in the request when the admin actually fills it in.
+  const [capacityLiters, setCapacityLiters] = useState("");
   const [homeWarehouseId, setHomeWarehouseId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [addError, setAddError] = useState("");
 
   async function addVehicle() {
+    setAddError("");
     setSubmitting(true);
-    await fetch("/api/vehicles", {
+    const res = await fetch("/api/vehicles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plateNumber, vehicleType, capacityUnits, homeWarehouseId: homeWarehouseId || undefined }),
+      body: JSON.stringify({
+        plateNumber,
+        vehicleType,
+        capacityUnits,
+        capacityLiters: capacityLiters !== "" ? Number(capacityLiters) : undefined,
+        homeWarehouseId: homeWarehouseId || undefined,
+      }),
     });
-    setPlate("");
-    setHomeWarehouseId("");
+    const data = await res.json();
     setSubmitting(false);
+    if (!res.ok) {
+      setAddError(typeof data.error === "string" ? data.error : "Failed to add vehicle");
+      return;
+    }
+    setPlate("");
+    setCapacityLiters("");
+    setHomeWarehouseId("");
     onChange();
   }
 
@@ -389,13 +408,27 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
         <div className="space-y-2">
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Plate number" value={plateNumber} onChange={(e) => setPlate(e.target.value)} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Vehicle type" value={vehicleType} onChange={(e) => setType(e.target.value)} />
-          <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Capacity (units)" value={capacityUnits} onChange={(e) => setCapacity(Number(e.target.value))} />
+          <div>
+            <label className="text-xs text-steel">Capacity units (bottle vans, etc.)</label>
+            <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="Capacity units" value={capacityUnits} onChange={(e) => setCapacity(Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="text-xs text-steel">Tanker capacity (liters) — optional, e.g. 18000 / 21000 / 28000</label>
+            <input
+              type="number"
+              className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+              placeholder="e.g. 18000"
+              value={capacityLiters}
+              onChange={(e) => setCapacityLiters(e.target.value)}
+            />
+          </div>
           <select className="w-full border rounded-lg px-3 py-2 text-sm" value={homeWarehouseId} onChange={(e) => setHomeWarehouseId(e.target.value)}>
             <option value="">No default warehouse</option>
             {warehouses.map((w: any) => (
               <option key={w.id} value={w.id}>{w.name}</option>
             ))}
           </select>
+          {addError && <p className="text-danger text-xs">{addError}</p>}
           <button
             disabled={!plateNumber || submitting}
             onClick={addVehicle}

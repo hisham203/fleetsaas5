@@ -273,7 +273,17 @@ export async function seedRiyadhBulkWaterTenant(passwordHash: string, now: numbe
       {
         id: adHocOrderId, tenantId: tenant3Id, orderNumber: genNumber("ORD"), customerId: riyadhTowersId, locationId: riyadhTowersLocId,
         qtyOrdered: 1, emptyBottlesToCollect: 0, deliveryAddress: "King Fahd Rd, North Riyadh", lat: 24.7743, lng: 46.6389,
-        requestedTime: new Date(now), status: "PENDING", paymentMethod: "CASH",
+        // G.3 audit finding: this order genuinely has a real trip/tripStop
+        // created for it below (see rbwTripId) — leaving it "PENDING" was
+        // a real data-consistency bug: it wrongly appeared in the
+        // dispatcher's assignable queue (which filters on PENDING/
+        // VALIDATED), and selecting it to create a second trip hit
+        // tripStops' unique orderId constraint at the raw database level
+        // — an uncaught exception, an empty-body 500, and a frontend
+        // that then permanently got stuck (see the loading route and
+        // dispatch page fixes this same pass). "ASSIGNED" correctly
+        // reflects this order's real state.
+        requestedTime: new Date(now), status: "ASSIGNED", paymentMethod: "CASH",
       },
       {
         id: hospitalOrderId, tenantId: tenant3Id, orderNumber: genNumber("ORD"), customerId: hospitalId, locationId: hospitalLocId, contractId: hospitalContract.id,

@@ -116,21 +116,38 @@ export default function DispatchPage() {
   async function createTrip() {
     setError("");
     setBusy(true);
-    const res = await fetch("/api/trips", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ driverId, vehicleId, warehouseId, orderIds: selected }),
-    });
-    const data = await res.json();
-    setBusy(false);
-    if (!res.ok) {
-      setError(data.error ?? "Failed to create trip");
-      return;
+    try {
+      const res = await fetch("/api/trips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId, vehicleId, warehouseId, orderIds: selected }),
+      });
+      // G.3 audit finding: res.json() throws if the response body is
+      // empty or not valid JSON — previously unhandled here, which meant
+      // that exception escaped straight out of this function, skipping
+      // setBusy(false) entirely and leaving the button permanently
+      // disabled ("stuck") for the rest of the session, regardless of
+      // what was selected afterward. The backend route itself is now
+      // fixed to always return valid JSON (see app/api/trips/route.ts),
+      // but this guards the frontend against any future case too.
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setError("Failed to create trip: the server returned an unreadable response.");
+        return;
+      }
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Failed to create trip");
+        return;
+      }
+      setSelected([]);
+      setDriverId("");
+      setVehicleId("");
+      load();
+    } finally {
+      setBusy(false);
     }
-    setSelected([]);
-    setDriverId("");
-    setVehicleId("");
-    load();
   }
 
   async function confirmLoading(tripId: string) {
@@ -300,7 +317,7 @@ export default function DispatchPage() {
                     <div className="font-medium">{o.customer.name}</div>
                     {slaByOrderId.get(o.id) && <StatusBadge status={slaByOrderId.get(o.id).slaStatus} />}
                   </div>
-                  <div className="text-steel text-xs">{o.orderNumber} · {o.qtyOrdered} × {o.bottleSizeLtr}L{o.emptyBottlesToCollect ? ` · ${o.emptyBottlesToCollect} empties` : ""}</div>
+                  <div className="text-steel text-xs">{o.orderNumber} · {o.qtyOrdered} unit(s){o.emptyBottlesToCollect ? ` · ${o.emptyBottlesToCollect} empties` : ""}</div>
                   <div className="text-steel text-xs">{o.deliveryAddress}</div>
                 </div>
               </label>
@@ -312,7 +329,7 @@ export default function DispatchPage() {
         {/* Trip planner */}
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <h3 className="font-medium mb-3">Plan trip</h3>
-          <p className="text-steel text-xs mb-2">{selected.length} order(s) selected · {selectedLoad} units total</p>
+          <p className="text-steel text-xs mb-2">{selected.length} order(s) selected · {selectedLoad} load(s) total</p>
           <div className="space-y-2">
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={driverId} onChange={(e) => setDriverId(e.target.value)}>
               <option value="">Select driver…</option>
@@ -325,8 +342,8 @@ export default function DispatchPage() {
               value={vehicleId}
               onChange={(e) => {
                 setVehicleId(e.target.value);
-                const selected = availableVehicles.find((v) => v.id === e.target.value);
-                if (selected?.homeWarehouseId) setWarehouseId(selected.homeWarehouseId);
+                const chosenVehicle = availableVehicles.find((v) => v.id === e.target.value);
+                if (chosenVehicle?.homeWarehouseId) setWarehouseId(chosenVehicle.homeWarehouseId);
               }}
             >
               <option value="">Select vehicle…</option>
