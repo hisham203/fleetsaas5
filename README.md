@@ -225,6 +225,25 @@ any of the demo credentials below (all seeded with `password123`):
 | Dispatcher (2nd company) | dispatch@acme-fuel-demo.co | Acme Fuel Delivery Co. |
 | Driver (2nd company) | saeed@acme-fuel-demo.co (3 total: saeed, majed, faris) | Acme Fuel Delivery Co. |
 | Platform Admin (Company Switcher) | platform-admin@fleetops-demo.co | Home: Demo Water Co. — granted: Acme Fuel Delivery Co. |
+| Admin (3rd company — Task F) | admin@riyadh-bulk-water.co | Riyadh Bulk Water Logistics |
+| Dispatcher (3rd company) | dispatch@riyadh-bulk-water.co | Riyadh Bulk Water Logistics |
+| Driver (3rd company) | mohammed@riyadh-bulk-water.co (4 total: mohammed, ibrahim, ahmed, yousef) | Riyadh Bulk Water Logistics |
+| B2B Portal (3rd company) | portal@hospital-facilities-demo.co (or portal@university-campus-demo.co) | Riyadh Bulk Water Logistics |
+
+**Riyadh Bulk Water Logistics is the actual Smarty1 pilot business model**
+(bulk water tanker delivery) — a separate, additional tenant from the
+original "Demo Water Co." (bottled-water retail/refill), added by Task F.
+It comes seeded with 6 water tankers (real `capacityLiters`: two each at
+18,000L/21,000L/28,000L), 6 B2B company customers with Riyadh delivery
+sites (`cityCode`/`zoneCode`/`distanceBandCode` populated), 4 tenant-scoped
+distance bands, 4 active contracts (2 `MONTHLY_ACCUMULATED`, 2
+`ONE_TIME_TRIP_COUNT` — one of each site-restricted, one of each
+open-to-all-sites), and 10 contract pricing rules (`STANDARD` and
+`OVERAGE`, varying by tanker capacity) — enough to demonstrate contract
+pricing, capacity-aware pricing preview, and the manual monthly billing
+endpoint against real, non-trivial seeded data, not just synthetic test
+fixtures. No schema changes were made for this — the tenant fits entirely
+within the existing Contract Management schema from A1 through Task E.1.
 
 **All demo accounts share the password `password123` — this is intentionally
 public, documented, demo-only data, never a real credential.** The second
@@ -373,7 +392,7 @@ real login call. This exercises the actual route logic — auth checks,
 tenant scoping, business rules — without the overhead or flakiness of a
 live server.
 
-**What's covered** (422 tests across 47 files):
+**What's covered** (436 tests across 48 files):
 - `tests/unit/` — pure logic with no database: SLA status calculation (all
   five states), VAT/invoice math, Google Maps route-optimization fallback
   behavior, the report-dataset registry's column whitelist validation

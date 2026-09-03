@@ -232,12 +232,43 @@ only placeholders.
     a monthly invoice is generated and exactly the line's own total after
     — proving the fallback path is used exactly once, not as an addition
     to a nonexistent direct invoice.
+    **Task F ("Bulk Water Tanker Demo Seed")** added a third demo tenant,
+    "Riyadh Bulk Water Logistics" — the actual Smarty1 pilot business
+    model (bulk tanker delivery), separate from the original bottled-water
+    "Demo Water Co." tenant (kept unchanged, since several existing tests
+    depend on its exact seeded names/values). 6 tankers with real
+    `capacityLiters` (two each at 18,000L/21,000L/28,000L, `capacityUnits`
+    left null so the unrelated bottle-capacity check is skipped
+    entirely), 6 B2B customers with Riyadh sites, 4 distance bands, 4
+    active contracts (both types, both site-restriction modes), and 10
+    pricing rules — the first time any of the Contract Management
+    infrastructure built across A1 through E.1 has been demonstrated with
+    real seed data rather than only test fixtures. No schema changes.
+    **A genuinely new, serious finding surfaced along the way**: `GET
+    /api/customers` (and its `POST` sibling) — the single most widely-used
+    customer-listing endpoint in the app — was returning every customer's
+    `passwordHash` raw, for every tenant, undetected by both the S1 and S2
+    audits for the same reason `app/api/customers/[id]/statement/route.ts`
+    was in Task E.1: the customer is the primary query target there, not
+    an eager-loaded relation, so the `with: { customer: true } }` pattern
+    those audits specifically searched for never matched it. Found because
+    Task F's own seed data gives several B2B customers a real portal
+    password for the first time, and a genuinely thorough test caught it.
+    Fixed the same way as every prior instance: explicit safe columns,
+    reusing the credit-limit-inclusive exception already established for
+    the finance-facing case. `npm run security:api` continues to pass —
+    this is a structural blind spot in that regex-based guard worth
+    knowing about (it only catches broad eager-load embeds, not a direct
+    query returning a raw row), not a claim the guard is broken.
 - **Seed process**: `npm run db:seed` is a demo/development seed —
   fictional companies, users, and a shared `password123` password baked
-  into the script. Creates two tenants with ~35 days of realistic
+  into the script. Creates three tenants: two with ~35 days of realistic
   historical delivery data each (56 and 30 trips respectively) so the
   Executive Dashboard and scorecards show credible numbers immediately —
-  see README's "Demo dataset" section for the full scenario. **This seed
+  see README's "Demo dataset" section for the full scenario — plus a
+  third, "Riyadh Bulk Water Logistics" (Task F), seeded with contracts,
+  pricing rules, and a modest set of orders/trips rather than a full
+  historical delivery run. **This seed
   script was not modified by the Contract Management A1 migration** — the
   6 new tables above are seeded with nothing, for either existing tenant.
   A bulk-water-tanker-specific seed tenant is separate, later, unstarted

@@ -31,7 +31,7 @@ logScriptEvent({ script: "seed", phase: "start" });
 
 seedDemoData()
   .then(async (result) => {
-    logScriptEvent({ script: "seed", phase: "success", message: `tenant1=${result.tenant1Id} tenant2=${result.tenant2Id}` });
+    logScriptEvent({ script: "seed", phase: "success", message: `tenant1=${result.tenant1Id} tenant2=${result.tenant2Id} tenant3=${result.tenant3Id}` });
     console.log("Seed complete.", result);
     await pool.end();
   })
