@@ -25,6 +25,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     with: { order: true },
   });
   if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+  // A2 safety guard (Task E): a monthly consolidated invoice has no
+  // single order — cash settlement is fundamentally an individual-order
+  // concept (BR-18: "cash collection must be linked to driver and
+  // trip"), so it doesn't apply here. Reject clearly rather than crash
+  // on the now-nullable invoice.order.
+  if (!invoice.order) {
+    return NextResponse.json(
+      { error: "This invoice has no single order (a monthly consolidated invoice) and cannot be cash-settled" },
+      { status: 422 }
+    );
+  }
   if (invoice.order.paymentMethod !== "CASH") {
     return NextResponse.json({ error: "Only invoices for CASH orders need cash settlement" }, { status: 422 });
   }

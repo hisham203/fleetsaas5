@@ -1,5 +1,5 @@
 import { db } from "./db/client";
-import { drivers, trips, vehicles, fuelLogs, maintenanceRecords, scorecardConfigs } from "./db/schema";
+import { drivers, trips, vehicles, fuelLogs, maintenanceRecords, scorecardConfigs, invoiceLineItems } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { computeSlaStatus } from "./sla";
 
@@ -92,6 +92,20 @@ export async function computeDriverScorecards(tenantId: string): Promise<DriverS
     with: { stops: { with: { order: { with: { invoice: true } } } } },
   });
 
+  // A2 safety guard (Task E): s.order.invoice walks the ONE-order-per-
+  // invoice relation (invoices.orderId), which is null for any order
+  // billed through a monthly consolidated invoice instead — that link
+  // lives in invoice_line_items.orderId. Without this fallback, a
+  // driver's revenueCollectedSar would silently undercount every such
+  // order, with no error or warning — exactly the class of bug flagged
+  // in the original A2 audit. Fetched once per tenant call (not per
+  // order) to avoid an N+1 query pattern.
+  const lineItemsByOrderId = new Map<string, number>();
+  const allLineItems = await db.query.invoiceLineItems.findMany({ where: eq(invoiceLineItems.tenantId, tenantId) });
+  for (const li of allLineItems) {
+    if (li.orderId) lineItemsByOrderId.set(li.orderId, li.lineAmount + li.lineVatAmount);
+  }
+
   const tripsByDriver = new Map<string, typeof allTrips>();
   for (const t of allTrips) {
     const list = tripsByDriver.get(t.driverId) ?? [];
@@ -113,7 +127,12 @@ export async function computeDriverScorecards(tenantId: string): Promise<DriverS
       for (const s of t.stops) {
         if (s.status === "DELIVERED" || s.status === "PARTIALLY_DELIVERED") {
           ordersDelivered++;
-          if (s.order.invoice) revenueCollectedSar += s.order.invoice.total;
+          if (s.order.invoice) {
+            revenueCollectedSar += s.order.invoice.total;
+          } else {
+            const monthlyLineTotal = lineItemsByOrderId.get(s.order.id);
+            if (monthlyLineTotal != null) revenueCollectedSar += monthlyLineTotal;
+          }
         }
         if (s.status === "FAILED") ordersFailed++;
 

@@ -163,11 +163,20 @@ describe("Contract Management A1 + A1.5 — schema foundation", () => {
   // contract_periods/orders/distance_bands/contract_pricing_rules — left
   // the existing invoices table and existing billing behavior completely
   // untouched.
-  it("invoices.order_id remains NOT NULL and UNIQUE, and invoices has no contract_period_id column — untouched by A1 or A1.5", async () => {
+  it("invoices.order_id is now nullable (Task E's minimal A2 change) but still UNIQUE, and invoices.contract_period_id now exists", async () => {
+    // This constraint held unchanged through A1 and A1.5 (see the git
+    // history of this exact test) — Task E (Manual Monthly Billing)
+    // deliberately relaxed it, since a monthly consolidated invoice has
+    // no single order to put here. The UNIQUE constraint was
+    // deliberately KEPT, not dropped: verified empirically that
+    // PostgreSQL treats multiple NULLs as distinct under a UNIQUE
+    // constraint, so this is a narrower, safer migration than dropping
+    // it — every existing single-order invoice still has a real, unique,
+    // non-null orderId, completely unchanged.
     const columnResult = await pool.query(
       `SELECT is_nullable FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'order_id'`
     );
-    expect(columnResult.rows[0].is_nullable).toBe("NO");
+    expect(columnResult.rows[0].is_nullable).toBe("YES");
 
     const constraintResult = await pool.query(`
       SELECT tc.constraint_type FROM information_schema.table_constraints tc
@@ -177,14 +186,20 @@ describe("Contract Management A1 + A1.5 — schema foundation", () => {
     expect(constraintResult.rows.length, "invoices.order_id should still have a UNIQUE constraint").toBe(1);
 
     const contractPeriodIdResult = await pool.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'contract_period_id'`
+      `SELECT is_nullable FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'contract_period_id'`
     );
-    expect(contractPeriodIdResult.rows.length, "invoices.contract_period_id is A2 scope, not A1/A1.5 — must not exist yet").toBe(0);
+    expect(contractPeriodIdResult.rows.length, "invoices.contract_period_id should now exist (Task E)").toBe(1);
+    expect(contractPeriodIdResult.rows[0].is_nullable).toBe("YES");
   });
 
-  it("invoice_line_items exists but is empty — not populated by any current invoice generation path", async () => {
+  it("invoice_line_items exists and is queryable", async () => {
+    // This table was empty through A1, A1.5, B, C, D, D.5, S1, and S2 —
+    // nothing wrote to it until Task E (Manual Monthly Billing)
+    // deliberately started using it for real. Asserting it's always
+    // empty is no longer a meaningful invariant; asserting it exists and
+    // can be queried still is.
     const result = await pool.query(`SELECT count(*) FROM invoice_line_items`);
-    expect(Number(result.rows[0].count)).toBe(0);
+    expect(Number(result.rows[0].count)).toBeGreaterThanOrEqual(0);
   });
 
   // Proves A1.5 didn't just leave invoices structurally alone — it left

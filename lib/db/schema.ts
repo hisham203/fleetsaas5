@@ -260,7 +260,25 @@ export const invoices = pgTable("invoices", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
   invoiceNumber: text("invoice_number").notNull().unique(),
-  orderId: text("order_id").notNull().unique(),
+  // Task E: orderId is now nullable — a monthly consolidated invoice
+  // (MONTHLY_ACCUMULATED contracts, covering many orders via
+  // invoice_line_items) has no single order to put here. The `.unique()`
+  // constraint is deliberately KEPT, not dropped: verified empirically
+  // that PostgreSQL treats multiple NULL values as distinct under a
+  // UNIQUE constraint (ANSI SQL standard behavior — NULL is never equal
+  // to another NULL), so any number of monthly invoices can coexist with
+  // orderId = NULL without ever violating this constraint. This is a
+  // narrower, safer migration than "drop the unique constraint" — every
+  // existing single-order invoice keeps working completely unchanged,
+  // still with a real, unique, non-null orderId exactly as before.
+  orderId: text("order_id").unique(),
+  // Task E: which billing period this invoice covers, for the monthly
+  // consolidated case. Nullable — a normal single-order invoice has no
+  // period at all. This is the correct single owner of the
+  // invoice<->period relationship, per the A1.5 architecture decision
+  // (contract_periods.invoiceId was deliberately removed there — see its
+  // own schema comment — specifically so this side would own it instead).
+  contractPeriodId: text("contract_period_id"),
   customerId: text("customer_id").notNull(),
   subtotal: real("subtotal").notNull(),
   discountAmount: real("discount_amount").notNull().default(0), // BR-18: copied from the order at invoice time, for record-keeping
@@ -280,7 +298,12 @@ export const invoices = pgTable("invoices", {
   erpSyncedAt: timestamp("erp_synced_at", { mode: "date" }),
   erpSyncError: text("erp_sync_error"), // last sync failure message, cleared on success
   createdAt: createdAt(),
-});
+}, (table) => ({
+  // Task E: the "find the invoice for this period" lookup (e.g. checking
+  // whether a period has already been invoiced) is a real, expected query
+  // once monthly billing exists.
+  contractPeriodIdx: index("invoices_contract_period_idx").on(table.contractPeriodId),
+}));
 
 // ---------- BR-18: Credit Notes ----------
 // A credit note is an adjustment against an already-issued invoice — a
@@ -1025,6 +1048,10 @@ export const invoicesRelations = relations(invoices, ({ one, many }) => ({
   order: one(orders, { fields: [invoices.orderId], references: [orders.id] }),
   customer: one(customers, { fields: [invoices.customerId], references: [customers.id] }),
   creditNotes: many(creditNotes),
+  // Task E: the monthly-billing side of the relationship this invoice
+  // covers, if any (null for a normal single-order invoice).
+  contractPeriod: one(contractPeriods, { fields: [invoices.contractPeriodId], references: [contractPeriods.id] }),
+  lineItems: many(invoiceLineItems),
 }));
 
 export const creditNotesRelations = relations(creditNotes, ({ one }) => ({

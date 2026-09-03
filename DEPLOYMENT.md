@@ -76,11 +76,13 @@ only placeholders.
   migration file was read; none uses pgcrypto, postgis, or similar.
 - **Migration process**: `npm run db:migrate` runs Drizzle's migrate()
   against DATABASE_URL. Plain SQL files in `drizzle/*.sql`, numbered
-  0000-0011 as of this pass, tracked in a separate `drizzle` Postgres
+  0000-0015 as of this pass, tracked in a separate `drizzle` Postgres
   schema.
   - **Production migration warning**: migrations are additive-only by
     convention (verified — no DROP COLUMN or destructive statements in
-    any of the 12 files). Run migrations before deploying code that
+    any of the 16 files; migration 0015 relaxes a NOT NULL constraint on
+    an existing column, which loosens a rule rather than removing data or
+    a column). Run migrations before deploying code that
     depends on new columns/tables, and snapshot the database first —
     Drizzle has no built-in rollback command.
   - **Migrations 0011-0014 — Contract Management Schema Foundation
@@ -169,13 +171,30 @@ only placeholders.
     already-audited-safe line (`/api/erp/sync/status`) needed an explicit,
     documented `SECURITY_EXPOSURE_CHECK_ALLOW` comment — the only
     exception, not a broad allowlist.
-    A later, separate, not-yet-approved step ("A2") will make `invoices.order_id`
-    nullable to support consolidated monthly invoices — **this migration
-    deliberately does not touch that column, or `invoices` at all.**
-    Confirmed via direct inspection: `invoices.order_id` remains `NOT
-    NULL` with its `UNIQUE` constraint intact, and existing
-    one-order-one-invoice generation was re-verified end-to-end and is
-    unaffected.
+    **Task E ("Manual Monthly Billing Foundation")** implemented the
+    minimal schema change previously flagged as pending: `invoices.order_id`
+    is now nullable, needed so a monthly consolidated invoice (covering
+    many orders for a `MONTHLY_ACCUMULATED` contract) can exist at all.
+    **Its `UNIQUE` constraint was deliberately kept, not dropped** —
+    verified empirically (including directly against this table) that
+    PostgreSQL treats multiple `NULL` values as distinct under a `UNIQUE`
+    constraint, so this is a narrower, safer change than originally
+    planned: every existing single-order invoice keeps a real, unique,
+    non-null `order_id`, completely unaffected. `invoices.contract_period_id`
+    was added (nullable) as the single owner of the invoice↔period
+    relationship, per the A1.5 architecture decision. A new API-only,
+    manually-triggered endpoint (`POST /api/contracts/[id]/generate-monthly-invoice`
+    — no scheduler, no automatic month-end job, no UI) aggregates
+    delivered orders for a requested period, prices each one live via the
+    real pricing engine (a missing rule aborts the whole operation before
+    anything is written — never a partial invoice), and writes the
+    invoice plus its `invoice_line_items` transactionally. The three A2
+    safety guards flagged in the earlier audit are now implemented:
+    `settle-cash` and ERP sync both cleanly reject a null-order (monthly)
+    invoice instead of crashing, and driver scorecards now fall back to
+    `invoice_line_items` so revenue from a monthly-billed order is no
+    longer silently uncounted. Existing one-order-one-invoice generation
+    was re-verified end-to-end and remains completely unaffected.
 - **Seed process**: `npm run db:seed` is a demo/development seed —
   fictional companies, users, and a shared `password123` password baked
   into the script. Creates two tenants with ~35 days of realistic

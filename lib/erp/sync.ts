@@ -30,6 +30,15 @@ export async function syncInvoiceToOdoo(tenantId: string, invoiceId: string): Pr
   });
   if (!invoice) return { success: false, error: "Invoice not found" };
   if (invoice.erpExternalId) return { success: true, odooInvoiceId: Number(invoice.erpExternalId) };
+  // A2 safety guard (Task E): a monthly consolidated invoice has no
+  // single order — this function's whole design (one order = one Odoo
+  // line item's description/quantity/price) is fundamentally
+  // incompatible with a multi-order invoice. Rejecting clearly now is
+  // the correct scope for this task; building real multi-line ERP sync
+  // is separate, later work, not attempted here.
+  if (!invoice.order) {
+    return { success: false, error: "ERP sync for monthly consolidated invoices is not yet implemented" };
+  }
 
   const config = toOdooConfig(connection);
 
