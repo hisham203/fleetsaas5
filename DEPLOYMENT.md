@@ -329,6 +329,40 @@ only placeholders.
   table) already handles both business models correctly with zero
   bottle-specific bias — no change needed there. Copy-only; no schema,
   seed, pricing, invoice, or lifecycle changes in this follow-up either.
+- **Task G.2 ("Pilot Operational UI & Flow Review")** — three real,
+  root-cause fixes found and fixed during a pilot-readiness pass, not
+  just wording:
+  1. `PATCH /api/trips/[id]/loading` was hardcoded to check for an
+     inventory item literally named `"19L Bottle - Full"` — Riyadh Bulk
+     Water Logistics's loading point has no inventory items at all, so
+     every trip was permanently blocked with a confusing bottle-shortage
+     message. This also turned out to be a **pre-existing, previously
+     undetected bug affecting Acme** (which tracks "Diesel Tank - Full",
+     not bottles) — it never surfaced before because Acme's seeded
+     historical trips are built by direct DB inserts that bypass this
+     route entirely. Fixed generically, not tenant-specifically: the
+     route now looks for whatever item at that warehouse follows the
+     existing `"<name> - Full"` naming convention (already used
+     consistently by every tenant that tracks anything), and skips the
+     check entirely when a warehouse tracks nothing. Demo Water Co.'s
+     exact shortage-blocking behavior is unchanged and re-verified.
+  2. The driver page only ever distinguished "an active dispatched trip"
+     from "nothing assigned" — a trip that's been assigned but is still
+     `PLANNED` (awaiting loading confirmation, which remains
+     dispatcher-only, unchanged) looked identical to having no trip at
+     all. Fixed with a clearer message only; no trip-lifecycle change.
+  3. The driver expense form was always fully visible and submittable
+     regardless of whether the driver currently has a vehicle assigned
+     (only true once a trip is dispatched) — `vehicleId` is a required
+     field, so submitting without one was a guaranteed failure, and since
+     `/api/expenses` returns a Zod object (not a string) for validation
+     failures, the frontend's error handling silently fell back to a
+     generic "Failed to submit expense" every time. Fixed on the frontend
+     only: the form now explains and disables submission until a vehicle
+     is assigned, and real validation messages are now surfaced instead
+     of the generic fallback. `vehicleId` remaining required (BR-23) was
+     not changed — that's correct, intentional behavior.
+  No schema, migration, seed, pricing, invoice, or ERP changes.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

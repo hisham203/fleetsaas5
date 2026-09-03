@@ -30,7 +30,15 @@ describe("Riyadh Bulk Water Logistics demo seed (Task F)", () => {
   });
 
   it("3/4. vehicles have real capacityLiters populated, including 18000/21000/28000", async () => {
-    const rows = await db.query.vehicles.findMany({ where: eq(vehicles.tenantId, tenantId) });
+    const allRows = await db.query.vehicles.findMany({ where: eq(vehicles.tenantId, tenantId) });
+    // Other test files (Task G.2) legitimately add their own isolated
+    // driver/vehicle fixtures to this same real tenant, using a
+    // distinct "TEST-" plate prefix specifically so they never collide
+    // with or get mistaken for the real seeded fleet — filtering to the
+    // seed's own "RBW-T" plates keeps this test scoped to what it's
+    // actually verifying (the 6 real seeded tankers), regardless of how
+    // many isolated fixtures other tests have added alongside them.
+    const rows = allRows.filter((v) => v.plateNumber.startsWith("RBW-T"));
     expect(rows.length).toBe(6);
     expect(rows.every((v) => v.capacityLiters != null)).toBe(true);
     const capacities = rows.map((v) => v.capacityLiters).sort((a, b) => (a ?? 0) - (b ?? 0));

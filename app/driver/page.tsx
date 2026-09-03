@@ -38,6 +38,14 @@ export default function DriverPage() {
   const myTrip = trips.find(
     (t) => t.driverId === driverId && (t.status === "DISPATCHED" || t.status === "IN_PROGRESS")
   );
+  // G.2 audit: a trip assigned to this driver but still PLANNED (not yet
+  // released by the dispatcher — loading may or may not be confirmed
+  // yet) was previously indistinguishable from "nothing assigned at
+  // all", which read as confusing/broken during the pilot demo. The
+  // driver still can't act on it (confirming loading and dispatching
+  // both remain dispatcher-only, unchanged) — this only improves what
+  // the driver is told while it's not yet theirs to act on.
+  const myPlannedTrip = trips.find((t) => t.driverId === driverId && t.status === "PLANNED");
 
   // BR-12 Live Location Tracking (simulated): while a trip is dispatched,
   // interpolate a position along the stop sequence and ping the server
@@ -112,7 +120,11 @@ export default function DriverPage() {
       <div className="p-6 max-w-lg mx-auto">
         {!myTrip && (
           <div className="bg-white rounded-xl border border-slate-200 p-4 text-center text-steel text-sm">
-            No dispatched trip right now. Check back once the dispatcher assigns one.
+            {myPlannedTrip
+              ? myPlannedTrip.loadingConfirmed
+                ? "Your assigned trip is loaded and awaiting dispatch."
+                : "Your assigned trip is awaiting loading confirmation by dispatcher."
+              : "No dispatched trip right now. Check back once the dispatcher assigns one."}
           </div>
         )}
 
@@ -306,6 +318,17 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
   const [error, setError] = useState("");
 
   const openTasks = tasks.filter((t: any) => t.status === "ASSIGNED" || t.status === "IN_PROGRESS");
+  // G.2 audit finding: this form was always fully visible and
+  // submittable regardless of whether the driver currently has an
+  // assigned vehicle (only true while a trip is DISPATCHED/IN_PROGRESS —
+  // see app/driver/page.tsx's myTrip). expenses.vehicleId is a required
+  // field (BR-23: "every expense must be linked to a driver, vehicle,
+  // and a trip or a reason") — submitting with none produces a
+  // guaranteed, confusing failure. Not a business-rule bug (vehicleId
+  // being required is intentional and unchanged here) — the bug was the
+  // frontend letting a driver attempt a submission that was always going
+  // to fail, with no explanation why.
+  const hasVehicle = Boolean(vehicleId);
 
   async function taskAction(taskId: string, action: string) {
     await fetch(`/api/tasks/${taskId}`, {
@@ -314,6 +337,24 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
       body: JSON.stringify({ action, completionNotes: action === "COMPLETE" ? "Completed via driver app" : undefined }),
     });
     onChange();
+  }
+
+  // G.2 audit finding: /api/expenses returns a Zod .flatten() OBJECT
+  // (fieldErrors/formErrors), not a string, whenever validation fails —
+  // this code's own `typeof data.error === "string"` check was already
+  // correct in principle, but had no fallback for the object case beyond
+  // the unhelpful generic message, which is exactly what a driver with
+  // no vehicleId always saw. This extracts the first real message from
+  // either shape instead.
+  function extractErrorMessage(data: any): string {
+    if (typeof data?.error === "string") return data.error;
+    const fieldErrors = data?.error?.fieldErrors;
+    if (fieldErrors) {
+      const firstField = Object.keys(fieldErrors).find((k) => fieldErrors[k]?.length);
+      if (firstField) return `${firstField}: ${fieldErrors[firstField][0]}`;
+    }
+    if (data?.error?.formErrors?.length) return data.error.formErrors[0];
+    return "Failed to submit expense";
   }
 
   async function submitExpense() {
@@ -335,7 +376,7 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
     const data = await res.json();
     setSubmitting(false);
     if (!res.ok) {
-      setError(typeof data.error === "string" ? data.error : "Failed to submit expense");
+      setError(extractErrorMessage(data));
       return;
     }
     setAmount("");
@@ -386,6 +427,11 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
 
         {showExpenseForm && (
           <div className="space-y-2 mb-3 pb-3 border-b border-slate-100">
+            {!hasVehicle && (
+              <p className="text-warn text-xs bg-warn/10 rounded-lg px-3 py-2">
+                An expense needs a vehicle on record, which only happens once a trip is dispatched to you. You can fill this in, but it won&apos;t submit until then.
+              </p>
+            )}
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="FUEL">Fuel</option>
               <option value="TOLL">Road toll</option>
@@ -399,7 +445,7 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
             <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Receipt details (optional)" value={receiptDescription} onChange={(e) => setReceiptDescription(e.target.value)} />
             {error && <p className="text-danger text-xs">{error}</p>}
             <button
-              disabled={!amount || (!tripId && !reason) || submitting}
+              disabled={!hasVehicle || !amount || (!tripId && !reason) || submitting}
               onClick={submitExpense}
               className="w-full bg-ink text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
             >

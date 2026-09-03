@@ -42,7 +42,14 @@ describe("Riyadh Bulk Water seed hotfix — idempotency (S3)", () => {
   it("3. required Riyadh demo data exists and is well-formed after the (idempotent) seed", async () => {
     const result = await seedRiyadhBulkWaterTenant("irrelevant-hash-for-this-test", Date.now());
 
-    const vehicleRows = await db.query.vehicles.findMany({ where: eq(vehicles.tenantId, result.tenantId) });
+    const allVehicleRows = await db.query.vehicles.findMany({ where: eq(vehicles.tenantId, result.tenantId) });
+    // Other test files (Task G.2) legitimately add their own isolated
+    // driver/vehicle fixtures to this same real tenant (a distinct
+    // "TEST-" plate prefix, never colliding with the real seed's
+    // "RBW-T" plates) — filtering keeps this scoped to the 6 real
+    // seeded tankers specifically, regardless of what else has been
+    // added alongside them by the time this runs.
+    const vehicleRows = allVehicleRows.filter((v) => v.plateNumber.startsWith("RBW-T"));
     expect(vehicleRows.length).toBe(6);
     expect(vehicleRows.filter((v) => v.capacityLiters === 18000).length).toBe(2);
     expect(vehicleRows.filter((v) => v.capacityLiters === 21000).length).toBe(2);
