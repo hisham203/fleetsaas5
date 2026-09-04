@@ -106,6 +106,14 @@ export default function AdminPage() {
         >
           Contract Management →
         </a>
+        {/* Task K: same reasoning as Contract Management above — a
+            standalone module (/admin/customers), not a tab. */}
+        <a
+          href="/admin/customers"
+          className="ml-2 mb-2 border border-aquaDark text-aquaDark rounded-lg px-4 py-2 text-sm font-medium hover:bg-paper whitespace-nowrap"
+        >
+          Customers & Sites →
+        </a>
       </div>
 
       <div className="p-6">
@@ -517,7 +525,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
             />
           </div>
           <select className="w-full border rounded-lg px-3 py-2 text-sm" value={homeWarehouseId} onChange={(e) => setHomeWarehouseId(e.target.value)}>
-            <option value="">No default warehouse</option>
+            <option value="">No default loading point / warehouse</option>
             {warehouses.map((w: any) => (
               <option key={w.id} value={w.id}>{w.name}</option>
             ))}
@@ -1100,7 +1108,7 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
     const data = await res.json();
     setWhSubmitting(false);
     if (!res.ok) {
-      setWhError(data.error ?? "Failed to create warehouse");
+      setWhError(typeof data.error === "string" ? data.error : "Failed to create loading point / warehouse");
       return;
     }
     setWhName("");
@@ -1108,6 +1116,37 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
     setWhLat("");
     setWhLng("");
     setShowNewWarehouse(false);
+    onChange();
+  }
+
+  const [editingWarehouseId, setEditingWarehouseId] = useState<string | null>(null);
+  const [editWhName, setEditWhName] = useState("");
+  const [editWhAddress, setEditWhAddress] = useState("");
+  const [editWhBusy, setEditWhBusy] = useState(false);
+  const [editWhError, setEditWhError] = useState("");
+
+  function startEditWarehouse(w: any) {
+    setEditingWarehouseId(w.id);
+    setEditWhName(w.name);
+    setEditWhAddress(w.address);
+    setEditWhError("");
+  }
+
+  async function saveWarehouseEdit(warehouseId: string) {
+    setEditWhBusy(true);
+    setEditWhError("");
+    const res = await fetch(`/api/warehouses/${warehouseId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editWhName, address: editWhAddress }),
+    });
+    const data = await res.json();
+    setEditWhBusy(false);
+    if (!res.ok) {
+      setEditWhError(typeof data.error === "string" ? data.error : "Failed to update loading point / warehouse");
+      return;
+    }
+    setEditingWarehouseId(null);
     onChange();
   }
 
@@ -1120,15 +1159,25 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-medium">Warehouses / Loading Points &amp; Stock</h3>
+          <h3 className="font-medium">Loading Points / Warehouses &amp; Stock</h3>
           <button onClick={() => setShowNewWarehouse((s) => !s)} className="text-xs text-aquaDark font-medium">
-            {showNewWarehouse ? "Cancel" : "+ New warehouse"}
+            {showNewWarehouse ? "Cancel" : "+ New loading point / warehouse"}
           </button>
         </div>
+        {/* Task M audit finding: every loading point here is always
+            treated as usable — there is no active/inactive/retired
+            state in the schema yet, deliberately not added by that
+            task. This note is read-only and informational; it is not a
+            control, and closing a loading point operationally today
+            means not scheduling trips from it, tracked outside this
+            system until a future task designs that lifecycle properly. */}
+        <p className="text-steel text-xs">
+          Loading points don&apos;t yet support an active/inactive status — every one listed here is available for dispatch and vehicle assignment.
+        </p>
 
         {showNewWarehouse && (
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Warehouse name" value={whName} onChange={(e) => setWhName(e.target.value)} />
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Loading point / warehouse name" value={whName} onChange={(e) => setWhName(e.target.value)} />
             <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Address" value={whAddress} onChange={(e) => setWhAddress(e.target.value)} />
             <div className="flex gap-2">
               <input type="number" step="any" className="w-1/2 border rounded-lg px-3 py-2 text-sm" placeholder="Latitude" value={whLat} onChange={(e) => setWhLat(e.target.value === "" ? "" : Number(e.target.value))} />
@@ -1140,7 +1189,7 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
               onClick={addWarehouse}
               className="w-full bg-ink text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
             >
-              Create warehouse
+              Create loading point / warehouse
             </button>
           </div>
         )}
@@ -1148,10 +1197,29 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
         {byWarehouse.map(({ warehouse, items }: any) => (
           <div key={warehouse.id} className="bg-white rounded-xl border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium text-sm">{warehouse.name}</h4>
-              {warehouse.isDefault && <span className="text-xs text-aquaDark">Default</span>}
+              {editingWarehouseId === warehouse.id ? (
+                <div className="flex-1 space-y-2">
+                  <input className="w-full border rounded-lg px-2 py-1 text-sm" value={editWhName} onChange={(e) => setEditWhName(e.target.value)} />
+                  <input className="w-full border rounded-lg px-2 py-1 text-sm" value={editWhAddress} onChange={(e) => setEditWhAddress(e.target.value)} />
+                  {editWhError && <p className="text-danger text-xs">{editWhError}</p>}
+                  <div className="flex gap-2">
+                    <button disabled={!editWhName || !editWhAddress || editWhBusy} onClick={() => saveWarehouseEdit(warehouse.id)} className="text-aquaDark text-xs font-medium disabled:opacity-40">
+                      Save
+                    </button>
+                    <button onClick={() => setEditingWarehouseId(null)} className="text-steel text-xs">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h4 className="font-medium text-sm">{warehouse.name}</h4>
+                  <div className="flex items-center gap-2">
+                    {warehouse.isDefault && <span className="text-xs text-aquaDark">Default</span>}
+                    <button onClick={() => startEditWarehouse(warehouse)} className="text-steel text-xs hover:text-aquaDark">Edit</button>
+                  </div>
+                </>
+              )}
             </div>
-            <p className="text-steel text-xs mb-3">{warehouse.address}</p>
+            {editingWarehouseId !== warehouse.id && <p className="text-steel text-xs mb-3">{warehouse.address}</p>}
             <div className="grid grid-cols-2 gap-3">
               {items.map((item: any) => (
                 <div key={item.id} className="border border-slate-100 rounded-lg p-3">
@@ -1159,13 +1227,17 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
                   <p className="text-xl font-semibold mt-1">{item.quantity} <span className="text-sm font-normal text-steel">{item.unit}s</span></p>
                 </div>
               ))}
-              {items.length === 0 && <p className="text-steel text-sm col-span-2">No stock items yet.</p>}
+              {items.length === 0 && (
+                <p className="text-steel text-sm col-span-2">
+                  No tracked inventory. Loading confirmation will not require stock deduction.
+                </p>
+              )}
             </div>
           </div>
         ))}
         {warehouses.length === 0 && (
           <div className="bg-white rounded-xl border border-slate-200 p-4 text-center text-steel text-sm">
-            No warehouses yet — create one to start tracking stock and assigning trips.
+            No loading points / warehouses yet — create one to start tracking stock and assigning trips.
           </div>
         )}
       </div>
@@ -1175,7 +1247,7 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
         <p className="text-steel text-xs mb-2">Positive to add (e.g. new stock delivery), negative to remove (e.g. stocktake correction). Trip loading and ePOD empties adjust stock automatically.</p>
         <div className="space-y-2">
           <select className="w-full border rounded-lg px-3 py-2 text-sm" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
-            <option value="">Select warehouse…</option>
+            <option value="">Select loading point / warehouse…</option>
             {warehouses.map((w: any) => (
               <option key={w.id} value={w.id}>{w.name}</option>
             ))}

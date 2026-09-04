@@ -26,9 +26,21 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(rows);
 }
 
-// A new warehouse starts with zero stock of the two standard water-delivery
-// items — Admin adjusts it up from the Inventory tab once stock actually
-// arrives there.
+// Task L audit finding: this route previously created two "19L Bottle"
+// inventory rows for EVERY new warehouse unconditionally, regardless of
+// tenant — nonsensical for a tanker-only tenant like Riyadh Bulk Water,
+// which deliberately tracks zero inventory at its loading point (see
+// scripts/seedRiyadhBulkWaterData.ts, and the Inventory tab's own
+// "No stock items yet." handling of that same state). Fixed generically,
+// with no hardcoded tenant name or sector check: only auto-create the
+// baseline bottle items when this tenant already has inventory tracking
+// on at least one other warehouse — a legacy bottle-water tenant keeps
+// exactly the same behavior as before (every new warehouse gets the
+// same starting items, for operational consistency), while a tenant
+// that has never used inventory tracking anywhere (Riyadh today, or any
+// future tanker-only tenant) gets a clean loading point with nothing
+// forced onto it, matching Part 5's "do not force inventory tracking"
+// requirement.
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!hasRole(session, ["ADMIN"])) {
@@ -45,14 +57,17 @@ export async function POST(req: NextRequest) {
   const existingDefault = await db.query.warehouses.findFirst({
     where: and(eq(warehouses.tenantId, tenantId), eq(warehouses.isDefault, true)),
   });
+  const tenantTracksInventory = await db.query.inventoryItems.findFirst({ where: eq(inventoryItems.tenantId, tenantId) });
 
   const id = genId();
   await db.transaction(async (tx) => {
     await tx.insert(warehouses).values({ id, tenantId, ...parsed.data, isDefault: !existingDefault });
-    await tx.insert(inventoryItems).values([
-      { id: genId(), tenantId, warehouseId: id, itemName: "19L Bottle - Full", quantity: 0, unit: "bottle" },
-      { id: genId(), tenantId, warehouseId: id, itemName: "19L Bottle - Empty", quantity: 0, unit: "bottle" },
-    ]);
+    if (tenantTracksInventory) {
+      await tx.insert(inventoryItems).values([
+        { id: genId(), tenantId, warehouseId: id, itemName: "19L Bottle - Full", quantity: 0, unit: "bottle" },
+        { id: genId(), tenantId, warehouseId: id, itemName: "19L Bottle - Empty", quantity: 0, unit: "bottle" },
+      ]);
+    }
   });
 
   const created = await db.query.warehouses.findFirst({ where: eq(warehouses.id, id) });

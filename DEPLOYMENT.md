@@ -488,6 +488,423 @@ only placeholders.
   reasonable-sized follow-up rather than one large risky build.
   No schema, migration, seed, pricing-engine, invoice, monthly-billing,
   or ERP changes.
+- **Task I.2/I.3/I.4 ("Contract Sites, Pricing Rules, and Distance
+  Bands UI")** — the three deferred pieces from Task I got real UI,
+  and every backend piece needed for this already existed and was
+  already well-built: site assignment/removal
+  (`POST`/`DELETE /api/contracts/[id]/sites[/...]`, with cross-customer
+  and duplicate guards already enforced server-side), pricing-rule
+  create/edit/retire (`PATCH` already correctly blocks editing a rule's
+  price or matching dimensions once it's gone live, guiding toward
+  retire-and-recreate instead; `DELETE` already soft-deletes via
+  `effectiveEndDate`), distance-band create/edit/retire (`PATCH`
+  already blocks range edits once a band is referenced by a rule or
+  site; `DELETE` already retires via `isActive`/`retiredAt` rather than
+  a hard delete), and `GET /api/customers/[id]/locations` already
+  existed for listing a customer's own sites. **Zero API changes were
+  needed anywhere** — this was purely wiring the existing, already-
+  validated APIs into `/admin/contracts`, replacing three "available
+  via API only in this release" notes with real management UI:
+  a site picker restricted to the contract's own customer with
+  add/remove; a pricing-rule table (rate type, capacity, city/zone/
+  band, price, VAT, priority, effective dates) with retire and a
+  create form offering capacity quick-picks (18,000/21,000/28,000 L
+  plus custom) and a distance-band dropdown; and a distance-band
+  table with create (basic client-side range validation backed by the
+  API's own authoritative checks) and retire. No schema, migration,
+  seed, pricing-engine, invoice, monthly-billing, or ERP changes.
+- **Task I.5A ("Monthly Billing Readiness UI & Dry-Run Preview")** —
+  deliberately safe and additive, per an explicit owner instruction that
+  the deployed Contract Management module hadn't been manually reviewed
+  yet: nothing here can create an invoice. Added a new, strictly
+  read-only `GET /api/contracts/[id]/monthly-billing-preview`, and
+  refactored `POST /api/contracts/[id]/generate-monthly-invoice`'s own
+  eligibility query into a shared helper
+  (`lib/monthlyBillingEligibility.ts`) that both routes now call —
+  guaranteeing the preview and the real generation route can never
+  silently disagree about which orders are eligible, since there's only
+  one implementation of that logic, not two that could drift apart.
+  Pricing itself was already shared (`calculateContractPrice()`), so no
+  separate preview pricing model was invented either. The one
+  intentional behavioral difference: the real route aborts entirely on
+  the first pricing failure (correct for something that writes an
+  invoice); the preview continues past a failure so it can report every
+  blocking order at once — a deliberate, documented divergence, not
+  drift, and the preview writes nothing regardless of how many orders
+  fail. Contract Management's monthly-contract detail view now shows a
+  real readiness section — READY (order count + expected total),
+  NOT_READY (with specific blockers, e.g. a named order with no matching
+  pricing rule), or ALREADY_BILLED (with the existing invoice's number
+  and total) — replacing what used to just show the raw `contract_periods`
+  row. The "Generate invoice" control is present but permanently
+  `disabled`, with the exact text this task specified, and never
+  references the generation endpoint anywhere in its code path. Verified
+  directly: repeated preview calls, including ones that hit a pricing
+  failure, leave `invoices`/`invoice_line_items`/`contract_periods` row
+  counts and every order's own status/contractId completely unchanged.
+  No schema, migration, seed, pricing-engine, or invoice *creation*
+  behavior changes — the one existing route touched was refactored to
+  call an extracted function with identical inline behavior, not altered.
+- **Task J ("Contract Management Advanced Configuration Audit")** — a
+  systematic review of every commercial/operational factor a real
+  enterprise contract management module could cover, producing this
+  matrix (grouped; see the task's own 11-category breakdown for the
+  full list every row here summarizes):
+
+  | Area | Factors | Current support | Recommended phase |
+  |---|---|---|---|
+  | Identity/lifecycle | number, customer, type, status, dates, notes | Fully supported | — |
+  | Identity/lifecycle | renewal date, auto-renewal, expiry alerts, termination reason | Schema missing | Future schema |
+  | Site scope | customer sites, city/zone/band, applies-to-all-sites | Fully supported (UI since I.2) | — |
+  | Site scope | site access restrictions, delivery windows, working hours | Schema missing | Future schema |
+  | Vehicle/tanker | capacity dimension in pricing rules | Fully supported | — |
+  | Vehicle/tanker | min/max tanker size, specific vehicle restriction, allowed/preferred loading point | Schema missing | Future schema |
+  | Pricing | STANDARD/OVERAGE, capacity/city/zone/band, priority, effective dates, VAT | Fully supported (UI since I.3) | — |
+  | Pricing | tiered pricing, volume discounts, fixed monthly fee, minimum invoice/commitment | Schema missing | Future schema |
+  | Surcharges | fuel/distance/zone/waiting/urgent/night/weekend/holiday/cancellation/reschedule/stop/toll fees | Schema missing entirely — no fee-line-item concept exists | Future schema (significant) |
+  | Usage limits | purchased/used/remaining trips, overage | Fully supported | — |
+  | Usage limits | max/min daily/weekly/monthly trip caps, min/max order quantity | Schema missing | Future schema |
+  | Billing config | billing cadence, monthly vs. trip-count, manual invoice generation, readiness | Fully supported (I.5A preview) | — |
+  | Billing config | invoice consolidation/grouping by site or PO, separate overage/surcharge billing | Schema missing | Future enterprise feature |
+  | Payment terms | due days, Net terms, advance/prepaid, credit account/limit, grace period, payment method, deposit | **Schema missing entirely** (only `customers.creditLimit` exists, and it's a credit-check input, not a contract term) | Future schema |
+  | Billing requirements | PO/reference requirement, cost center, project code, billing contact/email, VAT/tax registration, legal name, invoice language/notes | Schema missing entirely | Future schema |
+  | SLA | delivery lead time, guaranteed window, response time, failed-SLA penalty, emergency eligibility | Schema missing (a tenant-wide SLA exists elsewhere in the app, but nothing contract-specific) | Future enterprise feature |
+  | Documents/governance | contract/PO attachment, amendment version/date, approver, change history/audit trail | Schema missing (only `createdByUserId`/`createdAt` exist — "created by", not "approved by" or a change log) | Future enterprise feature |
+
+  **Not needed for the Riyadh pilot specifically**: surcharges, tiered
+  pricing/volume discounts, SLA penalties, documents/governance — all
+  genuinely enterprise-scale concerns beyond a single-tenant tanker
+  pilot's immediate needs. **Recommended for enterprise future, in
+  rough priority order**: payment terms → billing requirements
+  (PO/VAT) → usage limit caps → surcharges → documents/governance.
+
+  **Implemented this pass**: a **Contract Readiness Summary** — an
+  informational-only panel (explicitly no scoring, nothing blocks using
+  the contract, per this task's own instruction) computed by a newly
+  extracted, directly unit-tested pure function
+  (`lib/contractReadiness.ts`) from data the module already fetches, no
+  new API calls. Covers: customer assigned, contract active, within
+  valid date period (flags not-yet-started and expired), site scope
+  configured, STANDARD/OVERAGE pricing configured, tanker capacity
+  coverage (correctly treats a wildcard-capacity rule as covering
+  everything, only flagging a genuine gap), distance band coverage
+  (only shown when a rule actually references one), and monthly billing
+  readiness for monthly contracts. Also added an explicit "Not yet
+  configurable" list naming every schema-missing factor above by
+  category, rather than silently omitting them — visible, not editable,
+  no fake controls. No schema, migration, seed, invoice-generation, or
+  pricing-engine changes; the Monthly Billing preview remains
+  strictly read-only, re-verified directly (repeated reads across the
+  full contract/pricing/preview path leave every table's row counts
+  unchanged).
+- **Task K ("Customer & Site Configuration Module Readiness")** — a
+  genuinely important gap found: `POST /api/customers/[id]/locations`
+  (site creation) never accepted `cityCode`/`zoneCode`/`distanceBandCode`
+  in its request schema at all, even though `customer_locations` has
+  supported those columns since the A1 Contract Management schema
+  foundation — the only way to ever set them was a direct seed/DB
+  insert. Extended the route's own schema to accept all three (still
+  fully optional, matching the nullable columns), and added one new,
+  genuinely safe validation while there: a provided `distanceBandCode`
+  is now checked against the tenant's real `distance_bands` — rejecting
+  an unknown code and a retired one, each with a clear error, rather
+  than silently accepting a value that could never match a
+  distance-based pricing rule. No schema change — the columns already
+  existed; this only exposed them through the API for the first time.
+  Added a new standalone module, **`/admin/customers`** (mirroring
+  Contract Management's own precedent from Task I — its own route, not
+  a tab on the already very large `app/admin/page.tsx`; the existing
+  legacy CustomersTab there is completely untouched), showing each
+  customer's sites with city/zone/band, a **Site Readiness** summary per
+  site (`lib/siteReadiness.ts`, directly unit-tested — the same extracted,
+  testable-pure-function pattern Task J established with
+  `lib/contractReadiness.ts`), retired-band sites flagged clearly, and
+  **which contracts include each site** — computed read-only from
+  existing endpoints only (an "applies to all sites" contract trivially
+  includes every site; a site-restricted one is checked via its own
+  already-embedded `siteScope`), no new relationship service. **Riyadh
+  pilot finding, verified directly and read-only**: all six real seeded
+  B2B customers and every one of their sites already have
+  cityCode/zoneCode/distanceBandCode and coordinates fully set — nothing
+  is missing for contract eligibility, pricing lookup, dispatch, or map
+  positioning. No schema, migration, seed, invoice-generation, or
+  pricing-engine changes.
+- **Task K.2 ("Customer Site Editing & Metadata Maintenance")** — closed
+  the one concrete gap Task K's own audit flagged: existing sites could
+  be created but never edited. **A genuine historical-pricing-safety
+  finding drove the design**: nothing in this schema ever snapshots a
+  location's cityCode/zoneCode/distanceBandCode onto an order or
+  invoice — `calculateContractPrice()` always live-joins to the
+  location's *current* fields at the moment pricing actually runs. An
+  already-invoiced order is safe (its dollar amounts are frozen in
+  `invoice_line_items` or the invoice's own row and never
+  recalculated), but a **delivered-but-not-yet-invoiced** order is a
+  real risk window — especially for a `MONTHLY_ACCUMULATED` contract,
+  where invoicing is manual and can happen well after delivery. No
+  schema-level snapshot exists to detect this properly (building one
+  would be a schema change, correctly out of scope here), so the new
+  `PATCH /api/customers/[id]/locations/[locationId]` implements the
+  safest guard achievable with the existing schema instead: it
+  **outright blocks** editing cityCode/zoneCode/distanceBandCode while
+  the site has any delivered order not yet billed via *either* invoicing
+  path this schema supports (a direct single-order invoice or a line
+  item on a monthly consolidated one) — a real, catchable bug in this
+  guard's own first draft that a directly-written test caught before
+  it shipped: the initial version only checked `invoice_line_items`,
+  missing the single-order invoice path entirely. Address, label,
+  coordinates, and contact fields carry no pricing meaning and are never
+  restricted. Also validates a newly-assigned `distanceBandCode` exactly
+  like site creation (Task K) does — unknown or retired codes rejected.
+  UI: an "Edit" action per site in `/admin/customers`, prefilled with
+  current values, showing this task's exact specified warning text when
+  the site is used by any contract, with a retired currently-assigned
+  band kept visible (but never offered as a new choice for anyone else).
+  Contract scope is never touched by a site edit — verified directly.
+  No schema, migration, seed, or pricing-engine changes.
+- **Task K.3 ("Customer Site Access-Control & Pricing-Critical Field
+  Governance")** — closed a real gap Task K.2's own audit flagged: the
+  site creation and edit APIs authorized purely on "does this session
+  own this customer", with no awareness of which *fields* were being
+  touched. The real B2B portal UI (`app/b2b/page.tsx`'s `LocationsTab`)
+  has never sent `cityCode`/`zoneCode`/`distanceBandCode` — a customer
+  using the actual product has never been able to set them — but
+  nothing stopped a direct API call (CUSTOMER *or* DISPATCHER session)
+  from doing so, since "hiding it in the UI" was never a real
+  server-side guarantee. **Governance decision**: only ADMIN may set or
+  change these three fields, on both creation and edit — enforced in
+  `lib/siteFieldGovernance.ts` and checked server-side in both routes,
+  never relying on the frontend. DISPATCHER keeps full, unchanged access
+  to every operational field (label, address, contact info,
+  coordinates) but not these three, since no existing workflow
+  demonstrated a need and the safer default is preferred. CUSTOMER keeps
+  exactly what the real UI already does — operational fields for their
+  own sites only. DRIVER retains zero access, unchanged (already fully
+  excluded by the pre-existing tenant/role check in both routes).
+  **Execution order in the PATCH route, exactly as specified**:
+  (1) authentication/tenant/customer ownership, (2) field-level role
+  authorization, (3) the Task K.2 historical-pricing safety guard —
+  confirmed to still block even ADMIN when a delivered-but-unbilled
+  order exists, since role authorization and financial correctness are
+  independent checks, neither overriding the other — (4) Zod
+  validation plus the distance-band existence/active check, (5) the
+  update itself. The B2B portal's existing "Add a location" form gained
+  one small, purely informational line — the exact text this task
+  suggested — explaining why city/zone/distance-band aren't there; no
+  new portal feature was built, since there was never a field to hide
+  in the first place. No schema, migration, seed, pricing-engine, or
+  invoice changes.
+- **Task K.4 ("Dispatcher Customer/Site Operational Access Review")** —
+  closed the UI/API mismatch Task K.3 itself flagged: DISPATCHER already
+  had safe, legitimate API access to operational site fields, but
+  `/admin/customers` was ADMIN-only at the UI level, leaving no practical
+  way to use it. **Chosen model: Model B** — DISPATCHER admitted to the
+  module, since `lib/siteFieldGovernance.ts` (Task K.3) already fully
+  enforces ADMIN-only for cityCode/zoneCode/distanceBandCode
+  server-side; this UI change grants no new server-side permission, it
+  only gives an already-authorized role an actual path to use it —
+  exactly the condition this task's own instructions required before
+  Model B could be chosen at all. For a DISPATCHER session: the add-site
+  and edit forms never render an editable cityCode/zoneCode/
+  distanceBandCode input — not disabled, not hidden-but-present, wholly
+  absent — showing the exact specified note instead
+  ("City, zone, and distance band are managed by admins because they
+  affect contractual pricing."); the page's own "Contract Management"
+  link and the contract-pricing-eligibility warning are both hidden too,
+  since neither is relevant or safe to surface to this role; "Back to
+  Admin" becomes "Back to Dispatch" (linking to `/admin`, which is
+  ADMIN-only, would just redirect a dispatcher away). **A real bug
+  caught before shipping**: the site-edit save function originally sent
+  cityCode/zoneCode/distanceBandCode as explicit keys unconditionally
+  (even unchanged, pre-filled values) — since the server's field-level
+  check rejects a request the moment any of these keys is merely
+  *present*, this would have wrongly 403'd a DISPATCHER editing just an
+  address. Fixed by omitting these keys from the request body entirely
+  for a non-admin session, in both the create and edit forms. `GET
+  /api/contracts` and `GET /api/distance-bands` remain ADMIN-only,
+  untouched — for DISPATCHER those simply return empty arrays via this
+  page's existing error-tolerant fetch helper, the intended safe
+  degradation. No schema, migration, seed, pricing-engine, invoice, or
+  ERP changes.
+- **Task L ("Loading Point / Warehouse Operational Configuration")** —
+  a real, previously-unnoticed bug found and fixed: `POST
+  /api/warehouses` created two "19L Bottle" inventory rows for *every*
+  new warehouse unconditionally, regardless of tenant — meaning an
+  admin creating a new loading point for Riyadh Bulk Water through this
+  same API would have gotten unwanted bottle-specific stock rows forced
+  onto a tanker-only operation. Fixed generically, with no hardcoded
+  tenant name or sector check: the baseline bottle items are now only
+  auto-created when this tenant already has inventory tracking on at
+  least one other warehouse. A legacy bottle-water tenant (Demo Water
+  Co., Acme) gets exactly the same behavior as before — every new
+  warehouse still gets the same starting items, for operational
+  consistency — while a tenant with zero inventory tracking anywhere
+  (Riyadh today, or any future tanker-only tenant) now gets a clean
+  loading point with nothing forced onto it. Also added the smallest
+  safe `PATCH /api/warehouses/[id]` this schema supports — name,
+  address, and coordinates, tenant-isolated, partial-update, verified to
+  never touch inventory rows or any vehicle's `homeWarehouseId` — with a
+  matching edit control per loading-point card in the admin Inventory
+  tab. Extended `GET`'s existing ADMIN+DISPATCHER policy to this new
+  PATCH route too (the same operational-correction trust already
+  extended to DISPATCHER for customer sites in Task K.4 — there's no
+  pricing-critical field here to protect). Updated visible wording to
+  "Loading point / warehouse" throughout the admin Inventory tab and the
+  dispatch page's loading-point selector, and replaced the empty-stock
+  message with the exact wording this task specified
+  ("No tracked inventory. Loading confirmation will not require stock
+  deduction.") — shown only when a warehouse genuinely has zero
+  inventory rows, so legacy tenants with real stock are completely
+  unaffected. No schema, migration, or seedData changes — every fix
+  here is a route-behavior or wording change, not a data model change.
+- **Task M ("Loading Point Active/Inactive Lifecycle Audit")** —
+  primarily an audit/design task; schema was deliberately not touched.
+  **Dependency audit**: every consumer of `warehouseId`
+  (trip creation, loading confirmation, inventory adjustment, vehicle
+  `homeWarehouseId`, the dispatch selector) treats every warehouse as
+  unconditionally usable — there is no lifecycle-state check anywhere,
+  because no such field exists. This means a historical trip's
+  reference to a warehouse is already permanently safe by construction
+  (a plain FK, no cascading state), but there is also currently no way
+  to signal "don't dispatch from here anymore" other than word of mouth.
+
+  **Business decision matrix** (condensed — full scenario table
+  considered temporary closure, permanent retirement, stock-outs,
+  inactive vehicle homes, dispatcher selection, in-flight trips,
+  historical display, and both tracked/untracked-inventory tenants):
+  temporary closure and permanent retirement are the two scenarios with
+  real operational risk today (nothing stops a dispatcher from
+  selecting a loading point that's physically closed); historical trips
+  and reporting are already safe with no changes; inventory stock-outs
+  are already handled by the existing per-item quantity check,
+  independent of any lifecycle field.
+
+  **Recommended model: Option C** (`operationalAvailability`: AVAILABLE
+  / TEMPORARILY_CLOSED / RETIRED) over a plain boolean or a bare
+  ACTIVE/INACTIVE/RETIRED enum — a tanker loading point closing for a
+  day (e.g. maintenance) is a materially different situation from one
+  being permanently decommissioned, and dispatch/reporting should be
+  able to tell them apart (temporarily-closed still shows in history
+  and vehicle-home displays with a clear label; retired should
+  eventually stop being offered as a new vehicle home too). Recommended
+  defaults and behavior if ever implemented: every existing row
+  defaults to AVAILABLE on migration (zero behavior change on
+  deploy); dispatch's loading-point dropdown filters to AVAILABLE only;
+  history and completed-trip displays show every status, unfiltered,
+  labeled clearly; inventory display and stock validation are
+  completely unaffected either way, since they're independent of this
+  field; a vehicle whose home loading point becomes TEMPORARILY_CLOSED
+  or RETIRED should be flagged in the admin Fleet tab (not blocked —
+  homeWarehouseId is just a default suggestion for dispatch, never a
+  hard constraint) rather than silently reassigned. **Not implemented
+  in this task, deliberately** — this is a real schema/migration
+  decision that deserves its own reviewed task, not something to slip
+  in as a side effect of an audit.
+
+  **Safe improvement made**: a small, read-only note in the admin
+  Inventory tab stating this limitation plainly
+  ("Loading points don't yet support an active/inactive status — every
+  one listed here is available for dispatch and vehicle assignment.")
+  — informational only, no fake toggle, no schema, no migration, no
+  seed changes.
+- **Task N ("Dispatch Control Tower Readiness Review")** — a real,
+  significant gap found and fixed: `dispatchTrip()` and `resolveStop()`
+  had **zero error handling at all** — a failed dispatch action or stop
+  resolution gave the dispatcher no feedback whatsoever, the button just
+  sat there with no visible change and no way to know what went wrong.
+  `confirmLoading()` and `completeTrip()` had no try/catch around
+  `res.json()` (throws on an empty/unreadable body, matching the exact
+  class of bug the S1 hotfix fixed elsewhere in this codebase) and
+  didn't type-check `data.error`, risking a raw `[object Object]`
+  rendered as the error message. All four now match the same
+  try/finally pattern `createTrip()` already used correctly: busy state
+  always resets, real string errors are always surfaced, an unreadable
+  response is handled gracefully instead of throwing uncaught. Added
+  visible busy indicators for dispatch/close-trip actions
+  (previously silent) and surfaced the shared error state next to the
+  Live Trips list too, not just the trip planner, since these actions
+  live there. Added a selected-order summary (customer, site, contract
+  number if attached, status) in the trip planner, and a loading-point
+  inventory-readiness note next to the loading point selector — both
+  using data already embedded in existing API responses, zero new
+  endpoints. **Driver/dispatch consistency**: reviewed and confirmed
+  already correct — the driver page's PLANNED-trip messaging (from Task
+  G.2) already matches dispatch's own "Awaiting loading"/"Loaded"
+  labels precisely; no change needed. No schema, migration, seed,
+  pricing-engine, invoice, or ERP changes; loading-point lifecycle was
+  not implemented, per this task's own explicit boundary.
+- **Task N.1 ("LiveMap Marker Clarity & Map Fallback Review")** — a real,
+  significant gap found and fixed: `LiveMap.tsx` only ever rendered one
+  marker per trip, and that marker's fallback position (the first stop's
+  location, used before any GPS ping has landed) was rendered
+  **identically** to a genuine live GPS position — same label, same
+  title, nothing distinguishing "the vehicle is really here" from "this
+  trip was just dispatched, no GPS yet, showing where it's headed."
+  `resolveTripMapPosition()` (`lib/mapPosition.ts`) now returns an
+  `isLive` flag alongside the coordinates, so both `LiveMap.tsx` and
+  `app/dispatch/page.tsx` can be honest about which they're showing —
+  its own 6 existing tests were updated for the new shape, plus a 7th
+  added for a partial-position edge case reasoned through while making
+  the change. Marker titles now read `(live)` vs. `(no GPS yet — showing
+  destination: ...)` explicitly, and include the destination and
+  loading-point names as context in the same marker's title
+  (info-window-style, not a second marker — kept this a targeted clarity
+  fix rather than doubling the marker count per trip), using neutral
+  "destination" wording per this task's own multi-stop-future-readiness
+  guidance. The dispatch page's "View on map" button and "no
+  coordinates" message are equally honest now (`"View destination on
+  map (no GPS yet)"` vs. plain `"View on map"`). **Also fixed real map
+  failure handling that didn't exist at all**: no `script.onerror`, no
+  load timeout, and no try/catch around `new google.maps.Map(...)` meant
+  a script load failure, a silent hang, or a construction exception all
+  left the map container as a blank, unexplained 64px box forever — all
+  three now set a distinct failure state with a clear message confirming
+  dispatching, loading confirmation, and trip assignment all still work
+  normally without the map. Confirmed dispatch's other controls (order
+  queue, trip planner, trip list) are structurally independent of
+  `LiveMap`'s own render tree — a map failure was already incapable of
+  blocking them, this task only had to prove it, not fix it. No schema,
+  migration, seed, trip-lifecycle, pricing, invoice, or ERP changes.
+- **Task O ("Riyadh Bulk Water End-to-End Pilot Demo Audit")** — a
+  genuinely positive result: **the entire target demo journey works
+  end-to-end today, with zero application code changes needed.** Verified
+  empirically (not just read through) via a real API-level walkthrough of
+  every step: admin login → reviewing Riyadh's real customers/contracts/
+  loading point → dispatcher login → creating a pending order linked to
+  an active MONTHLY_ACCUMULATED contract → assigning a tanker/driver/
+  loading point (with the duplicate-assignment guard confirmed still
+  firing) → confirming loading at Riyadh's genuinely zero-inventory
+  loading point → dispatching the trip → the driver seeing that exact
+  trip → completing delivery with the minimum ePOD fields → the trip
+  showing COMPLETED to admin/dispatcher, with the delivered stop and
+  ePOD visible → the monthly billing preview correctly showing the
+  order as READY with a real, non-zero expected total — and confirming
+  this preview created zero invoices or line items in the process,
+  re-verifying Task I.5A's own guarantee against a genuine completed
+  demo trip rather than only a synthetic fixture.
+
+  **Every issue hit while building this walkthrough was a test-authoring
+  mistake, not an application bug** — caught and fixed in the course of
+  writing it: constructing an isolated driver by hand instead of using
+  the established `createIsolatedDriverAndVehicle` helper (a schema
+  NOT-NULL constraint on `licenseNumber` correctly rejected the
+  shortcut); picking a site-restricted contract without providing a
+  matching site (the API's own eligibility validation correctly
+  rejected this — genuinely correct behavior, not a bug, though worth
+  remembering when choosing a demo customer: prefer one whose contract
+  applies to all sites for the simplest path); and misreading the stop
+  resolution endpoint's actual `{ stop, order }` response shape.
+  **Zero production code was changed as a result of this task** — the
+  demo genuinely works as built.
+
+  **One pre-existing, already-documented gap re-confirmed, not newly
+  found**: `ONE_TIME_TRIP_COUNT` contract orders still get a
+  standard-priced (not contract-priced) invoice at delivery time — a
+  real gap Task E.1 already identified and documented as a future
+  feature, not a narrow bug. It does not affect the demo journey this
+  task audited, since that journey deliberately uses a
+  `MONTHLY_ACCUMULATED` contract, which correctly skips per-delivery
+  invoicing entirely. No schema, migration, seedData, pricing-engine,
+  invoice-generation-behavior, or ERP changes — nothing needed fixing.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

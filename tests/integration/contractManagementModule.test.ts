@@ -27,7 +27,7 @@ describe("Contract Management module (Task I)", () => {
 
     it("3. MONTHLY_ACCUMULATED contracts show billing-period readiness", () => {
       expect(moduleSource).toContain("Monthly billing readiness");
-      expect(moduleSource).toContain("currentPeriod");
+      expect(moduleSource).toContain("MonthlyBillingReadiness");
     });
 
     it("4. ONE_TIME_TRIP_COUNT contracts show trips purchased/used/remaining and overage", () => {

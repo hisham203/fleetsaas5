@@ -61,7 +61,19 @@ describe("Riyadh Bulk Water Logistics demo seed (Task F)", () => {
   });
 
   it("6. customer sites have cityCode/zoneCode/distanceBandCode populated", async () => {
-    const customerRows = await db.query.customers.findMany({ where: eq(customers.tenantId, tenantId) });
+    // Other test files (Task K's site-configuration tests) legitimately
+    // create their own customers/locations for this same real tenant,
+    // some deliberately without city/zone/band to test that this is
+    // still optional — filtering to the seed's own six known customer
+    // names keeps this scoped to what it's actually verifying, matching
+    // the same reasoning already applied to the vehicle/contract/
+    // distance-band filters above.
+    const seededCustomerNames = [
+      "Riyadh Towers Facilities", "Al Nakheel Compound", "Industrial Zone Operations",
+      "Metro Construction Site", "Hospital Facilities Group", "University Campus Services",
+    ];
+    const allCustomerRows = await db.query.customers.findMany({ where: eq(customers.tenantId, tenantId) });
+    const customerRows = allCustomerRows.filter((c) => seededCustomerNames.includes(c.name));
     const locations = await db.query.customerLocations.findMany({
       where: (l, { inArray }) => inArray(l.customerId, customerRows.map((c) => c.id)),
     });
@@ -71,7 +83,15 @@ describe("Riyadh Bulk Water Logistics demo seed (Task F)", () => {
   });
 
   it("7. distance bands exist, tenant-scoped, matching the four requested bands", async () => {
-    const rows = await db.query.distanceBands.findMany({ where: eq(distanceBands.tenantId, tenantId) });
+    const allRows = await db.query.distanceBands.findMany({ where: eq(distanceBands.tenantId, tenantId) });
+    // Other test files (Task I.2/I.3/I.4's pricing/distance-band UI
+    // tests) legitimately create their own distance bands (some
+    // deliberately retired) for this same real tenant, using their own
+    // distinct code prefix — filtering to the seed's own stable
+    // "RIYADH_" code prefix keeps this scoped to the 4 real seeded
+    // bands specifically, matching the same reasoning already applied
+    // to the vehicle/contract filters above.
+    const rows = allRows.filter((b) => b.code.startsWith("RIYADH_"));
     expect(rows.map((b) => b.code).sort()).toEqual(["RIYADH_CENTRAL_0_15", "RIYADH_FAR_50_PLUS", "RIYADH_MID_30_50", "RIYADH_NEAR_15_30"]);
     expect(rows.every((b) => b.isActive)).toBe(true);
   });

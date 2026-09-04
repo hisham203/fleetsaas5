@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import TopNav from "@/components/TopNav";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import { computeReadinessItems, type ReadinessState } from "@/lib/contractReadiness";
 
 // Task I — Contract Management Module, first slice (I.1 + a taste of I.2).
 // Deliberately a standalone route (not a tab bolted onto the already very
@@ -109,7 +110,7 @@ export default function ContractsPage() {
             />
             <div>
               {selectedId ? (
-                <ContractDetail contractId={selectedId} onChange={load} />
+                <ContractDetail contractId={selectedId} distanceBands={distanceBands} onChange={load} />
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 p-6 text-center text-steel text-sm">
                   Select a contract to see its full commercial detail — sites, pricing coverage, and billing readiness.
@@ -119,7 +120,7 @@ export default function ContractsPage() {
           </div>
         )}
 
-        <DistanceBandsSummary bands={distanceBands} />
+        <DistanceBandsSummary bands={distanceBands} onChange={load} />
       </div>
     </main>
   );
@@ -171,7 +172,23 @@ const CONTRACT_STATUS_TRANSITIONS: Record<string, string[]> = {
   SUSPENDED: ["ACTIVE", "CANCELLED"],
 };
 
-function ContractDetail({ contractId, onChange }: { contractId: string; onChange: () => void }) {
+function ReadinessBadge({ state }: { state: ReadinessState }) {
+  const styles: Record<ReadinessState, string> = {
+    READY: "text-ok",
+    WARNING: "text-warn",
+    MISSING: "text-danger",
+    UNSUPPORTED: "text-steel",
+  };
+  const labels: Record<ReadinessState, string> = {
+    READY: "Ready",
+    WARNING: "Warning",
+    MISSING: "Missing",
+    UNSUPPORTED: "Unsupported",
+  };
+  return <span className={`${styles[state]} font-medium`}>{labels[state]}</span>;
+}
+
+function ContractDetail({ contractId, distanceBands, onChange }: { contractId: string; distanceBands: any[]; onChange: () => void }) {
   const [contract, setContract] = useState<any>(null);
   const [pricingRules, setPricingRules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -221,7 +238,7 @@ function ContractDetail({ contractId, onChange }: { contractId: string; onChange
   const standardRules = pricingRules.filter((r) => r.rateType === "STANDARD");
   const overageRules = pricingRules.filter((r) => r.rateType === "OVERAGE");
   const capacitiesCovered = Array.from(new Set(pricingRules.map((r) => r.tankerCapacityLtr).filter((v) => v != null))).sort((a, b) => a - b);
-  const currentPeriod = (contract.periods ?? []).find((p: any) => p.status === "OPEN");
+  const readinessItems = computeReadinessItems(contract, pricingRules, distanceBands);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
@@ -231,6 +248,19 @@ function ContractDetail({ contractId, onChange }: { contractId: string; onChange
           <p className="font-medium">{contract.customer?.name}</p>
         </div>
         <StatusBadge status={contract.status} />
+      </div>
+
+      <div className="border border-slate-100 rounded-lg p-3">
+        <p className="text-xs text-steel uppercase tracking-wide mb-2">Contract readiness summary</p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          {readinessItems.map((item) => (
+            <div key={item.label} className="flex items-center justify-between gap-2">
+              <span>{item.label}</span>
+              <ReadinessBadge state={item.state} />
+            </div>
+          ))}
+        </div>
+        <p className="text-steel text-xs mt-2">Informational only — nothing here blocks using this contract.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 text-sm">
@@ -256,40 +286,20 @@ function ContractDetail({ contractId, onChange }: { contractId: string; onChange
         </div>
       )}
 
-      {isMonthly && (
-        <div className="border-t border-slate-100 pt-3">
-          <p className="text-xs text-steel uppercase tracking-wide mb-1">Monthly billing readiness</p>
-          {currentPeriod ? (
-            <p className="text-sm">
-              Current period: {new Date(currentPeriod.periodStart).toLocaleDateString()} – {new Date(currentPeriod.periodEnd).toLocaleDateString()}{" "}
-              ({currentPeriod.periodTrips} trip(s) so far, open)
-            </p>
-          ) : (
-            <p className="text-steel text-sm">No billing period opened yet — one is created automatically the first time a monthly invoice is generated for this contract.</p>
-          )}
-          <p className="text-steel text-xs mt-1">Manual monthly invoice generation is available via API only in this release.</p>
-        </div>
-      )}
+      {isMonthly && <MonthlyBillingReadiness contractId={contract.id} />}
 
       <div className="border-t border-slate-100 pt-3">
         <p className="text-xs text-steel uppercase tracking-wide mb-1">Site scope</p>
         {contract.appliesToAllSites ? (
           <p className="text-sm">Applies to all of this customer&apos;s sites (current and future).</p>
-        ) : (contract.siteScope ?? []).length === 0 ? (
-          <p className="text-warn text-sm">Restricted to specific sites, but none are assigned yet — no order can be attached to this contract until at least one site is added.</p>
         ) : (
-          <ul className="text-sm space-y-1">
-            {contract.siteScope.map((s: any) => (
-              <li key={s.id}>
-                {s.customerLocation?.label ?? s.customerLocationId}
-                <span className="text-steel text-xs">
-                  {" "}({s.customerLocation?.cityCode ?? "no city"} / {s.customerLocation?.zoneCode ?? "no zone"} / {s.customerLocation?.distanceBandCode ?? "no band"})
-                </span>
-              </li>
-            ))}
-          </ul>
+          <SiteScopeManager
+            contractId={contract.id}
+            customerId={contract.customerId}
+            siteScope={contract.siteScope ?? []}
+            onChange={load}
+          />
         )}
-        <p className="text-steel text-xs mt-1">Site assignment is available via API only in this release.</p>
       </div>
 
       <div className="border-t border-slate-100 pt-3">
@@ -299,13 +309,19 @@ function ContractDetail({ contractId, onChange }: { contractId: string; onChange
         </p>
         {isTripCount && (
           <p className="text-sm">
-            OVERAGE: {overageRules.length > 0 ? <span className="text-ok">{overageRules.length} rule(s)</span> : <span className="text-warn">none yet</span>}
+            OVERAGE: {overageRules.length > 0 ? <span className="text-ok">{overageRules.length} rule(s)</span> : <span className="text-warn">none yet — new trips beyond the purchased count cannot be priced until one is added</span>}
           </p>
         )}
         {capacitiesCovered.length > 0 && (
           <p className="text-steel text-xs mt-1">Tanker capacities covered: {capacitiesCovered.map((c) => `${c.toLocaleString()} L`).join(", ")}</p>
         )}
-        <p className="text-steel text-xs mt-1">Pricing rule setup is available via API only in this release.</p>
+        <PricingRulesManager
+          contractId={contract.id}
+          isTripCount={isTripCount}
+          pricingRules={pricingRules}
+          distanceBands={distanceBands}
+          onChange={load}
+        />
       </div>
 
       <div className="border-t border-slate-100 pt-3">
@@ -327,6 +343,392 @@ function ContractDetail({ contractId, onChange }: { contractId: string; onChange
           )}
         </div>
       </div>
+
+      <div className="border-t border-slate-100 pt-3">
+        <p className="text-xs text-steel uppercase tracking-wide mb-2">Not yet configurable (future schema work)</p>
+        <p className="text-steel text-xs mb-1">
+          These are real commercial factors this module doesn&apos;t support yet — not silently missing, just not built. See Task J&apos;s configuration audit for the full list and recommended phasing.
+        </p>
+        <ul className="text-steel text-xs list-disc list-inside space-y-0.5">
+          <li>Payment terms (due days, credit terms, grace period, payment method)</li>
+          <li>Customer billing requirements (PO/reference number, VAT/tax registration, billing contact)</li>
+          <li>Contract renewal (renewal date, auto-renewal, expiry alerts)</li>
+          <li>SLA terms (delivery lead time, guaranteed window, failed-SLA penalty)</li>
+          <li>Contract documents (signed contract reference, amendment history)</li>
+          <li>Commercial surcharges (fuel, distance, zone, waiting-time, urgent/night/weekend, cancellation, rescheduling fees)</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function SiteScopeManager({ contractId, customerId, siteScope, onChange }: { contractId: string; customerId: string; siteScope: any[]; onChange: () => void }) {
+  const [customerLocations, setCustomerLocations] = useState<any[]>([]);
+  const [locationsLoaded, setLocationsLoaded] = useState(false);
+  const [selectedLocationId, setSelectedLocationId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    // I.2: only this contract's own customer's sites are ever fetched or
+    // offered — GET /api/customers/[id]/locations already enforces the
+    // same tenant/customer boundary server-side, this is just scoping
+    // what the dropdown even shows.
+    fetch(`/api/customers/${customerId}/locations`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => {
+        setCustomerLocations(Array.isArray(rows) ? rows : []);
+        setLocationsLoaded(true);
+      });
+  }, [customerId]);
+
+  const assignedIds = new Set(siteScope.map((s: any) => s.customerLocationId));
+  const unassigned = customerLocations.filter((l) => !assignedIds.has(l.id));
+
+  async function addSite() {
+    if (!selectedLocationId) return;
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/contracts/${contractId}/sites`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerLocationIds: [selectedLocationId] }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : "Failed to assign site");
+      return;
+    }
+    setSelectedLocationId("");
+    onChange();
+  }
+
+  async function removeSite(customerLocationId: string) {
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/contracts/${contractId}/sites/${customerLocationId}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : "Failed to remove site");
+      return;
+    }
+    onChange();
+  }
+
+  return (
+    <div>
+      {siteScope.length === 0 ? (
+        <p className="text-warn text-sm">Restricted to specific sites, but none are assigned yet — no order can be attached to this contract until at least one site is added.</p>
+      ) : (
+        <ul className="text-sm space-y-1">
+          {siteScope.map((s: any) => (
+            <li key={s.id} className="flex items-center justify-between">
+              <span>
+                {s.customerLocation?.label ?? s.customerLocationId}
+                <span className="text-steel text-xs">
+                  {" "}({s.customerLocation?.cityCode ?? "no city"} / {s.customerLocation?.zoneCode ?? "no zone"} / {s.customerLocation?.distanceBandCode ?? "no band"})
+                </span>
+              </span>
+              <button disabled={busy} onClick={() => removeSite(s.customerLocationId)} className="text-danger text-xs font-medium disabled:opacity-40">
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {error && <p className="text-danger text-xs mt-2">{error}</p>}
+
+      <div className="flex gap-2 mt-2">
+        <select className="flex-1 border rounded-lg px-2 py-1.5 text-xs" value={selectedLocationId} onChange={(e) => setSelectedLocationId(e.target.value)} disabled={!locationsLoaded}>
+          <option value="">
+            {!locationsLoaded ? "Loading sites…" : unassigned.length === 0 ? "No more sites to assign" : "Select a site to add…"}
+          </option>
+          {unassigned.map((l) => (
+            <option key={l.id} value={l.id}>{l.label} ({l.cityCode ?? "no city"}/{l.zoneCode ?? "no zone"}/{l.distanceBandCode ?? "no band"})</option>
+          ))}
+        </select>
+        <button disabled={!selectedLocationId || busy} onClick={addSite} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
+          Add site
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PricingRulesManager({ contractId, isTripCount, pricingRules, distanceBands, onChange }: { contractId: string; isTripCount: boolean; pricingRules: any[]; distanceBands: any[]; onChange: () => void }) {
+  const [showForm, setShowForm] = useState(false);
+  const [rateType, setRateType] = useState<"STANDARD" | "OVERAGE">("STANDARD");
+  const [pricePerTrip, setPricePerTrip] = useState("");
+  const [vatRate, setVatRate] = useState("0.15");
+  const [priority, setPriority] = useState("");
+  const [effectiveStartDate, setEffectiveStartDate] = useState("");
+  const [effectiveEndDate, setEffectiveEndDate] = useState("");
+  const [capacityChoice, setCapacityChoice] = useState(""); // "" = wildcard, "custom" = show custom input
+  const [customCapacity, setCustomCapacity] = useState("");
+  const [cityCode, setCityCode] = useState("");
+  const [zoneCode, setZoneCode] = useState("");
+  const [distanceBandCode, setDistanceBandCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const activeBands = distanceBands.filter((b) => b.isActive);
+
+  async function createRule() {
+    setBusy(true);
+    setError("");
+    const tankerCapacityLtr =
+      capacityChoice === "" ? undefined : capacityChoice === "custom" ? (customCapacity ? Number(customCapacity) : undefined) : Number(capacityChoice);
+    const res = await fetch("/api/contract-pricing-rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pricingScope: "CONTRACT",
+        contractId,
+        rateType,
+        pricePerTrip: Number(pricePerTrip),
+        vatRate: Number(vatRate),
+        priority: priority ? Number(priority) : undefined,
+        effectiveStartDate: effectiveStartDate || undefined,
+        effectiveEndDate: effectiveEndDate || undefined,
+        tankerCapacityLtr,
+        cityCode: cityCode || undefined,
+        zoneCode: zoneCode || undefined,
+        distanceBandCode: distanceBandCode || undefined,
+      }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : JSON.stringify(data.error) || "Failed to create pricing rule");
+      return;
+    }
+    setPricePerTrip("");
+    setPriority("");
+    setEffectiveStartDate("");
+    setEffectiveEndDate("");
+    setCapacityChoice("");
+    setCustomCapacity("");
+    setCityCode("");
+    setZoneCode("");
+    setDistanceBandCode("");
+    setShowForm(false);
+    onChange();
+  }
+
+  async function retireRule(id: string) {
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/contract-pricing-rules/${id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : "Failed to retire pricing rule");
+      return;
+    }
+    onChange();
+  }
+
+  return (
+    <div className="mt-2">
+      {pricingRules.length > 0 && (
+        <table className="w-full text-xs mt-2">
+          <thead>
+            <tr className="text-left text-steel border-b border-slate-100">
+              <th className="pb-1">Rate</th>
+              <th className="pb-1">Capacity</th>
+              <th className="pb-1">City/Zone/Band</th>
+              <th className="pb-1">Price/trip</th>
+              <th className="pb-1">VAT</th>
+              <th className="pb-1">Priority</th>
+              <th className="pb-1">Effective</th>
+              <th className="pb-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {pricingRules.map((r) => {
+              const retired = r.effectiveEndDate != null && new Date(r.effectiveEndDate) <= new Date();
+              return (
+                <tr key={r.id} className={`border-b border-slate-50 ${retired ? "opacity-50" : ""}`}>
+                  <td className="py-1">{r.rateType}</td>
+                  <td className="py-1">{r.tankerCapacityLtr ? `${r.tankerCapacityLtr.toLocaleString()} L` : "any"}</td>
+                  <td className="py-1">{r.cityCode ?? "—"}/{r.zoneCode ?? "—"}/{r.distanceBandCode ?? "—"}</td>
+                  <td className="py-1">{r.pricePerTrip != null ? `SAR ${r.pricePerTrip}` : r.pricePerLiter != null ? `SAR ${r.pricePerLiter}/L` : "—"}</td>
+                  <td className="py-1">{(r.vatRate * 100).toFixed(0)}%</td>
+                  <td className="py-1">{r.priority ?? "—"}</td>
+                  <td className="py-1">
+                    {r.effectiveStartDate ? new Date(r.effectiveStartDate).toLocaleDateString() : "—"}
+                    {" – "}
+                    {r.effectiveEndDate ? new Date(r.effectiveEndDate).toLocaleDateString() : "open"}
+                  </td>
+                  <td className="py-1 text-right">
+                    {!retired && (
+                      <button disabled={busy} onClick={() => retireRule(r.id)} className="text-danger font-medium disabled:opacity-40">
+                        Retire
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {error && <p className="text-danger text-xs mt-2">{error}</p>}
+
+      <button onClick={() => setShowForm((s) => !s)} className="text-aquaDark text-xs font-medium mt-2">
+        {showForm ? "Cancel" : "+ Add pricing rule"}
+      </button>
+
+      {showForm && (
+        <div className="mt-2 space-y-2 border border-slate-100 rounded-lg p-3">
+          <div className="flex gap-4 text-xs">
+            <label className="flex items-center gap-1">
+              <input type="radio" checked={rateType === "STANDARD"} onChange={() => setRateType("STANDARD")} /> STANDARD
+            </label>
+            <label className="flex items-center gap-1">
+              <input type="radio" checked={rateType === "OVERAGE"} onChange={() => setRateType("OVERAGE")} /> OVERAGE
+            </label>
+          </div>
+          {rateType === "OVERAGE" && !isTripCount && (
+            <p className="text-steel text-xs">OVERAGE rules are normally only meaningful for one-time trip-count contracts, but this isn&apos;t enforced — create one only if it makes sense for this contract.</p>
+          )}
+
+          <div className="flex gap-2">
+            <input type="number" className="flex-1 border rounded-lg px-2 py-1 text-xs" placeholder="Price per trip (SAR)" value={pricePerTrip} onChange={(e) => setPricePerTrip(e.target.value)} />
+            <input type="number" step="0.01" className="w-24 border rounded-lg px-2 py-1 text-xs" placeholder="VAT (0.15)" value={vatRate} onChange={(e) => setVatRate(e.target.value)} />
+          </div>
+
+          <div>
+            <label className="text-xs text-steel">Tanker capacity (optional — leave blank to match any capacity)</label>
+            <div className="flex gap-2 mt-1">
+              <select className="flex-1 border rounded-lg px-2 py-1 text-xs" value={capacityChoice} onChange={(e) => setCapacityChoice(e.target.value)}>
+                <option value="">Any capacity</option>
+                <option value="18000">18,000 L</option>
+                <option value="21000">21,000 L</option>
+                <option value="28000">28,000 L</option>
+                <option value="custom">Custom…</option>
+              </select>
+              {capacityChoice === "custom" && (
+                <input type="number" className="w-28 border rounded-lg px-2 py-1 text-xs" placeholder="Liters" value={customCapacity} onChange={(e) => setCustomCapacity(e.target.value)} />
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <input className="w-1/3 border rounded-lg px-2 py-1 text-xs" placeholder="City code (optional)" value={cityCode} onChange={(e) => setCityCode(e.target.value)} />
+            <input className="w-1/3 border rounded-lg px-2 py-1 text-xs" placeholder="Zone code (optional)" value={zoneCode} onChange={(e) => setZoneCode(e.target.value)} />
+            <select className="w-1/3 border rounded-lg px-2 py-1 text-xs" value={distanceBandCode} onChange={(e) => setDistanceBandCode(e.target.value)}>
+              <option value="">Any distance band</option>
+              {activeBands.map((b) => (
+                <option key={b.id} value={b.code}>{b.code}</option>
+              ))}
+            </select>
+          </div>
+          {activeBands.length === 0 && <p className="text-steel text-xs">No distance bands exist yet for this tenant — create one below to price by distance.</p>}
+
+          <div className="flex gap-2">
+            <input type="number" className="w-1/3 border rounded-lg px-2 py-1 text-xs" placeholder="Priority (optional)" value={priority} onChange={(e) => setPriority(e.target.value)} />
+            <input type="date" className="w-1/3 border rounded-lg px-2 py-1 text-xs" placeholder="Effective from" value={effectiveStartDate} onChange={(e) => setEffectiveStartDate(e.target.value)} />
+            <input type="date" className="w-1/3 border rounded-lg px-2 py-1 text-xs" placeholder="Effective to (optional)" value={effectiveEndDate} onChange={(e) => setEffectiveEndDate(e.target.value)} />
+          </div>
+
+          <button disabled={!pricePerTrip || busy} onClick={createRule} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
+            Create pricing rule
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MonthlyBillingReadiness({ contractId }: { contractId: string }) {
+  const [preview, setPreview] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    fetch(`/api/contracts/${contractId}/monthly-billing-preview`)
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(typeof data.error === "string" ? data.error : "Failed to load billing preview");
+        setPreview(data);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [contractId]);
+
+  return (
+    <div className="border-t border-slate-100 pt-3">
+      <p className="text-xs text-steel uppercase tracking-wide mb-1">Monthly billing readiness</p>
+      {loading && <p className="text-steel text-sm">Checking readiness…</p>}
+      {error && <p className="text-danger text-sm">{error}</p>}
+      {preview && (
+        <div className="space-y-1">
+          <p className="text-sm">
+            Period: <span className="font-medium">{preview.billingPeriod.label}</span>
+          </p>
+
+          {preview.readiness === "ALREADY_BILLED" && (
+            <div>
+              <p className="text-ok text-sm font-medium">This billing period has already been invoiced.</p>
+              {preview.existingInvoice && (
+                <p className="text-steel text-xs mt-1">
+                  Invoice {preview.existingInvoice.invoiceNumber} — SAR {preview.existingInvoice.total?.toFixed(2)} ({preview.existingInvoice.status})
+                </p>
+              )}
+            </div>
+          )}
+
+          {preview.readiness === "READY" && (
+            <div>
+              <p className="text-ok text-sm font-medium">Ready for monthly billing</p>
+              <p className="text-sm">{preview.eligibleOrdersCount} delivered order(s) eligible</p>
+              <p className="text-sm">
+                Expected total: SAR {preview.expectedTotal.toFixed(2)}{" "}
+                <span className="text-steel text-xs">(subtotal SAR {preview.expectedSubtotal.toFixed(2)} + VAT SAR {preview.expectedVat.toFixed(2)})</span>
+              </p>
+            </div>
+          )}
+
+          {preview.readiness === "NOT_READY" && (
+            <div>
+              <p className="text-warn text-sm font-medium">Monthly billing is not ready</p>
+              {preview.eligibleOrdersCount > 0 && (
+                <p className="text-sm">{preview.eligibleOrdersCount} delivered order(s) found, but not all can be priced yet.</p>
+              )}
+              {(preview.blockers as string[]).map((b, i) => (
+                <p key={i} className="text-danger text-xs mt-1">{b}</p>
+              ))}
+            </div>
+          )}
+
+          {(preview.warnings as string[]).length > 0 && (
+            <div className="mt-1">
+              {preview.warnings.map((w: string, i: number) => (
+                <p key={i} className="text-steel text-xs">{w}</p>
+              ))}
+            </div>
+          )}
+
+          {/* I.5A: preview-only by design — this section deliberately has
+              no working action button. Invoice generation stays API-only
+              until the owner has reviewed the deployed Contract
+              Management module. */}
+          <button
+            disabled
+            title="Invoice generation will be enabled after operational review."
+            className="mt-2 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium opacity-40 cursor-not-allowed"
+          >
+            Generate invoice (disabled — pending operational review)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -419,9 +821,75 @@ function NewContractForm({ customers, onCreated }: { customers: any[]; onCreated
   );
 }
 
-function DistanceBandsSummary({ bands }: { bands: any[] }) {
+function DistanceBandsSummary({ bands, onChange }: { bands: any[]; onChange: () => void }) {
   const active = bands.filter((b) => b.isActive);
   const retired = bands.filter((b) => !b.isActive);
+
+  const [showForm, setShowForm] = useState(false);
+  const [code, setCode] = useState("");
+  const [label, setLabel] = useState("");
+  const [fromKm, setFromKm] = useState("");
+  const [toKm, setToKm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  // I.4: basic client-side checks so an obviously-invalid submission
+  // never even reaches the API — the API's own validation (fromKm < toKm,
+  // non-negative, code/label required) remains the real source of truth
+  // and is still fully relied on for anything this doesn't catch.
+  function validationError(): string | null {
+    if (!code.trim()) return "Code is required.";
+    if (!label.trim()) return "Label is required.";
+    const from = Number(fromKm);
+    if (fromKm === "" || Number.isNaN(from) || from < 0) return "From (km) must be a non-negative number.";
+    if (toKm !== "") {
+      const to = Number(toKm);
+      if (Number.isNaN(to) || to < 0) return "To (km) must be a non-negative number.";
+      if (to <= from) return "To (km) must be greater than From (km).";
+    }
+    return null;
+  }
+
+  async function createBand() {
+    const clientError = validationError();
+    if (clientError) {
+      setError(clientError);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    const res = await fetch("/api/distance-bands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, label, fromKm: Number(fromKm), toKm: toKm !== "" ? Number(toKm) : undefined }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : JSON.stringify(data.error) || "Failed to create distance band");
+      return;
+    }
+    setCode("");
+    setLabel("");
+    setFromKm("");
+    setToKm("");
+    setShowForm(false);
+    onChange();
+  }
+
+  async function retireBand(id: string) {
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/distance-bands/${id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : "Failed to retire distance band");
+      return;
+    }
+    onChange();
+  }
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4">
       <h3 className="font-medium mb-3">Distance bands</h3>
@@ -435,6 +903,7 @@ function DistanceBandsSummary({ bands }: { bands: any[] }) {
               <th className="pb-2">Label</th>
               <th className="pb-2">Range</th>
               <th className="pb-2">Status</th>
+              <th className="pb-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -444,6 +913,11 @@ function DistanceBandsSummary({ bands }: { bands: any[] }) {
                 <td className="py-2">{b.label}</td>
                 <td className="py-2 text-xs">{b.fromKm}–{b.toKm ?? "∞"} km</td>
                 <td className="py-2"><span className="text-ok text-xs">Active</span></td>
+                <td className="py-2 text-right">
+                  <button disabled={busy} onClick={() => retireBand(b.id)} className="text-danger text-xs font-medium disabled:opacity-40">
+                    Retire
+                  </button>
+                </td>
               </tr>
             ))}
             {retired.map((b) => (
@@ -451,13 +925,36 @@ function DistanceBandsSummary({ bands }: { bands: any[] }) {
                 <td className="py-2 font-mono text-xs">{b.code}</td>
                 <td className="py-2">{b.label}</td>
                 <td className="py-2 text-xs">{b.fromKm}–{b.toKm ?? "∞"} km</td>
-                <td className="py-2"><span className="text-steel text-xs">Retired</span></td>
+                <td className="py-2"><span className="text-steel text-xs">Retired{b.replacedByDistanceBandId ? " (replaced)" : ""}</span></td>
+                <td className="py-2"></td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      <p className="text-steel text-xs mt-3">Creating and retiring distance bands is available via API only in this release.</p>
+
+      {error && <p className="text-danger text-xs mt-3">{error}</p>}
+
+      <button onClick={() => setShowForm((s) => !s)} className="text-aquaDark text-xs font-medium mt-3">
+        {showForm ? "Cancel" : "+ New distance band"}
+      </button>
+
+      {showForm && (
+        <div className="mt-2 space-y-2 border border-slate-100 rounded-lg p-3 max-w-md">
+          <p className="text-steel text-xs">
+            Bands already used by a pricing rule or customer site can&apos;t have their range edited afterward — retire it and create a new one instead if a range needs correcting.
+          </p>
+          <input className="w-full border rounded-lg px-2 py-1 text-xs" placeholder="Code (e.g. RIYADH_FAR_50_PLUS)" value={code} onChange={(e) => setCode(e.target.value)} />
+          <input className="w-full border rounded-lg px-2 py-1 text-xs" placeholder="Label (e.g. Far Riyadh)" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <div className="flex gap-2">
+            <input type="number" className="w-1/2 border rounded-lg px-2 py-1 text-xs" placeholder="From (km)" value={fromKm} onChange={(e) => setFromKm(e.target.value)} />
+            <input type="number" className="w-1/2 border rounded-lg px-2 py-1 text-xs" placeholder="To (km, blank = open-ended)" value={toKm} onChange={(e) => setToKm(e.target.value)} />
+          </div>
+          <button disabled={busy} onClick={createBand} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
+            Create band
+          </button>
+        </div>
+      )}
     </div>
   );
 }

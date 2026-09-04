@@ -2,13 +2,14 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { contracts, contractPeriods, orders, invoices, invoiceLineItems, customerLocations } from "@/lib/db/schema";
+import { contracts, contractPeriods, invoices, invoiceLineItems, customerLocations } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId, genNumber, VAT_RATE } from "@/lib/helpers";
 import { calculateContractPrice, PricingEngineError } from "@/lib/contractPricing";
 import { determineRateType } from "@/lib/contractEligibility";
+import { getBillableOrdersForPeriod } from "@/lib/monthlyBillingEligibility";
 import { runAutomationRules } from "@/lib/automation";
-import { eq, and, inArray, gte, lte, isNotNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
 // Task E — Manual Monthly Billing Foundation. API-only, manually
@@ -89,28 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // includes the site-scope check; appliesToAllSites cannot change after
   // a contract is created (Task B's PATCH route doesn't allow it), so
   // that validation can't have gone stale since.
-  const candidateOrders = await db.query.orders.findMany({
-    where: and(
-      eq(orders.tenantId, tenantId),
-      eq(orders.contractId, contract.id),
-      inArray(orders.status, ["DELIVERED", "PARTIALLY_DELIVERED"]),
-      isNotNull(orders.completedAt),
-      gte(orders.completedAt, periodStart),
-      lte(orders.completedAt, periodEnd)
-    ),
-    with: {
-      location: true,
-      tripStop: { with: { trip: { with: { vehicle: true } } } },
-    },
-  });
-
-  const candidateIds = candidateOrders.map((o) => o.id);
-  const alreadyBilled =
-    candidateIds.length > 0
-      ? await db.query.invoiceLineItems.findMany({ where: inArray(invoiceLineItems.orderId, candidateIds) })
-      : [];
-  const alreadyBilledIds = new Set(alreadyBilled.map((li) => li.orderId));
-  const billableOrders = candidateOrders.filter((o) => !alreadyBilledIds.has(o.id));
+  const { billableOrders } = await getBillableOrdersForPeriod(tenantId, contract.id, periodStart, periodEnd);
 
   if (billableOrders.length === 0) {
     return NextResponse.json({ error: "No billable delivered orders found for this contract in the requested period" }, { status: 422 });

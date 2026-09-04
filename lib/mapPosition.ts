@@ -14,14 +14,26 @@
 // moment a "use client" component imports anything from that file at
 // all — confirmed by the dispatch page's bundle jumping from ~5KB to
 // ~135KB when this function briefly lived there instead.
+// Task N.1 audit finding: this previously returned only {lat, lng}, with
+// no way for either caller to tell whether the position came from a real
+// GPS ping or the first-stop fallback — meaning a just-dispatched trip
+// with no GPS yet was rendered on the map identically to one genuinely
+// being tracked live, labeled the same way, with nothing distinguishing
+// "this is the vehicle" from "this is where it's headed, not confirmed
+// live." Now returns `isLive` alongside the coordinates so both
+// LiveMap.tsx (marker labeling) and app/dispatch/page.tsx (the "View on
+// map" button's own text) can be honest about which one they're showing.
 export function resolveTripMapPosition(
   currentLat: number | null | undefined,
   currentLng: number | null | undefined,
   fallbackLat: number | null | undefined,
   fallbackLng: number | null | undefined
-): { lat: number; lng: number } | null {
-  const lat = currentLat ?? fallbackLat;
-  const lng = currentLng ?? fallbackLng;
-  if (lat == null || lng == null) return null;
-  return { lat, lng };
+): { lat: number; lng: number; isLive: boolean } | null {
+  if (currentLat != null && currentLng != null) {
+    return { lat: currentLat, lng: currentLng, isLive: true };
+  }
+  if (fallbackLat != null && fallbackLng != null) {
+    return { lat: fallbackLat, lng: fallbackLng, isLive: false };
+  }
+  return null;
 }

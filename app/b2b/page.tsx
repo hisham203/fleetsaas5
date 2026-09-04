@@ -263,6 +263,11 @@ function LocationsTab({ customerId, locations, onChange }: any) {
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Contact name" value={contactName} onChange={(e) => setContactName(e.target.value)} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Contact phone" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+          {/* Task K.3: city, zone, and distance band are deliberately
+              never shown here — see lib/siteFieldGovernance.ts. This is
+              purely informational; there's no hidden/disabled field to
+              explain, since this form has never sent these values. */}
+          <p className="text-steel text-xs">City, zone, and distance band are managed by the operator because they affect contractual pricing.</p>
           <button
             disabled={!label || !address || submitting}
             onClick={addLocation}

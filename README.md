@@ -392,7 +392,7 @@ real login call. This exercises the actual route logic — auth checks,
 tenant scoping, business rules — without the overhead or flakiness of a
 live server.
 
-**What's covered** (487 tests across 54 files):
+**What's covered** (644 tests across 68 files):
 - `tests/unit/` — pure logic with no database: SLA status calculation (all
   five states), VAT/invoice math, Google Maps route-optimization fallback
   behavior, the report-dataset registry's column whitelist validation
@@ -685,6 +685,21 @@ creation will be blocked, per BR-04.
 4. Contract status transitions (e.g. DRAFT → ACTIVE) are available from
    the detail view, respecting the same allowed-transition rules the API
    already enforces.
+5. **(Task I.2/I.3/I.4)** For a site-restricted contract, add and remove
+   customer sites directly from the detail view — only that contract's
+   own customer's unassigned sites are ever offered. Add a pricing rule
+   (STANDARD or OVERAGE) with a capacity quick-pick or a custom value,
+   and retire one to see it soft-deleted (greyed out, not removed) rather
+   than deleted outright. Create a distance band at the bottom of the
+   page — it's immediately selectable in the pricing-rule form without a
+   reload.
+6. **(Task I.5A)** A monthly-accumulated contract's detail view now shows
+   real billing readiness — READY, NOT_READY (with the specific
+   blocker, e.g. an order with no matching pricing rule), or
+   ALREADY_BILLED (with the existing invoice's number and total) — all
+   computed live from a read-only preview endpoint. The "Generate
+   invoice" control is visible but permanently disabled; nothing in this
+   release can create an invoice from the UI.
 
 ## Trying the billing refinements (discounts, contract pricing, credit notes, cash settlement)
 

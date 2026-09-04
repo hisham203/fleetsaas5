@@ -35,8 +35,11 @@ export default function DispatchPage() {
   const [orderError, setOrderError] = useState("");
   const [sla, setSla] = useState<{ orders: any[]; summary: any } | null>(null);
   const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
+  const [dispatchingTripId, setDispatchingTripId] = useState<string | null>(null);
+  const [completingTripId, setCompletingTripId] = useState<string | null>(null);
   const [exceptions, setExceptions] = useState<any[]>([]);
   const [escalations, setEscalations] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -44,7 +47,7 @@ export default function DispatchPage() {
     if (!tRes.ok) return;
     const t = await tRes.json();
     setTenant(t);
-    const [o, v, d, tr, c, s, wh, ex, esc] = await Promise.all([
+    const [o, v, d, tr, c, s, wh, ex, esc, inv] = await Promise.all([
       fetch(`/api/orders?tenantId=${t.id}`).then((r) => r.json()),
       fetch(`/api/vehicles?tenantId=${t.id}`).then((r) => r.json()),
       fetch(`/api/drivers?tenantId=${t.id}`).then((r) => r.json()),
@@ -54,6 +57,7 @@ export default function DispatchPage() {
       fetch(`/api/warehouses?tenantId=${t.id}`).then((r) => r.json()),
       fetch(`/api/exceptions?status=OPEN`).then((r) => r.json()),
       fetch(`/api/escalations?status=OPEN`).then((r) => r.json()),
+      fetch(`/api/inventory?tenantId=${t.id}`).then((r) => (r.ok ? r.json() : [])),
     ]);
     setOrders(o);
     setVehicles(v);
@@ -65,6 +69,7 @@ export default function DispatchPage() {
     setSla(s);
     setExceptions(ex);
     setEscalations(esc);
+    setInventory(Array.isArray(inv) ? inv : []);
   }, [session]);
 
   async function createOrder() {
@@ -83,7 +88,7 @@ export default function DispatchPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      setOrderError(data.error ?? "Failed to create order");
+      setOrderError(typeof data.error === "string" ? data.error : "Failed to create order");
       return;
     }
     setNewCustomerId("");
@@ -153,34 +158,79 @@ export default function DispatchPage() {
   async function confirmLoading(tripId: string) {
     setError("");
     setLoadingTripId(tripId);
-    const res = await fetch(`/api/trips/${tripId}/loading`, { method: "PATCH" });
-    const data = await res.json();
-    setLoadingTripId(null);
-    if (!res.ok) {
-      setError(data.error ?? "Failed to confirm loading");
-      return;
+    try {
+      const res = await fetch(`/api/trips/${tripId}/loading`, { method: "PATCH" });
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setError("Failed to confirm loading: the server returned an unreadable response.");
+        return;
+      }
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Failed to confirm loading");
+        return;
+      }
+      load();
+    } finally {
+      setLoadingTripId(null);
     }
-    load();
   }
 
+  // Task N audit finding: this previously had no error handling at
+  // all — a failed dispatch action gave the dispatcher zero feedback,
+  // the button just sat there with no visible change. Now matches the
+  // same busy/error pattern as every other action on this page.
   async function dispatchTrip(tripId: string) {
-    await fetch(`/api/trips/${tripId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "dispatch" }),
-    });
-    load();
+    setError("");
+    setDispatchingTripId(tripId);
+    try {
+      const res = await fetch(`/api/trips/${tripId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dispatch" }),
+      });
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setError("Failed to dispatch trip: the server returned an unreadable response.");
+        return;
+      }
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Failed to dispatch trip");
+        return;
+      }
+      load();
+    } finally {
+      setDispatchingTripId(null);
+    }
   }
 
   async function completeTrip(tripId: string) {
-    const res = await fetch(`/api/trips/${tripId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "complete" }),
-    });
-    const data = await res.json();
-    if (!res.ok) setError(data.error);
-    load();
+    setError("");
+    setCompletingTripId(tripId);
+    try {
+      const res = await fetch(`/api/trips/${tripId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete" }),
+      });
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setError("Failed to close trip: the server returned an unreadable response.");
+        return;
+      }
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Failed to close trip");
+        return;
+      }
+      load();
+    } finally {
+      setCompletingTripId(null);
+    }
   }
 
   // Resolves a stop directly from the Dispatch console — a fallback path
@@ -190,19 +240,39 @@ export default function DispatchPage() {
   // (action: "deliver" | "fail") — no new API, no new contract. A "Mark
   // delivered" quick action defaults to the full ordered quantity, since
   // this is a dispatcher override, not the detailed ePOD capture flow.
+  //
+  // Task N audit finding: this previously had no error handling at all,
+  // and resolvingStopId was only ever reset after a successful fetch —
+  // a network failure (fetch() itself throwing, not just a non-OK
+  // response) would have left the button stuck disabled forever.
   async function resolveStop(tripId: string, stopId: string, order: any, action: "deliver" | "fail") {
+    setError("");
     setResolvingStopId(stopId);
-    const body =
-      action === "deliver"
-        ? { action: "deliver", deliveredQty: order.qtyOrdered, emptiesCollected: order.emptyBottlesToCollect ?? 0, recipientName: "Dispatcher-confirmed" }
-        : { action: "fail", failureReason: "Marked failed from Dispatch console" };
-    await fetch(`/api/trips/${tripId}/stops/${stopId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setResolvingStopId(null);
-    load();
+    try {
+      const body =
+        action === "deliver"
+          ? { action: "deliver", deliveredQty: order.qtyOrdered, emptiesCollected: order.emptyBottlesToCollect ?? 0, recipientName: "Dispatcher-confirmed" }
+          : { action: "fail", failureReason: "Marked failed from Dispatch console" };
+      const res = await fetch(`/api/trips/${tripId}/stops/${stopId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setError("Failed to update stop: the server returned an unreadable response.");
+        return;
+      }
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Failed to update stop");
+        return;
+      }
+      load();
+    } finally {
+      setResolvingStopId(null);
+    }
   }
 
   if (sessionLoading || !session || !tenant) return <main className="min-h-screen bg-paper"><TopNav role="Dispatcher" /><p className="p-6 text-steel">Loading…</p></main>;
@@ -258,6 +328,13 @@ export default function DispatchPage() {
                 ...t,
                 fallbackLat: firstStop?.order?.lat ?? null,
                 fallbackLng: firstStop?.order?.lng ?? null,
+                // Neutral "destination" (not "customer site") — see
+                // Task N.1's multi-stop-future-readiness note in
+                // LiveMap.tsx itself. Falls back to the raw delivery
+                // address if the customer name is somehow unavailable,
+                // rather than showing nothing.
+                destinationLabel: firstStop?.order?.customer?.name ?? firstStop?.order?.deliveryAddress ?? null,
+                loadingPointLabel: t.warehouse?.name ?? null,
               };
             })}
           focusTripId={focusTripId}
@@ -330,6 +407,22 @@ export default function DispatchPage() {
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <h3 className="font-medium mb-3">Plan trip</h3>
           <p className="text-steel text-xs mb-2">{selected.length} order(s) selected · {selectedLoad} load(s) total</p>
+          {selected.length > 0 && (
+            <div className="mb-3 space-y-1.5 max-h-32 overflow-auto">
+              {orders.filter((o) => selected.includes(o.id)).map((o) => (
+                <div key={o.id} className="border border-slate-100 rounded-lg px-2 py-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{o.customer.name}</span>
+                    <StatusBadge status={o.status} />
+                  </div>
+                  <p className="text-steel">
+                    {o.location?.label ?? o.deliveryAddress}
+                    {o.contract ? ` · Contract ${o.contract.contractNumber}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="space-y-2">
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={driverId} onChange={(e) => setDriverId(e.target.value)}>
               <option value="">Select driver…</option>
@@ -354,11 +447,14 @@ export default function DispatchPage() {
               ))}
             </select>
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
-              <option value="">Loading from which warehouse?…</option>
+              <option value="">Loading point / warehouse…</option>
               {warehouses.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>
+            {warehouseId && !inventory.some((i) => i.warehouseId === warehouseId) && (
+              <p className="text-steel text-xs">No tracked inventory. Loading confirmation will not require stock deduction.</p>
+            )}
             {error && <p className="text-danger text-xs">{error}</p>}
             <button
               disabled={selected.length === 0 || !driverId || !vehicleId || !warehouseId || busy}
@@ -377,6 +473,7 @@ export default function DispatchPage() {
         {/* Live trips */}
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <h3 className="font-medium mb-3">Live trips</h3>
+          {error && <p className="text-danger text-xs mb-2">{error}</p>}
           <div className="space-y-3 max-h-[500px] overflow-auto">
             {activeTrips.map((t) => {
               // Matches the server's own definition exactly (see the
@@ -430,7 +527,10 @@ export default function DispatchPage() {
                   {(t.status === "DISPATCHED" || t.status === "IN_PROGRESS") && (() => {
                     const firstStop = [...t.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
                     const position = resolveTripMapPosition(t.currentLat, t.currentLng, firstStop?.order?.lat, firstStop?.order?.lng);
-                    return position ? (
+                    if (!position) {
+                      return <p className="text-warn text-xs mb-2">Live vehicle location unavailable — destination coordinates unavailable too.</p>;
+                    }
+                    return (
                       <button
                         onClick={() => {
                           setFocusTripId(t.id);
@@ -438,10 +538,8 @@ export default function DispatchPage() {
                         }}
                         className="w-full border border-slate-200 rounded-lg py-1.5 text-xs font-medium text-aquaDark mb-2"
                       >
-                        View on map
+                        {position.isLive ? "View on map" : "View destination on map (no GPS yet)"}
                       </button>
-                    ) : (
-                      <p className="text-warn text-xs mb-2">No coordinates available</p>
                     );
                   })()}
                   {t.status === "PLANNED" && !t.loadingConfirmed && (
@@ -454,18 +552,22 @@ export default function DispatchPage() {
                     </button>
                   )}
                   {t.status === "PLANNED" && t.loadingConfirmed && (
-                    <button onClick={() => dispatchTrip(t.id)} className="w-full bg-ink text-white rounded-lg py-1.5 text-xs font-medium">
-                      Dispatch trip
+                    <button
+                      onClick={() => dispatchTrip(t.id)}
+                      disabled={dispatchingTripId === t.id}
+                      className="w-full bg-ink text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
+                    >
+                      {dispatchingTripId === t.id ? "Dispatching…" : "Dispatch trip"}
                     </button>
                   )}
                   {t.status === "DISPATCHED" && (
                     <>
                       <button
                         onClick={() => completeTrip(t.id)}
-                        disabled={unresolvedStops.length > 0}
+                        disabled={unresolvedStops.length > 0 || completingTripId === t.id}
                         className="w-full bg-ok text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        Close trip
+                        {completingTripId === t.id ? "Closing…" : "Close trip"}
                       </button>
                       {unresolvedStops.length > 0 && (
                         <p className="text-steel text-xs mt-1 text-center">Resolve all pending stops before closing this trip.</p>
