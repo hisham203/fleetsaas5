@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useRequireSession } from "@/lib/useSession";
 import AdminShell from "@/components/AdminShell";
 import KpiCard from "@/components/KpiCard";
@@ -12,8 +13,26 @@ import KpiCard from "@/components/KpiCard";
 // itself — "Plan in Control Tower" links to the existing order-creation
 // flow (Dispatch Control Tower / the live Dispatch console), reusing the
 // real creation API rather than building a second, parallel path.
+//
+// Milestone S: useSearchParams() requires a Suspense boundary, per
+// Next.js's own build requirement.
 export default function ContractPlannerPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</div>}>
+      <ContractPlannerPageInner />
+    </Suspense>
+  );
+}
+
+function ContractPlannerPageInner() {
   const { session, loading: sessionLoading } = useRequireSession(["ADMIN", "DISPATCHER"]);
+  const searchParams = useSearchParams();
+  // Milestone S, Part 3/7: preserves the exact contract a user clicked
+  // "View in Planner" for from Contract Management — read once, matching
+  // the same one-time deep-link pattern already used elsewhere.
+  const focusContractId = searchParams.get("contractId");
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
+  const [deepLinkResolved, setDeepLinkResolved] = useState(false);
   const [tenant, setTenant] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +59,27 @@ export default function ContractPlannerPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Milestone S, Part 3/7: resolves the deep link once rows have loaded.
+  // Part 8's own requirement — a filter must never silently hide the
+  // item a deep link points at — is satisfied here by forcing the tab
+  // back to "all" whenever a real, matching contract is found, rather
+  // than leaving it at whatever tab happened to be selected before.
+  useEffect(() => {
+    if (deepLinkResolved) return;
+    if (!focusContractId) {
+      setDeepLinkResolved(true);
+      return;
+    }
+    if (loading) return;
+    const match = rows.find((r) => r.contractId === focusContractId);
+    if (match) {
+      setTab("all");
+    } else {
+      setDeepLinkNotice(`Contract ${focusContractId} was not found among active contracts — it may be inactive or belongs to a different tenant.`);
+    }
+    setDeepLinkResolved(true);
+  }, [deepLinkResolved, focusContractId, rows, loading]);
 
   if (sessionLoading || !session) {
     return <div className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</div>;
@@ -80,6 +120,9 @@ export default function ContractPlannerPage() {
         </div>
 
         {error && <p className="text-danger text-sm">{error}</p>}
+        {deepLinkNotice && (
+          <div className="bg-warn/10 border border-warn/30 rounded-lg px-4 py-2 text-warn text-sm">{deepLinkNotice}</div>
+        )}
 
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           {loading ? (
@@ -102,8 +145,10 @@ export default function ContractPlannerPage() {
                 </thead>
                 <tbody>
                   {filteredRows.map((r) => (
-                    <tr key={r.contractId} className="border-t border-slate-100">
-                      <td className="px-4 py-2 font-medium">{r.contractNumber}</td>
+                    <tr key={r.contractId} className={`border-t border-slate-100 ${focusContractId === r.contractId ? "bg-aqua/10" : ""}`}>
+                      <td className="px-4 py-2 font-medium">
+                        <a href={`/admin/contracts?contractId=${r.contractId}`} className="text-ink hover:text-aquaDark hover:underline">{r.contractNumber}</a>
+                      </td>
                       <td className="px-4 py-2 text-steel">{r.type.replace(/_/g, " ")}</td>
                       <td className="px-4 py-2">{r.customer?.name ?? "—"}</td>
                       <td className="px-4 py-2 text-steel">{r.appliesToAllSites ? "All sites" : `${r.siteCount} site(s)`}</td>
@@ -123,9 +168,9 @@ export default function ContractPlannerPage() {
                       </td>
                       <td className="px-4 py-2">
                         {r.readyForDispatch ? (
-                          <a href="/admin/dispatch" className="text-aquaDark hover:underline text-xs font-medium">Plan in Control Tower</a>
+                          <a href={`/admin/dispatch?contractId=${r.contractId}`} className="text-aquaDark hover:underline text-xs font-medium">Plan in Control Tower</a>
                         ) : (
-                          <a href={`/admin/contracts`} className="text-aquaDark hover:underline text-xs font-medium">Fix in Contract Management</a>
+                          <a href={`/admin/contracts?contractId=${r.contractId}`} className="text-aquaDark hover:underline text-xs font-medium">Fix in Contract Management</a>
                         )}
                       </td>
                     </tr>

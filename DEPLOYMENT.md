@@ -1121,6 +1121,37 @@ only placeholders.
   this was a layout-only milestone, confirmed by full-suite regression
   (all pre-existing tests, including every Task P.2 contract-priced
   invoice test and every monthly-billing test, pass unmodified).
+- **Milestone S ("Operations Deep Links & Detail Drawers")** — made the
+  Milestone R layout actually operational, not just visual. **Audit
+  finding**: the Dispatch Control Tower already sent `?tripId=`/
+  `?orderId=` to `/dispatch`, and `/dispatch` already read them,
+  auto-selected the matching trip, and opened a full detail drawer
+  (customer, site, contract, vehicle, capacity, driver, loading point,
+  quantity, loading/delivery status) — that half of this milestone had
+  already been built. The genuinely missing half was Contract Trip
+  Planner → Contract Management: the Planner already linked to
+  `/admin/contracts?contractId=...`, but `/admin/contracts` never read
+  that query param at all, so the contract list opened generically with
+  nothing selected — this is the fix this milestone actually delivered.
+  `/admin/contracts` now reads `contractId`, auto-selects the matching
+  contract (reusing the pre-existing `ContractDetail` panel, not a new
+  one), and shows a clear not-found notice for an unknown ID rather than
+  a silent blank state. A real "View in Planner" link was added to the
+  contract detail header, hidden for a `CANCELLED` contract (an earlier
+  draft of this incorrectly used a `RETIRED` status, which isn't real
+  for contracts in this schema — confirmed against the actual
+  `DRAFT/ACTIVE/SUSPENDED/CANCELLED` vocabulary and fixed before
+  shipping). The Planner itself now reads `contractId` too, so a link
+  back from Contracts highlights the right row and — per this
+  milestone's own filter-safety requirement — forces its own tab filter
+  back to "all" so an active filter can never silently hide the
+  contract a deep link points at. Both pages needed a `Suspense`
+  wrapper around `useSearchParams()`, the same Next.js requirement
+  Milestone R already hit once. No schema, migration, seedData,
+  pricing, billing, or ERP changes — confirmed directly by checking that
+  `app/api/trips/[id]/stops/[stopId]/route.ts`, `lib/contractPricing.ts`,
+  and `lib/erp/sync.ts` still carry their own Task P.2 markers unchanged,
+  and by a full contract-priced-delivery regression test run end to end.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

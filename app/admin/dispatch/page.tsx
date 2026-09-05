@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useRequireSession } from "@/lib/useSession";
 import AdminShell from "@/components/AdminShell";
 import KpiCard from "@/components/KpiCard";
@@ -40,8 +41,28 @@ const STATUS_TO_FILTER: Record<string, (typeof FILTERS)[number]> = {
   CANCELLED: "All",
 };
 
+// Milestone S, Part 8: accepts contractId/customerId/tripId/orderId query
+// params for cross-navigation context (e.g. from Contract Management's
+// "View active trips"). Filters to matching rows when present, with a
+// clear "Showing filtered results" indicator and a one-click reset —
+// deliberately not a full search/filter engine, just context
+// preservation, per this milestone's own scope.
 export default function DispatchControlTowerPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</div>}>
+      <DispatchControlTowerPageInner />
+    </Suspense>
+  );
+}
+
+function DispatchControlTowerPageInner() {
   const { session, loading: sessionLoading } = useRequireSession(["ADMIN", "DISPATCHER"]);
+  const searchParams = useSearchParams();
+  const contextContractId = searchParams.get("contractId");
+  const contextCustomerId = searchParams.get("customerId");
+  const contextTripId = searchParams.get("tripId");
+  const contextOrderId = searchParams.get("orderId");
+  const hasContext = !!(contextContractId || contextCustomerId || contextTripId || contextOrderId);
   const [tenant, setTenant] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +109,16 @@ export default function DispatchControlTowerPage() {
     exceptions: rows.filter((r) => r.operationalStatus === "EXCEPTION").length,
   };
 
-  const filteredRows = filter === "All" ? rows : rows.filter((r) => STATUS_TO_FILTER[r.operationalStatus] === filter);
+  const statusFilteredRows = filter === "All" ? rows : rows.filter((r) => STATUS_TO_FILTER[r.operationalStatus] === filter);
+  const filteredRows = hasContext
+    ? statusFilteredRows.filter(
+        (r) =>
+          (!contextContractId || r.contract?.id === contextContractId) &&
+          (!contextCustomerId || r.customer?.id === contextCustomerId) &&
+          (!contextTripId || r.tripId === contextTripId) &&
+          (!contextOrderId || r.orderId === contextOrderId)
+      )
+    : statusFilteredRows;
 
   return (
     <AdminShell title="Dispatch Control Tower" tenantName={tenant?.name}>
@@ -102,6 +132,13 @@ export default function DispatchControlTowerPage() {
           <KpiCard label="Pending Billing" value={kpi.pendingBilling} />
           <KpiCard label="Exceptions" value={kpi.exceptions} tone={kpi.exceptions > 0 ? "danger" : "default"} />
         </div>
+
+        {hasContext && (
+          <div className="bg-aqua/10 border border-aqua/30 rounded-lg px-4 py-2 text-sm flex items-center justify-between">
+            <span className="text-aquaDark">Showing filtered results for the linked {contextContractId ? "contract" : contextCustomerId ? "customer" : contextTripId ? "trip" : "order"}.</span>
+            <a href="/admin/dispatch" className="text-aquaDark hover:underline text-xs font-medium">View all</a>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {FILTERS.map((f) => (
@@ -155,9 +192,9 @@ export default function DispatchControlTowerPage() {
                       <td className="px-4 py-2"><StatusBadge status={r.billingStatus} /></td>
                       <td className="px-4 py-2">
                         {r.tripId ? (
-                          <a href="/dispatch" className="text-aquaDark hover:underline text-xs font-medium">Open in Dispatch</a>
+                          <a href={`/dispatch?tripId=${r.tripId}`} className="text-aquaDark hover:underline text-xs font-medium">Open in Dispatch</a>
                         ) : (
-                          <a href="/dispatch" className="text-aquaDark hover:underline text-xs font-medium">Plan / Assign</a>
+                          <a href={`/dispatch?orderId=${r.orderId}`} className="text-aquaDark hover:underline text-xs font-medium">Plan / Assign</a>
                         )}
                       </td>
                     </tr>

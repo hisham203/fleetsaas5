@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
@@ -20,8 +21,29 @@ import { computeReadinessItems, type ReadinessState } from "@/lib/contractReadin
 // create/edit UI, distance-band create/edit UI, and the monthly invoice
 // generation UI — each is its own later stage (I.2's remainder, I.3, I.4,
 // I.5), left as clear, honest gaps rather than rushed.
+//
+// Milestone S: useSearchParams() requires a Suspense boundary, per
+// Next.js's own build requirement (the same fix Milestone R/S already
+// applied to app/admin/page.tsx and app/dispatch/page.tsx).
 export default function ContractsPage() {
+  return (
+    <Suspense fallback={<AdminShell title="Contracts"><p className="p-6 text-steel">Loading…</p></AdminShell>}>
+      <ContractsPageInner />
+    </Suspense>
+  );
+}
+
+function ContractsPageInner() {
   const { session, loading: sessionLoading } = useRequireSession(["ADMIN"]);
+  const searchParams = useSearchParams();
+  // Milestone S, Part 3/6: preserves the exact contract a user clicked in
+  // Contract Trip Planner, rather than opening this screen generically.
+  // Read once on mount — a one-time "arrived from a deep link" action,
+  // not a persistent filter — exactly matching the pattern already used
+  // for tripId/orderId in app/dispatch/page.tsx.
+  const deepLinkContractId = searchParams.get("contractId");
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
+  const [deepLinkResolved, setDeepLinkResolved] = useState(false);
   const [tenant, setTenant] = useState<any>(null);
   const [contracts, setContracts] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -65,6 +87,27 @@ export default function ContractsPage() {
     load();
   }, [session, load]);
 
+  // Milestone S, Part 3/6: resolves a ?contractId= deep link from
+  // Contract Trip Planner into real selection state, exactly once, as
+  // soon as contracts have loaded. If the ID doesn't match anything real
+  // (e.g. the contract was since deleted, or belongs to another tenant),
+  // a clear notice is shown instead of a silent no-op or blank selection.
+  useEffect(() => {
+    if (deepLinkResolved) return;
+    if (!deepLinkContractId) {
+      setDeepLinkResolved(true);
+      return;
+    }
+    if (loading) return; // wait for first load to complete, regardless of result
+    const match = contracts.find((c) => c.id === deepLinkContractId);
+    if (match) {
+      setSelectedId(match.id);
+    } else {
+      setDeepLinkNotice(`Contract ${deepLinkContractId} was not found — it may have been removed or belongs to a different tenant.`);
+    }
+    setDeepLinkResolved(true);
+  }, [deepLinkResolved, deepLinkContractId, contracts, loading]);
+
   if (sessionLoading || !session) {
     return <AdminShell title="Contracts"><p className="p-6 text-steel">Loading…</p></AdminShell>;
   }
@@ -87,6 +130,10 @@ export default function ContractsPage() {
             {showNewContract ? "Cancel" : "+ New contract"}
           </button>
         </div>
+
+        {deepLinkNotice && (
+          <div className="bg-warn/10 border border-warn/30 rounded-lg px-4 py-2 text-warn text-sm">{deepLinkNotice}</div>
+        )}
 
         {showNewContract && (
           <NewContractForm
@@ -246,7 +293,19 @@ function ContractDetail({ contractId, distanceBands, onChange }: { contractId: s
           <p className="font-mono text-xs text-steel">{contract.contractNumber}</p>
           <p className="font-medium">{contract.customer?.name}</p>
         </div>
-        <StatusBadge status={contract.status} />
+        <div className="flex items-center gap-3">
+          {/* Milestone S, Part 7: a real, ID-based link back to the
+              Planner for this exact contract — not shown for a
+              CANCELLED contract, since planning trips against a
+              cancelled contract is never a real action a dispatcher
+              should take. */}
+          {contract.status !== "CANCELLED" && (
+            <a href={`/admin/contract-planner?contractId=${contract.id}`} className="text-aquaDark hover:underline text-xs font-medium">
+              View in Planner
+            </a>
+          )}
+          <StatusBadge status={contract.status} />
+        </div>
       </div>
 
       <div className="border border-slate-100 rounded-lg p-3">

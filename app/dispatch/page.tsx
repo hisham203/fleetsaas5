@@ -1,14 +1,37 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import TopNav from "@/components/TopNav";
 import StatusBadge from "@/components/StatusBadge";
 import LiveMap from "@/components/LiveMap";
 import { useRequireSession } from "@/lib/useSession";
 import { resolveTripMapPosition } from "@/lib/mapPosition";
 
+// Milestone S: useSearchParams() requires a Suspense boundary, per
+// Next.js's own build requirement (the same fix Milestone R already
+// applied to app/admin/page.tsx for the same reason).
 export default function DispatchPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</main>}>
+      <DispatchPageInner />
+    </Suspense>
+  );
+}
+
+function DispatchPageInner() {
   const { session, loading: sessionLoading } = useRequireSession(["ADMIN", "DISPATCHER"]);
+  const searchParams = useSearchParams();
+  // Milestone S — Part 3/5: preserves the exact trip/order a user clicked
+  // in the Dispatch Control Tower, rather than opening this screen
+  // generically. Read once on mount; deliberately not re-read on every
+  // searchParams change, since this is a one-time "arrived from a deep
+  // link" action, not a persistent filter.
+  const deepLinkTripId = searchParams.get("tripId");
+  const deepLinkOrderId = searchParams.get("orderId");
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
+  const [detailTripId, setDetailTripId] = useState<string | null>(null);
+  const [controlTowerRows, setControlTowerRows] = useState<any[]>([]);
   const [tenant, setTenant] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
@@ -47,7 +70,7 @@ export default function DispatchPage() {
     if (!tRes.ok) return;
     const t = await tRes.json();
     setTenant(t);
-    const [o, v, d, tr, c, s, wh, ex, esc, inv] = await Promise.all([
+    const [o, v, d, tr, c, s, wh, ex, esc, inv, ct] = await Promise.all([
       fetch(`/api/orders?tenantId=${t.id}`).then((r) => r.json()),
       fetch(`/api/vehicles?tenantId=${t.id}`).then((r) => r.json()),
       fetch(`/api/drivers?tenantId=${t.id}`).then((r) => r.json()),
@@ -58,6 +81,7 @@ export default function DispatchPage() {
       fetch(`/api/exceptions?status=OPEN`).then((r) => r.json()),
       fetch(`/api/escalations?status=OPEN`).then((r) => r.json()),
       fetch(`/api/inventory?tenantId=${t.id}`).then((r) => (r.ok ? r.json() : [])),
+      fetch(`/api/control-tower`).then((r) => (r.ok ? r.json() : [])),
     ]);
     setOrders(o);
     setVehicles(v);
@@ -70,6 +94,7 @@ export default function DispatchPage() {
     setExceptions(ex);
     setEscalations(esc);
     setInventory(Array.isArray(inv) ? inv : []);
+    setControlTowerRows(Array.isArray(ct) ? ct : []);
   }, [session]);
 
   async function createOrder() {
@@ -105,6 +130,44 @@ export default function DispatchPage() {
     const interval = setInterval(load, 4000);
     return () => clearInterval(interval);
   }, [session, load]);
+
+  // Milestone S — Part 3/5: resolves a ?tripId= or ?orderId= deep link
+  // from the Dispatch Control Tower into real selection state, exactly
+  // once, as soon as the data needed to resolve it has loaded. Never
+  // re-runs on the periodic 4s poll — this is a one-time "arrived via
+  // deep link" action, not a persistent filter that should keep
+  // re-triggering. If neither ID matches anything real (e.g. the trip
+  // was completed and rolled off the active list, or the order was since
+  // assigned), a clear notice is shown instead of a silent no-op.
+  const [deepLinkResolved, setDeepLinkResolved] = useState(false);
+  useEffect(() => {
+    if (deepLinkResolved) return;
+    if (!deepLinkTripId && !deepLinkOrderId) {
+      setDeepLinkResolved(true);
+      return;
+    }
+    if (trips.length === 0 && orders.length === 0) return; // wait for first load
+    if (deepLinkTripId) {
+      const match = trips.find((t) => t.id === deepLinkTripId);
+      if (match) {
+        setFocusTripId(match.id);
+        setFocusToken((x) => x + 1);
+        setDetailTripId(match.id);
+      } else {
+        setDeepLinkNotice(`Trip ${deepLinkTripId} was not found — it may have been completed or is no longer active.`);
+      }
+    } else if (deepLinkOrderId) {
+      const match = orders.find((o) => o.id === deepLinkOrderId);
+      if (match && (match.status === "PENDING" || match.status === "VALIDATED")) {
+        setSelected([match.id]);
+      } else if (match) {
+        setDeepLinkNotice(`Order ${match.orderNumber} is already assigned — check Live Trips instead of the dispatch queue.`);
+      } else {
+        setDeepLinkNotice(`Order ${deepLinkOrderId} was not found.`);
+      }
+    }
+    setDeepLinkResolved(true);
+  }, [deepLinkResolved, deepLinkTripId, deepLinkOrderId, trips, orders]);
 
   const pendingOrders = orders.filter((o) => o.status === "PENDING" || o.status === "VALIDATED");
   const availableVehicles = vehicles.filter((v) => v.status === "AVAILABLE");
@@ -279,7 +342,17 @@ export default function DispatchPage() {
 
   return (
     <main className="min-h-screen bg-paper">
-      <TopNav role={`Dispatcher — ${tenant.name}`} />
+      <TopNav
+        role={`Dispatcher — ${tenant.name}`}
+        extra={<a href="/admin/dispatch" className="text-steel hover:text-white text-sm">← Control Tower</a>}
+      />
+
+      {deepLinkNotice && (
+        <div className="bg-warn/10 border-b border-warn/30 px-6 py-2 text-sm text-warn flex items-center justify-between">
+          <span>{deepLinkNotice}</span>
+          <button onClick={() => setDeepLinkNotice(null)} className="text-warn hover:text-ink text-xs">Dismiss</button>
+        </div>
+      )}
 
       {sla && (sla.summary.breached > 0 || sla.summary.atRisk > 0) && (
         <div className="bg-white border-b border-slate-200 px-6 py-2 flex items-center gap-4 text-sm">
@@ -486,11 +559,16 @@ export default function DispatchPage() {
               const canResolveFromDispatch = t.status === "DISPATCHED" || t.status === "IN_PROGRESS";
 
               return (
-                <div key={t.id} className="border border-slate-100 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-xs">{t.tripNumber}</span>
-                    <StatusBadge status={t.status} />
-                  </div>
+                <div
+                  key={t.id}
+                  className={`border rounded-lg p-3 ${detailTripId === t.id ? "border-aquaDark ring-2 ring-aqua/30" : "border-slate-100"}`}
+                >
+                  <button onClick={() => setDetailTripId(detailTripId === t.id ? null : t.id)} className="w-full text-left">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-xs">{t.tripNumber}</span>
+                      <StatusBadge status={t.status} />
+                    </div>
+                  </button>
                   <p className="text-sm">{t.driver.user.name} · {t.vehicle.plateNumber}</p>
                   <p className="text-steel text-xs mb-2">
                     {t.stops.length} stop(s)
@@ -581,7 +659,59 @@ export default function DispatchPage() {
           </div>
         </div>
       </div>
+
+      {/* Milestone S, Part 4 Priority 1 — trip/order detail drawer. Reuses
+          the same GET /api/control-tower data the Control Tower itself
+          renders from (fetched once, above, alongside everything else)
+          for the fields raw trip data doesn't carry — source, billing
+          status, and contract — rather than duplicating that computation
+          or adding a new endpoint. */}
+      {detailTripId && (() => {
+        const trip = trips.find((t) => t.id === detailTripId);
+        if (!trip) return null;
+        const ctRow = controlTowerRows.find((r) => r.tripId === detailTripId);
+        const firstStop = [...trip.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
+        const order = firstStop?.order;
+        return (
+          <div className="fixed inset-0 z-40 flex justify-end">
+            <div className="absolute inset-0 bg-ink/30" onClick={() => setDetailTripId(null)} />
+            <aside className="relative w-full max-w-sm bg-white h-full overflow-auto shadow-xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">{trip.tripNumber}</h3>
+                <button onClick={() => setDetailTripId(null)} className="text-steel hover:text-ink text-sm">✕</button>
+              </div>
+              <div className="space-y-2 text-sm">
+                <DetailRow label="Trip status" value={<StatusBadge status={trip.status} />} />
+                {ctRow && <DetailRow label="Operational status" value={<StatusBadge status={ctRow.operationalStatus} />} />}
+                {ctRow && <DetailRow label="Billing status" value={<StatusBadge status={ctRow.billingStatus} />} />}
+                {ctRow && <DetailRow label="Source" value={<StatusBadge status={ctRow.source} />} />}
+                <DetailRow label="Customer" value={order?.customer?.name ?? "Not available"} />
+                <DetailRow label="Site" value={ctRow?.site?.label ?? order?.deliveryAddress ?? "Not available"} />
+                <DetailRow label="Contract" value={ctRow?.contract?.contractNumber ?? "Not on contract"} />
+                {ctRow?.contract && <DetailRow label="Contract type" value={ctRow.contract.type.replace(/_/g, " ")} />}
+                <DetailRow label="Vehicle" value={trip.vehicle?.plateNumber ?? "Not available"} />
+                <DetailRow label="Tanker capacity" value={trip.vehicle?.capacityLiters ? `${trip.vehicle.capacityLiters.toLocaleString()} L` : "Not available"} />
+                <DetailRow label="Driver" value={trip.driver?.user?.name ?? "Not available"} />
+                <DetailRow label="Loading point" value={trip.warehouse?.name ?? "Not available"} />
+                <DetailRow label="Order quantity" value={order?.qtyOrdered ?? "Not available"} />
+                <DetailRow label="Loading status" value={trip.loadingConfirmed ? "Confirmed" : "Awaiting loading"} />
+                <DetailRow label="Delivery status" value={firstStop?.status ?? "Not available"} />
+                {firstStop?.epod && <DetailRow label="Delivered qty" value={firstStop.epod.deliveredQty} />}
+              </div>
+            </aside>
+          </div>
+        );
+      })()}
     </main>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-slate-50 pb-2">
+      <span className="text-steel">{label}</span>
+      <span className="text-right font-medium">{value}</span>
+    </div>
   );
 }
 
