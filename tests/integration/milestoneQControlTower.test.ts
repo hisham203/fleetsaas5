@@ -63,7 +63,11 @@ describe("GET /api/contract-planner (Milestone Q, Gate Q5)", () => {
     const { GET: getPlanner } = await import("@/app/api/contract-planner/route");
     const res = await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }));
     expect(res.status).toBe(200);
-    const rows = await res.json();
+    // Milestone T, Part 7: the planner now returns {contracts, capacity,
+    // demand} instead of a bare array — the contracts list moved under
+    // .contracts, alongside the new capacity/demand planning sections.
+    const body = await res.json();
+    const rows = body.contracts;
     expect(Array.isArray(rows)).toBe(true);
     expect(rows.length).toBeGreaterThan(0);
     const row = rows[0];
@@ -86,7 +90,7 @@ describe("GET /api/contract-planner (Milestone Q, Gate Q5)", () => {
     });
     const { GET: getPlanner } = await import("@/app/api/contract-planner/route");
     const res = await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }));
-    const rows = await res.json();
+    const rows = (await res.json()).contracts;
     const found = rows.find((r: any) => r.contractId === contractId);
     expect(found).toBeTruthy();
     expect(found.readyForDispatch).toBe(false);

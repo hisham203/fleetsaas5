@@ -60,7 +60,7 @@ describe("Dispatch context resolution root-cause fix (Task S.1, Parts 2/4/5)", (
 
   it("a genuine data anomaly (assigned order, no locatable trip) gets an honest message, never a false claim about Live Trips", () => {
     const source = dispatchSource();
-    expect(source).toContain("could not be located");
+    expect(source).toContain("trip record could not be found");
   });
 
   it("7/8. an unknown/mismatched tripId or orderId still shows a clear not-found message (unchanged from Milestone S)", () => {
@@ -102,7 +102,7 @@ describe("Contract Planner readiness fix (Task S.1, Part 6/7)", () => {
     const { adminCookie, contractId } = await setupContract({ withStandard: true });
     const { GET: getPlanner } = await import("@/app/api/contract-planner/route");
     const res = await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }));
-    const rows = await res.json();
+    const rows = (await res.json()).contracts;
     const row = rows.find((r: any) => r.contractId === contractId);
     expect(row.readyForDispatch).toBe(true);
     // Confirm this contract still has UNSUPPORTED items (Payment terms,
@@ -114,7 +114,7 @@ describe("Contract Planner readiness fix (Task S.1, Part 6/7)", () => {
   it("10/14. a contract missing STANDARD pricing shows a specific blocked reason, not a bare 'Not ready'", async () => {
     const { adminCookie, contractId } = await setupContract({ withStandard: false });
     const { GET: getPlanner } = await import("@/app/api/contract-planner/route");
-    const rows = await (await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }))).json();
+    const rows = (await (await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }))).json()).contracts;
     const row = rows.find((r: any) => r.contractId === contractId);
     expect(row.readyForDispatch).toBe(false);
     expect(row.blockedReasons).toContain("STANDARD pricing configured");
@@ -123,7 +123,7 @@ describe("Contract Planner readiness fix (Task S.1, Part 6/7)", () => {
   it("15. an over-limit ONE_TIME_TRIP_COUNT contract missing OVERAGE pricing is still correctly reported as not ready, with overageActive true", async () => {
     const { adminCookie, contractId } = await setupContract({ totalTripsPurchased: 2, tripsUsed: 2, withStandard: true, withOverage: false });
     const { GET: getPlanner } = await import("@/app/api/contract-planner/route");
-    const rows = await (await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }))).json();
+    const rows = (await (await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }))).json()).contracts;
     const row = rows.find((r: any) => r.contractId === contractId);
     expect(row.overageActive).toBe(true);
     expect(row.tripsRemaining).toBe(0);
@@ -132,7 +132,7 @@ describe("Contract Planner readiness fix (Task S.1, Part 6/7)", () => {
   it("13. trips used/remaining are correctly exposed for a ONE_TIME_TRIP_COUNT contract", async () => {
     const { adminCookie, contractId } = await setupContract({ totalTripsPurchased: 5, tripsUsed: 2, withStandard: true });
     const { GET: getPlanner } = await import("@/app/api/contract-planner/route");
-    const rows = await (await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }))).json();
+    const rows = (await (await getPlanner(makeRequest("/api/contract-planner", { cookie: adminCookie }))).json()).contracts;
     const row = rows.find((r: any) => r.contractId === contractId);
     expect(row.tripsUsed).toBe(2);
     expect(row.tripsRemaining).toBe(3);
@@ -143,7 +143,7 @@ describe("Contract Planner readiness fix (Task S.1, Part 6/7)", () => {
     const monthly = await setupContract({ type: "MONTHLY_ACCUMULATED", withStandard: true });
     const tripCount = await setupContract({ type: "ONE_TIME_TRIP_COUNT", withStandard: true });
     const { GET: getPlanner } = await import("@/app/api/contract-planner/route");
-    const rows = await (await getPlanner(makeRequest("/api/contract-planner", { cookie: monthly.adminCookie }))).json();
+    const rows = (await (await getPlanner(makeRequest("/api/contract-planner", { cookie: monthly.adminCookie }))).json()).contracts;
     expect(rows.find((r: any) => r.contractId === monthly.contractId).operationalPath).toBe("MONTHLY_ACCUMULATION");
     expect(rows.find((r: any) => r.contractId === tripCount.contractId).operationalPath).toBe("DISPATCH_READY_TRIP");
   });

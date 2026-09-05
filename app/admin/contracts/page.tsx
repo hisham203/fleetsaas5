@@ -6,6 +6,7 @@ import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
 import { computeReadinessItems, type ReadinessState } from "@/lib/contractReadiness";
+import { deriveOperationalStatus, deriveBillingStatus } from "@/lib/controlTowerStatus";
 
 // Task I — Contract Management Module, first slice (I.1 + a taste of I.2).
 // Deliberately a standalone route (not a tab bolted onto the already very
@@ -42,6 +43,11 @@ function ContractsPageInner() {
   // not a persistent filter — exactly matching the pattern already used
   // for tripId/orderId in app/dispatch/page.tsx.
   const deepLinkContractId = searchParams.get("contractId");
+  // Milestone T, Part 5 — a customer's "+ New contract" link
+  // (/admin/contracts?new=1&customerId=X) auto-opens the exact same
+  // creation form already used everywhere else, with the customer
+  // prefilled — no second contract-creation code path.
+  const newContractCustomerId = searchParams.get("new") === "1" ? searchParams.get("customerId") : null;
   const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
   const [deepLinkResolved, setDeepLinkResolved] = useState(false);
   const [tenant, setTenant] = useState<any>(null);
@@ -49,7 +55,7 @@ function ContractsPageInner() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [distanceBands, setDistanceBands] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showNewContract, setShowNewContract] = useState(false);
+  const [showNewContract, setShowNewContract] = useState(!!newContractCustomerId);
   const [loading, setLoading] = useState(true);
 
   const safeFetchJson = useCallback(async (url: string) => {
@@ -138,6 +144,7 @@ function ContractsPageInner() {
         {showNewContract && (
           <NewContractForm
             customers={customers}
+            initialCustomerId={newContractCustomerId ?? undefined}
             onCreated={() => {
               setShowNewContract(false);
               load();
@@ -237,18 +244,21 @@ function ReadinessBadge({ state }: { state: ReadinessState }) {
 function ContractDetail({ contractId, distanceBands, onChange }: { contractId: string; distanceBands: any[]; onChange: () => void }) {
   const [contract, setContract] = useState<any>(null);
   const [pricingRules, setPricingRules] = useState<any[]>([]);
+  const [contractOrders, setContractOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusError, setStatusError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [c, pr] = await Promise.all([
+    const [c, pr, ord] = await Promise.all([
       fetch(`/api/contracts/${contractId}`).then((r) => (r.ok ? r.json() : null)),
       fetch(`/api/contract-pricing-rules?contractId=${contractId}`).then((r) => (r.ok ? r.json() : [])),
+      fetch(`/api/orders?contractId=${contractId}`).then((r) => (r.ok ? r.json() : [])),
     ]);
     setContract(c);
     setPricingRules(Array.isArray(pr) ? pr : []);
+    setContractOrders(Array.isArray(ord) ? ord : []);
     setLoading(false);
   }, [contractId]);
 
@@ -350,6 +360,89 @@ function ContractDetail({ contractId, distanceBands, onChange }: { contractId: s
             <a href={`/admin/contract-planner?contractId=${contract.id}`} className="text-aquaDark hover:underline font-medium inline-block">
               View in Planner
             </a>
+          </div>
+        );
+      })()}
+
+      {/* Milestone T, Part 6 — Operational Activity. Reuses the exact
+          same status functions Control Tower uses (lib/controlTowerStatus.ts)
+          so this summary can never disagree with what Control Tower shows
+          for the same orders. exception/invoice aren't fetched by this
+          summary view (Control Tower remains the authoritative place for
+          exception handling) — passed as null, which simply means the
+          EXCEPTION-override branch never fires here; every other bucket
+          is computed identically. */}
+      {(() => {
+        const buckets = { NEW: 0, READY_FOR_PLANNING: 0, WAITING_ASSIGNMENT: 0, ASSIGNED_WAITING_LOADING: 0, LOADED: 0, IN_TRANSIT: 0, DELIVERED: 0, EXCEPTION: 0, CANCELLED: 0 };
+        const rows = contractOrders.map((o: any) => {
+          const trip = o.tripStop?.trip ? { status: o.tripStop.trip.status, loadingConfirmed: o.tripStop.trip.loadingConfirmed } : null;
+          const input = { order: { status: o.status, contractId: o.contractId }, customer: o.customer ? { type: o.customer.type } : null, trip, stop: null, exception: null, invoice: null, contractType: contract.type };
+          const operationalStatus = deriveOperationalStatus(input);
+          const billingStatus = deriveBillingStatus(input);
+          buckets[operationalStatus] = (buckets[operationalStatus] ?? 0) + 1;
+          return { ...o, operationalStatus, billingStatus };
+        });
+        const pendingRows = rows.filter((r) => !["DELIVERED", "CANCELLED"].includes(r.operationalStatus));
+        const deliveredUnbilled = rows.filter((r) => r.operationalStatus === "DELIVERED" && r.billingStatus !== "INVOICED_PAID" && r.billingStatus !== "INVOICED_PENDING").length;
+
+        return (
+          <div className="border border-slate-100 rounded-lg p-3 space-y-3">
+            <p className="text-steel text-xs uppercase tracking-wide">Operational activity</p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="status-pill bg-steel/15 text-steel">New: {buckets.NEW + buckets.READY_FOR_PLANNING}</span>
+              <span className="status-pill bg-warn/15 text-warn">Waiting assignment/loading: {buckets.WAITING_ASSIGNMENT + buckets.ASSIGNED_WAITING_LOADING}</span>
+              <span className="status-pill bg-aqua/15 text-aquaDark">In transit: {buckets.LOADED + buckets.IN_TRANSIT}</span>
+              <span className="status-pill bg-ok/15 text-ok">Delivered: {buckets.DELIVERED}</span>
+              {buckets.EXCEPTION > 0 && <span className="status-pill bg-danger/15 text-danger">Exception: {buckets.EXCEPTION}</span>}
+            </div>
+
+            {isMonthly && (
+              <p className="text-xs text-steel">
+                Monthly accumulation: deliveries accumulate during the month and are invoiced manually at month-end.
+                {deliveredUnbilled > 0 && ` ${deliveredUnbilled} delivered order(s) awaiting the next monthly invoice.`}
+              </p>
+            )}
+            {!isMonthly && (
+              <p className="text-xs text-steel">
+                Each delivered trip consumes one purchased trip
+                {remaining != null && ` — ${remaining} remaining`}
+                {overageActive && ", currently at/over the purchased limit (OVERAGE pricing applies)"}.
+              </p>
+            )}
+
+            {pendingRows.length === 0 ? (
+              <div className="text-xs text-steel">
+                <p>No operational orders for this contract yet.</p>
+                <p className="mt-1">
+                  <a href={`/admin/contract-planner?contractId=${contract.id}`} className="text-aquaDark hover:underline">Go to Planner</a>
+                  {" · "}
+                  <a href={`/admin/customers`} className="text-aquaDark hover:underline">View customer/site</a>
+                </p>
+              </div>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="text-steel">
+                  <tr>
+                    <th className="text-left py-1">Order</th>
+                    <th className="text-left py-1">Status</th>
+                    <th className="text-left py-1">Billing</th>
+                    <th className="text-left py-1">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingRows.map((r) => (
+                    <tr key={r.id} className="border-t border-slate-50">
+                      <td className="py-1">{r.orderNumber}</td>
+                      <td className="py-1"><StatusBadge status={r.operationalStatus} /></td>
+                      <td className="py-1"><StatusBadge status={r.billingStatus} /></td>
+                      <td className="py-1">
+                        <a href={`/admin/dispatch?orderId=${r.id}`} className="text-aquaDark hover:underline">Open in Dispatch</a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         );
       })()}
@@ -824,8 +917,8 @@ function MonthlyBillingReadiness({ contractId }: { contractId: string }) {
   );
 }
 
-function NewContractForm({ customers, onCreated }: { customers: any[]; onCreated: () => void }) {
-  const [customerId, setCustomerId] = useState("");
+function NewContractForm({ customers, onCreated, initialCustomerId }: { customers: any[]; onCreated: () => void; initialCustomerId?: string }) {
+  const [customerId, setCustomerId] = useState(initialCustomerId ?? "");
   const [type, setType] = useState<"MONTHLY_ACCUMULATED" | "ONE_TIME_TRIP_COUNT">("MONTHLY_ACCUMULATED");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");

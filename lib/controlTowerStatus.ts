@@ -54,6 +54,27 @@ export function deriveOperationalStatus(input: DeriveInput): OperationalStatus {
     // column supports) is treated as one step further along, matching
     // this task's own "READY_FOR_PLANNING" concept.
     if (order.status === "VALIDATED" || order.status === "QUEUED") return "READY_FOR_PLANNING";
+    // Milestone T root-cause fix: an order can be genuinely DELIVERED
+    // with no trip/tripStop record at all — confirmed real, not
+    // hypothetical: scripts/seedRiyadhBulkWaterData.ts deliberately
+    // creates exactly this (two DELIVERED orders under monthly
+    // contracts, to populate the monthly billing preview demo, with no
+    // trip ever created for them) — representing a delivery recorded
+    // without full dispatch tracking. Reporting this as NEW was the
+    // exact contradiction this task exists to fix: Control Tower said
+    // NEW while billing status correctly said DEFERRED_MONTHLY (which
+    // only ever fires for a delivered order), and Dispatch's own
+    // deep-link resolver separately called it "assigned" — three
+    // different, mutually contradictory readings of one real state.
+    if (order.status === "DELIVERED" || order.status === "PARTIALLY_DELIVERED") return "DELIVERED";
+    // An order whose status implies a trip should exist (ASSIGNED,
+    // IN_TRANSIT) but has none is a genuine data anomaly, never
+    // hidden as ordinary NEW — the atomic transaction in
+    // app/api/trips/route.ts sets both together, so this should not
+    // happen in normal operation, but if it ever does (a manual DB
+    // edit, a future code path that doesn't preserve this invariant),
+    // it must be visibly flagged, not silently misreported.
+    if (order.status === "ASSIGNED" || order.status === "IN_TRANSIT") return "EXCEPTION";
     return "NEW";
   }
 

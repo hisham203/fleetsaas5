@@ -1193,6 +1193,44 @@ only placeholders.
   or ERP changes — confirmed by file-timestamp inspection of every
   file this task's own boundaries named, and by a full contract-priced
   delivery regression test run end to end.
+- **Milestone T ("Operations Planning Engine")** — fixed the real
+  Control Tower ↔ Dispatch contradiction and turned the Contract Planner
+  into a demand/capacity planner. **Root cause** (confirmed empirically,
+  not guessed): `deriveOperationalStatus` returned NEW whenever an order
+  had no linked trip, regardless of `order.status` — while Dispatch's
+  deep-link resolver branched on `order.status` first. These two ground
+  truths disagreed on the exact order the user reported: a
+  RBW-HOSPITAL-MONTHLY order that `scripts/seedRiyadhBulkWaterData.ts`
+  deliberately creates as DELIVERED with no trip (to populate the
+  monthly billing preview demo). Control Tower showed NEW (wrong),
+  billing status showed DEFERRED MONTHLY (right, delivered-only), and
+  Dispatch called it "assigned" — three contradictory readings of one
+  row. **Fix**: both `lib/controlTowerStatus.ts` and `app/dispatch/
+  page.tsx` now resolve identically — trip existence first, then
+  `order.status`: PENDING/VALIDATED/QUEUED → new demand; DELIVERED/
+  PARTIALLY_DELIVERED → genuinely completed (readonly, the real seed
+  case); ASSIGNED/IN_TRANSIT with no trip → a true data anomaly, shown
+  as EXCEPTION / a status-specific "may require admin review" message,
+  never silently mislabeled. **Customers & Sites** gained a
+  Contracts & Operational Activity panel (contracts + pending orders via
+  the existing `GET /api/orders?customerId=` filter) and a "+ New
+  contract" link using `/admin/contracts?new=1&customerId=`, which the
+  contracts page now reads to prefill the existing create form — no
+  duplicated creation logic. **Contract detail** gained an Operational
+  Activity section (bucketed order counts via the same shared status
+  functions, a pending-orders table, monthly-vs-one-time explanation,
+  and a clear empty state) backed by a new `contractId` filter on
+  `GET /api/orders`. **Contract Planner** became the "Contract & Capacity
+  Planner": its API now returns `{contracts, capacity, demand}` —
+  capacity grouped by real tanker size (18000/21000/28000/OTHER) with
+  available/total counts and driver availability, demand split into
+  contract-linked vs non-contract pending — and the page renders demand
+  and capacity sections. Automatic trip generation from contracts does
+  not exist and is honestly disclosed as such ("No automatic trip/order
+  generation from contracts exists yet"), not faked. No schema,
+  migration, seedData, pricing, billing, or ERP changes — confirmed by
+  file-timestamp inspection of every protected file and a full
+  contract-priced-delivery regression test run end to end.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

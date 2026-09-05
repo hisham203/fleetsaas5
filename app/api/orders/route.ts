@@ -40,6 +40,11 @@ export async function GET(req: NextRequest) {
 
   const status = req.nextUrl.searchParams.get("status");
   let customerId = req.nextUrl.searchParams.get("customerId");
+  // Milestone T, Part 6 — Contract Management's operational activity
+  // section needs this order's contract-linked demand; added here as a
+  // small extension to this existing, already-protected endpoint rather
+  // than a new one.
+  const contractId = req.nextUrl.searchParams.get("contractId");
   let tenantId: string;
 
   if (session.type === "CUSTOMER") {
@@ -57,6 +62,7 @@ export async function GET(req: NextRequest) {
     eq(orders.tenantId, tenantId),
     status ? eq(orders.status, status) : undefined,
     customerId ? eq(orders.customerId, customerId) : undefined,
+    contractId ? eq(orders.contractId, contractId) : undefined,
   ].filter(Boolean) as any[];
 
   const rows = await db.query.orders.findMany({

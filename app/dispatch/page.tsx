@@ -158,23 +158,20 @@ function DispatchPageInner() {
       }
     } else if (deepLinkOrderId) {
       const match = orders.find((o) => o.id === deepLinkOrderId);
-      if (match && (match.status === "PENDING" || match.status === "VALIDATED")) {
-        setSelected([match.id]);
-      } else if (match) {
-        // Task S.1 root-cause fix: an order this far along already has a
-        // real trip — GET /api/orders embeds tripStop.trip precisely so
-        // this lookup is possible without a second API call. The old
-        // code here never followed this link at all; it just told the
-        // user to "check Live Trips" without verifying the trip was
-        // actually there, which is exactly how a user could end up
-        // looking at an empty Live Trips section for an order the app
-        // itself says is assigned. The full trip object (with vehicle/
-        // driver/warehouse/stops embeds the detail drawer needs) is
-        // looked up from the separately-loaded `trips` array, which
-        // includes every status — not just the active ones "Live Trips"
-        // displays — so a completed trip's readonly detail still opens
-        // correctly (Part 3, bucket 5) even though it won't appear in
-        // the Live Trips list itself.
+      if (match) {
+        // Milestone T root-cause fix: trip existence is checked FIRST,
+        // exactly matching lib/controlTowerStatus.ts's own ground truth
+        // — the previous version branched on order.status first, which
+        // is exactly how Control Tower and Dispatch ended up
+        // disagreeing about the same order (Control Tower said NEW,
+        // Dispatch said "marked as assigned" for an order that was
+        // actually DELIVERED with no trip record at all — a real,
+        // confirmed seed-data scenario, not hypothetical). GET
+        // /api/orders embeds tripStop.trip precisely so this lookup is
+        // possible without a second API call; the full trip object
+        // (with vehicle/driver/warehouse/stops embeds the detail
+        // drawer needs) is looked up from the separately-loaded `trips`
+        // array, which includes every status.
         const linkedTripId = match.tripStop?.trip?.id;
         const linkedTrip = linkedTripId ? trips.find((t) => t.id === linkedTripId) : null;
         if (linkedTrip) {
@@ -192,11 +189,21 @@ function DispatchPageInner() {
           } else {
             setDeepLinkNotice(`Order ${match.orderNumber} is already assigned. It is shown below under Live Trips.`);
           }
+        } else if (match.status === "PENDING" || match.status === "VALIDATED" || match.status === "QUEUED") {
+          // No trip, and the order's own status agrees it's genuinely
+          // new/unassigned demand — select it for planning, exactly as
+          // Control Tower's NEW/READY_FOR_PLANNING buckets show it.
+          setSelected([match.id]);
+        } else if (match.status === "DELIVERED" || match.status === "PARTIALLY_DELIVERED") {
+          // Genuinely completed, just never trip-tracked (the confirmed
+          // seed pattern above) — readonly, not an error, and not
+          // "assigned" either.
+          setDeepLinkNotice(`Order ${match.orderNumber} is already completed. No trip record is linked for it (this can happen for deliveries recorded without full dispatch tracking).`);
         } else {
           // A genuine data anomaly (the order says assigned but no
           // matching trip is in the currently loaded set) — never
           // silently hidden behind the old generic message.
-          setDeepLinkNotice(`Order ${match.orderNumber} is marked as assigned, but its trip could not be located — try refreshing the page.`);
+          setDeepLinkNotice(`Order ${match.orderNumber} is marked as ${match.status.toLowerCase()}, but its trip record could not be found — this may require admin review.`);
         }
       } else {
         setDeepLinkNotice(`Order ${deepLinkOrderId} was not found.`);

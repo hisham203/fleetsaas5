@@ -35,7 +35,7 @@ describe("Dispatch Control Tower -> Dispatch deep link (Milestone S, Parts 3A/5)
   it("3. the Dispatch screen auto-selects the clicked trip (focus + detail) or order (queue selection) once data has loaded", () => {
     const source = dispatchSource();
     const effectStart = source.indexOf("if (deepLinkResolved) return;");
-    const effectBody = source.slice(effectStart, effectStart + 1200);
+    const effectBody = source.slice(effectStart, effectStart + 4200);
     expect(effectBody).toContain("setFocusTripId(match.id)");
     expect(effectBody).toContain("setDetailTripId(match.id)");
     expect(effectBody).toContain("setSelected([match.id])");

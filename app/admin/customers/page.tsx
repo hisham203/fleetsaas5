@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
+import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
 import { computeSiteReadinessItems, type SiteReadinessState } from "@/lib/siteReadiness";
 
@@ -115,14 +116,17 @@ export default function CustomersConfigPage() {
               selectedId={selectedId}
               onSelect={setSelectedId}
             />
-            <div>
+            <div className="space-y-4">
               {selectedCustomer ? (
-                <CustomerSitesPanel
-                  customer={selectedCustomer}
-                  contracts={contractsByCustomer.get(selectedCustomer.id) ?? []}
-                  distanceBands={distanceBands}
-                  isAdmin={isAdmin}
-                />
+                <>
+                  <CustomerOperationsPanel customer={selectedCustomer} contracts={contractsByCustomer.get(selectedCustomer.id) ?? []} isAdmin={isAdmin} />
+                  <CustomerSitesPanel
+                    customer={selectedCustomer}
+                    contracts={contractsByCustomer.get(selectedCustomer.id) ?? []}
+                    distanceBands={distanceBands}
+                    isAdmin={isAdmin}
+                  />
+                </>
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 p-6 text-center text-steel text-sm">
                   Select a customer to see and manage their delivery sites.
@@ -188,6 +192,92 @@ function SiteReadinessBadges({ site }: { site: any }) {
         </span>
       ))}
     </span>
+  );
+}
+
+// Milestone T, Part 5 — Customers & Sites becomes a real operational
+// hub: this panel is purely additive alongside the existing
+// CustomerSitesPanel (which is left completely untouched), showing the
+// contracts this customer already has (reusing the same `contracts`
+// data the page already fetches — no new contract-list endpoint) and
+// this customer's pending/planned orders (one new, read-only fetch
+// against the existing GET /api/orders?customerId= filter). "New
+// contract" does not duplicate any contract-creation logic — it links
+// to the existing /admin/contracts creation flow with customerId
+// prefilled via query param, exactly per this task's own preferred
+// pattern, rather than building a second contract form here.
+function CustomerOperationsPanel({ customer, contracts, isAdmin }: { customer: any; contracts: any[]; isAdmin: boolean }) {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/orders?customerId=${customer.id}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setOrders(Array.isArray(data) ? data : []))
+      .finally(() => setLoading(false));
+  }, [customer.id]);
+
+  const activeContracts = contracts.filter((c) => c.status === "ACTIVE");
+  const draftContracts = contracts.filter((c) => c.status === "DRAFT");
+  // "Pending/planned" here means demand that hasn't reached a terminal
+  // state yet — not yet delivered, failed, or cancelled — matching this
+  // task's own "pending/planned orders" language rather than inventing
+  // a new status category.
+  const pendingOrders = orders.filter((o) => !["DELIVERED", "PARTIALLY_DELIVERED", "FAILED", "CANCELLED"].includes(o.status));
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium">Contracts &amp; Operational Activity</h3>
+        {isAdmin && (
+          <a href={`/admin/contracts?new=1&customerId=${customer.id}`} className="text-aquaDark hover:underline text-xs font-medium">
+            + New contract
+          </a>
+        )}
+      </div>
+
+      <div>
+        <p className="text-steel text-xs uppercase tracking-wide mb-1.5">Contracts ({contracts.length})</p>
+        {contracts.length === 0 ? (
+          <p className="text-steel text-sm">No contracts yet for this customer.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {contracts.map((c) => (
+              <div key={c.id} className="flex items-center justify-between text-sm border-t border-slate-50 pt-1.5">
+                <a href={`/admin/contracts?contractId=${c.id}`} className="text-ink hover:text-aquaDark hover:underline">{c.contractNumber}</a>
+                <span className="text-steel text-xs">
+                  {c.type === "ONE_TIME_TRIP_COUNT" && c.totalTripsPurchased != null ? `${c.tripsUsed} / ${c.totalTripsPurchased} trips` : c.type.replace(/_/g, " ")}
+                </span>
+                <StatusBadge status={c.status} />
+              </div>
+            ))}
+          </div>
+        )}
+        {(activeContracts.length > 0 || draftContracts.length > 0) && (
+          <p className="text-steel text-xs mt-1">{activeContracts.length} active · {draftContracts.length} draft</p>
+        )}
+      </div>
+
+      <div>
+        <p className="text-steel text-xs uppercase tracking-wide mb-1.5">Pending / planned orders</p>
+        {loading ? (
+          <p className="text-steel text-sm">Loading…</p>
+        ) : pendingOrders.length === 0 ? (
+          <p className="text-steel text-sm">No pending or planned orders for this customer right now.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {pendingOrders.map((o) => (
+              <div key={o.id} className="flex items-center justify-between text-sm border-t border-slate-50 pt-1.5">
+                <span>{o.orderNumber}</span>
+                <span className="text-steel text-xs">{o.location?.label ?? o.deliveryAddress ?? "—"}</span>
+                <a href={`/admin/dispatch?orderId=${o.id}`} className="text-aquaDark hover:underline text-xs font-medium">Open in Dispatch</a>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

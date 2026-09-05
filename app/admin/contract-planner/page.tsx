@@ -35,6 +35,8 @@ function ContractPlannerPageInner() {
   const [deepLinkResolved, setDeepLinkResolved] = useState(false);
   const [tenant, setTenant] = useState<any>(null);
   const [rows, setRows] = useState<any[]>([]);
+  const [capacity, setCapacity] = useState<any>(null);
+  const [demand, setDemand] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"all" | "ready" | "blocked">("all");
   const [error, setError] = useState("");
@@ -52,7 +54,10 @@ function ContractPlannerPageInner() {
       return;
     }
     setError("");
-    setRows(await res.json());
+    const data = await res.json();
+    setRows(data.contracts ?? []);
+    setCapacity(data.capacity ?? null);
+    setDemand(data.demand ?? null);
     setLoading(false);
   }, [session]);
 
@@ -98,7 +103,7 @@ function ContractPlannerPageInner() {
   });
 
   return (
-    <AdminShell title="Contract Trip Planner" tenantName={tenant?.name}>
+    <AdminShell title="Contract & Capacity Planner" tenantName={tenant?.name}>
       <div className="p-6 space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard label="Active Contracts" value={rows.length} />
@@ -106,6 +111,49 @@ function ContractPlannerPageInner() {
           <KpiCard label="Blocked / Missing Data" value={blockedCount} tone={blockedCount > 0 ? "warn" : "default"} />
           <KpiCard label="At/Over Trip Limit" value={tripCountNearLimit} tone={tripCountNearLimit > 0 ? "warn" : "default"} />
         </div>
+
+        {/* Milestone T, Part 7 — Demand and Capacity sections, using
+            only real data the extended /api/contract-planner endpoint
+            returns. This deliberately does not attempt automatic trip
+            generation or a full calendar — see the honest disclosure
+            note below for exactly what remains manual. */}
+        {(demand || capacity) && (
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <h3 className="font-medium text-sm mb-2">Demand</h3>
+              {demand ? (
+                <div className="text-sm space-y-1">
+                  <p>Contract-linked pending: <span className="font-medium">{demand.contractLinkedPending}</span></p>
+                  <p>Non-contract (cash/manual/B2C) pending: <span className="font-medium">{demand.nonContractPending}</span></p>
+                </div>
+              ) : (
+                <p className="text-steel text-sm">Loading…</p>
+              )}
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <h3 className="font-medium text-sm mb-2">Capacity</h3>
+              {capacity ? (
+                <div className="text-sm space-y-1">
+                  {capacity.byTankerSize.map((c: any) => (
+                    <p key={c.size}>{c.size === "OTHER" ? "Other capacity" : `${c.size.toLocaleString()} L`}: <span className="font-medium">{c.available} / {c.total} available</span></p>
+                  ))}
+                  <p className="mt-1">Drivers available: <span className="font-medium">{capacity.driversAvailable} / {capacity.driversTotal}</span></p>
+                </div>
+              ) : (
+                <p className="text-steel text-sm">Loading…</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Part 8's honest-capability requirement: automatic required-trip
+            generation from a contract does not exist — this says so
+            plainly rather than implying it, and points at the real,
+            supported flows instead. */}
+        <p className="text-steel text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2">
+          No automatic trip/order generation from contracts exists yet — demand above reflects orders already created manually.
+          Use <a href="/dispatch" className="text-aquaDark hover:underline">Dispatch</a> to create a new order, or open a contract&apos;s row below to plan its next trip.
+        </p>
 
         <div className="flex gap-2">
           {(["all", "ready", "blocked"] as const).map((t) => (
@@ -139,6 +187,7 @@ function ContractPlannerPageInner() {
                     <th className="text-left px-4 py-2">Customer</th>
                     <th className="text-left px-4 py-2">Site Scope</th>
                     <th className="text-left px-4 py-2">Usage</th>
+                    <th className="text-left px-4 py-2">Pending Demand</th>
                     <th className="text-left px-4 py-2">Operational Path</th>
                     <th className="text-left px-4 py-2">Readiness</th>
                     <th className="text-left px-4 py-2">Action</th>
@@ -172,6 +221,7 @@ function ContractPlannerPageInner() {
                           "Monthly accumulation"
                         )}
                       </td>
+                      <td className="px-4 py-2 text-steel">{r.pendingOrderCount} order(s)</td>
                       <td className="px-4 py-2 text-steel max-w-[220px]">{pathExplanation}</td>
                       <td className="px-4 py-2 max-w-[260px]">
                         {r.readyForDispatch ? (
