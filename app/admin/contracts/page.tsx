@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import TopNav from "@/components/TopNav";
+import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
 import { computeReadinessItems, type ReadinessState } from "@/lib/contractReadiness";
@@ -66,12 +66,11 @@ export default function ContractsPage() {
   }, [session, load]);
 
   if (sessionLoading || !session) {
-    return <main className="min-h-screen bg-paper"><TopNav role="Admin" /><p className="p-6 text-steel">Loading…</p></main>;
+    return <AdminShell title="Contracts"><p className="p-6 text-steel">Loading…</p></AdminShell>;
   }
 
   return (
-    <main className="min-h-screen bg-paper">
-      <TopNav role={tenant ? `Contract Management — ${tenant.name}` : "Contract Management"} />
+    <AdminShell title="Contracts" tenantName={tenant?.name}>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -122,7 +121,7 @@ export default function ContractsPage() {
 
         <DistanceBandsSummary bands={distanceBands} onChange={load} />
       </div>
-    </main>
+    </AdminShell>
   );
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import TopNav from "@/components/TopNav";
+import AdminShell from "@/components/AdminShell";
 import { useRequireSession } from "@/lib/useSession";
 import { computeSiteReadinessItems, type SiteReadinessState } from "@/lib/siteReadiness";
 
@@ -69,7 +69,7 @@ export default function CustomersConfigPage() {
   }, [session, load]);
 
   if (sessionLoading || !session) {
-    return <main className="min-h-screen bg-paper"><TopNav role="Customer & Site Configuration" /><p className="p-6 text-steel">Loading…</p></main>;
+    return <AdminShell title="Customers & Sites"><p className="p-6 text-steel">Loading…</p></AdminShell>;
   }
 
   const isAdmin = session.role === "ADMIN";
@@ -82,8 +82,7 @@ export default function CustomersConfigPage() {
   }
 
   return (
-    <main className="min-h-screen bg-paper">
-      <TopNav role={tenant ? `Customer & Site Configuration — ${tenant.name}` : "Customer & Site Configuration"} />
+    <AdminShell title="Customers & Sites" tenantName={tenant?.name}>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         <div>
           <h1 className="text-lg font-semibold">Customers & Sites</h1>
@@ -133,7 +132,7 @@ export default function CustomersConfigPage() {
           </div>
         )}
       </div>
-    </main>
+    </AdminShell>
   );
 }
 

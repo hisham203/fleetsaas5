@@ -1,14 +1,95 @@
 "use client";
 
-import { useEffect, useState, useCallback, Fragment } from "react";
-import TopNav from "@/components/TopNav";
+import { useEffect, useState, useCallback, Fragment, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import AdminShell, { AdminNavSection } from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
 
 type Tenant = { id: string; name: string; sector: string; users: any[] };
+type TabKey = "overview" | "fleet" | "drivers" | "customers" | "billing" | "maintenance" | "inventory" | "reports" | "scorecards" | "erp" | "automation" | "fieldops" | "executive";
+const VALID_TABS: TabKey[] = ["overview", "fleet", "drivers", "customers", "billing", "maintenance", "inventory", "reports", "scorecards", "erp", "automation", "fieldops", "executive"];
 
+const TAB_TITLES: Record<TabKey, string> = {
+  overview: "Overview",
+  fleet: "Fleet",
+  drivers: "Drivers",
+  customers: "Customers",
+  billing: "Billing",
+  maintenance: "Maintenance",
+  inventory: "Inventory",
+  reports: "Reports",
+  scorecards: "Scorecards",
+  erp: "ERP Sync",
+  automation: "Automation",
+  fieldops: "Field Ops",
+  executive: "Executive",
+};
+
+// Milestone R, Part 3 — the same 13 in-page sections this file has always
+// had, now presented as sidebar items (grouped per this milestone's own
+// suggested Operations/Core Data/Finance/Platform structure) instead of a
+// horizontal tab bar. Each item calls setTab(...) directly rather than
+// navigating — this page's content components (FleetTab, BillingTab,
+// etc., defined below) are completely unchanged; only the chrome around
+// them moved from a top bar to a sidebar. Overview stays at the top,
+// ungrouped, since it's this page's own landing section rather than
+// belonging to any one operational category.
+function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
+  const item = (label: string, key: TabKey) => ({ label, onClick: () => setTab(key), activeKey: key });
+  return [
+    { label: "", items: [item("Overview / Dashboard", "overview")] },
+    {
+      label: "Operations",
+      items: [
+        { label: "Dispatch Control Tower", href: "/admin/dispatch" },
+        { label: "Contract Trip Planner", href: "/admin/contract-planner" },
+        { label: "Loading Points", href: "/admin/loading-points" },
+      ],
+    },
+    {
+      label: "Core Data",
+      items: [
+        item("Fleet", "fleet"),
+        item("Drivers", "drivers"),
+        item("Customers", "customers"),
+        { label: "Customers & Sites", href: "/admin/customers" },
+        { label: "Contracts", href: "/admin/contracts" },
+      ],
+    },
+    {
+      label: "Finance",
+      items: [item("Billing", "billing"), item("Scorecards", "scorecards"), item("Reports", "reports")],
+    },
+    {
+      label: "Platform",
+      items: [
+        item("Maintenance", "maintenance"),
+        item("Inventory", "inventory"),
+        item("ERP Sync", "erp"),
+        item("Automation", "automation"),
+        item("Field Ops", "fieldops"),
+        item("Executive", "executive"),
+      ],
+    },
+  ];
+}
+
+// Milestone R: useSearchParams() requires a Suspense boundary around any
+// component that calls it directly, per Next.js's own build requirement
+// — this thin wrapper is the standard pattern for that, and changes
+// nothing about AdminPageInner's actual behavior.
 export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</div>}>
+      <AdminPageInner />
+    </Suspense>
+  );
+}
+
+function AdminPageInner() {
   const { session, loading: sessionLoading } = useRequireSession(["ADMIN"]);
+  const searchParams = useSearchParams();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [customers, setCustomers] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
@@ -16,7 +97,16 @@ export default function AdminPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
-  const [tab, setTab] = useState<"overview" | "fleet" | "drivers" | "customers" | "billing" | "maintenance" | "inventory" | "reports" | "scorecards" | "erp" | "automation" | "fieldops" | "executive">("overview");
+  // Milestone R: the initial tab honors a ?tab= query param, so the
+  // sidebar's links from other Admin pages (Dispatch Control Tower,
+  // Contract Planner, Loading Points, Contracts, Customers) can deep-link
+  // straight to the right in-page section here, rather than always
+  // landing on Overview.
+  const initialTab = (): TabKey => {
+    const requested = searchParams.get("tab");
+    return (VALID_TABS as string[]).includes(requested ?? "") ? (requested as TabKey) : "overview";
+  };
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [loading, setLoading] = useState(true);
 
   // S1 hotfix: a single failing/erroring endpoint (bad status, or a body
@@ -65,11 +155,17 @@ export default function AdminPage() {
     if (session) load();
   }, [session, load]);
 
-  if (sessionLoading || !session || loading) return <Shell tenant={null} session={session}><p className="text-steel p-6">Loading…</p></Shell>;
+  if (sessionLoading || !session || loading) {
+    return (
+      <AdminShell title="Admin" sections={adminSidebarSections(setTab)} activeKey={tab}>
+        <p className="text-steel p-6">Loading…</p>
+      </AdminShell>
+    );
+  }
 
   if (!tenant) {
     return (
-      <Shell tenant={null} session={session}>
+      <AdminShell title="Admin" sections={adminSidebarSections(setTab)} activeKey={tab}>
         <div className="p-6 max-w-lg">
           <h2 className="text-lg font-medium mb-2">No tenant found</h2>
           <p className="text-steel text-sm">
@@ -77,44 +173,12 @@ export default function AdminPage() {
             create the demo tenant, then refresh this page.
           </p>
         </div>
-      </Shell>
+      </AdminShell>
     );
   }
 
   return (
-    <Shell tenant={tenant} session={session}>
-      <div className="px-6 pt-4 flex items-center justify-between">
-        <div className="flex gap-1 border-b border-slate-200 flex-1">
-          {(["overview", "fleet", "drivers", "customers", "billing", "maintenance", "inventory", "reports", "scorecards", "erp", "automation", "fieldops", "executive"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-4 py-2 text-sm font-medium capitalize border-b-2 -mb-px transition-colors ${
-                tab === t ? "border-aqua text-aquaDark" : "border-transparent text-steel hover:text-ink"
-              }`}
-            >
-              {t === "erp" ? "ERP Sync" : t === "automation" ? "Automation" : t === "fieldops" ? "Field Ops" : t === "executive" ? "Executive" : t}
-            </button>
-          ))}
-        </div>
-        {/* Task I: Contract Management is a standalone module (its own
-            route, /admin/contracts), not one of the tabs above — this
-            link, rather than a tab entry, reflects that intentionally. */}
-        <a
-          href="/admin/contracts"
-          className="ml-3 mb-2 bg-aquaDark text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-aqua whitespace-nowrap"
-        >
-          Contract Management →
-        </a>
-        {/* Task K: same reasoning as Contract Management above — a
-            standalone module (/admin/customers), not a tab. */}
-        <a
-          href="/admin/customers"
-          className="ml-2 mb-2 border border-aquaDark text-aquaDark rounded-lg px-4 py-2 text-sm font-medium hover:bg-paper whitespace-nowrap"
-        >
-          Customers & Sites →
-        </a>
-      </div>
+    <AdminShell title={TAB_TITLES[tab]} tenantName={tenant.name} sections={adminSidebarSections(setTab)} activeKey={tab} extra={session?.isPlatformAdmin ? <CompanySwitcher currentTenantId={tenant?.id} /> : undefined}>
 
       <div className="p-6">
         {tab === "overview" && <Overview tenant={tenant} customers={customers} vehicles={vehicles} drivers={drivers} />}
@@ -131,7 +195,7 @@ export default function AdminPage() {
         {tab === "fieldops" && <FieldOpsTab drivers={drivers} vehicles={vehicles} />}
         {tab === "executive" && <ExecutiveTab />}
       </div>
-    </Shell>
+    </AdminShell>
   );
 }
 
@@ -287,18 +351,6 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
   );
 }
 
-function Shell({ tenant, session, children }: { tenant: Tenant | null; session?: any; children: React.ReactNode }) {
-  return (
-    <main className="min-h-screen bg-paper">
-      <TopNav
-        role={tenant ? `Admin — ${tenant.name}` : "Admin"}
-        extra={session?.isPlatformAdmin ? <CompanySwitcher currentTenantId={tenant?.id} /> : undefined}
-      />
-      {children}
-    </main>
-  );
-}
-
 function Card({ title, value, sub }: { title: string; value: string | number; sub?: string }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -311,15 +363,19 @@ function Card({ title, value, sub }: { title: string; value: string | number; su
 
 function Overview({ tenant, customers, vehicles, drivers }: any) {
   return (
-    <div>
-      <div className="grid sm:grid-cols-4 gap-4 mb-6">
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Operations Overview</h2>
+        <p className="text-steel text-sm mt-0.5">{tenant.name} — a snapshot of fleet, customers, and team at a glance.</p>
+      </div>
+      <div className="grid sm:grid-cols-4 gap-4">
         <Card title="Sector" value={tenant.sector.replace("_", " ")} />
         <Card title="Customers" value={customers.length} />
         <Card title="Vehicles" value={vehicles.length} sub={`${vehicles.filter((v: any) => v.status === "AVAILABLE").length} available`} />
         <Card title="Drivers" value={drivers.length} sub={`${drivers.filter((d: any) => d.status === "AVAILABLE").length} available`} />
       </div>
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <h3 className="font-medium mb-3">Users</h3>
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="font-medium mb-4">Team &amp; Users</h3>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
@@ -333,7 +389,7 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
               <tr key={u.id} className="border-b border-slate-50">
                 <td className="py-2">{u.name}</td>
                 <td className="py-2 text-steel">{u.email}</td>
-                <td className="py-2">{u.role}</td>
+                <td className="py-2"><StatusBadge status={u.role} /></td>
               </tr>
             ))}
           </tbody>

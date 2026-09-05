@@ -9,12 +9,16 @@ import KpiCard from "@/components/KpiCard";
 // this reuses the existing `warehouses` table/API exactly as-is (the
 // same one Tasks L/M already extended and audited), presented here under
 // the "Loading Points" terminology this milestone asks for. No schema
-// change was made or is needed for this view — type, code, operating
-// hours, allowed tanker capacities, and active/inactive status are all
-// genuinely absent from the schema today (confirmed directly, and by
-// Task M's own prior audit for the active/inactive question
-// specifically) and are listed as deferred in this milestone's own
-// final report rather than being invented here as fake UI-only fields.
+// change was made or is needed for this view.
+//
+// Milestone R, Part 7 — fields already supported today: name, address,
+// GPS coordinates (lat/lng — already shown in the table below, not a
+// gap). Fields genuinely absent from the schema and deferred as a future
+// schema proposal only (confirmed directly, and by Task M's own prior
+// audit for the active/inactive question specifically): type, code,
+// operating hours, allowed tanker capacities, active/inactive status,
+// government royalty settings, and loading capacity/queue rules. None of
+// these are invented here as fake UI-only fields.
 export default function LoadingPointsPage() {
   const { session, loading: sessionLoading } = useRequireSession(["ADMIN", "DISPATCHER"]);
   const [tenant, setTenant] = useState<any>(null);

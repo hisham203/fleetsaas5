@@ -1080,6 +1080,47 @@ only placeholders.
   attempted, or scaffolded.
 
   No schema, migration, or seedData changes anywhere in this milestone.
+- **Milestone R ("Smarty1 Operations Layout")** — Admin layout changed
+  from a single horizontal top-tab bar to a persistent left-sidebar
+  operations shell (`components/AdminShell.tsx`, extended from
+  Milestone Q's version, which had been built but never wired into the
+  main `/admin` page — confirmed by direct audit before any change).
+  The old 13-tab horizontal bar is fully removed as primary navigation,
+  not merely demoted; its 13 sections (Overview, Fleet, Drivers,
+  Customers, Billing, Maintenance, Inventory, Reports, Scorecards, ERP
+  Sync, Automation, Field Ops, Executive) remain exactly the same
+  in-page components, now reachable as sidebar items that call the same
+  `setTab(...)` state setter as before, grouped into Operations/Core
+  Data/Finance/Platform per this milestone's own suggested structure.
+  Dispatch Control Tower, Contract Trip Planner, and Loading Points
+  (Milestone Q) are now first-class sidebar items reachable from every
+  Admin screen, not just their own pages. `/admin/contracts` and
+  `/admin/customers` were switched from their own `TopNav`-based headers
+  to the same shared `AdminShell`, for visual consistency across the
+  whole cockpit. Sidebar links to in-page tab sections use a `?tab=`
+  query parameter so navigating from another Admin page deep-links to
+  the right section rather than always landing on Overview. The
+  platform-admin `CompanySwitcher` capability — previously only
+  reachable via the old `TopNav`'s `extra` slot — was preserved via an
+  equivalent `extra` slot on `AdminShell`, so it was not silently
+  dropped in the shell swap. A responsive mobile drawer (hamburger
+  toggle, slide-in sidebar) was added for tablet/mobile, per this
+  milestone's own responsive requirement. Two real build/test issues
+  were found and fixed along the way, not shipped broken: Next.js
+  requires `useSearchParams()` to sit inside a `Suspense` boundary
+  (added, via a thin wrapper component); and one existing test
+  (`contractManagementModule.test.ts`) asserted the old literal
+  "Contract Management" button text, which this milestone intentionally
+  relabeled to "Contracts" in the sidebar — updated to match the new,
+  correct wording rather than weakened. No FastFleet reference images
+  were available in this session; implementation followed this
+  milestone's own explicit fallback instruction — the user-described
+  left-sidebar direction and the described current-deployed-screenshot
+  issue — rather than direct image inspection. No schema, migration,
+  seedData, pricing, billing, contract, dispatch, or ERP logic changes —
+  this was a layout-only milestone, confirmed by full-suite regression
+  (all pre-existing tests, including every Task P.2 contract-priced
+  invoice test and every monthly-billing test, pass unmodified).
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

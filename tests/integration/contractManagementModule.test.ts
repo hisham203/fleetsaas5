@@ -19,7 +19,12 @@ describe("Contract Management module (Task I)", () => {
     expect(fs.existsSync(modulePath)).toBe(true);
     const adminSource = fs.readFileSync(path.join(process.cwd(), "app/admin/page.tsx"), "utf8");
     expect(adminSource).toContain("/admin/contracts");
-    expect(adminSource).toContain("Contract Management");
+    // Milestone R relabeled the admin sidebar's link to this module from
+    // "Contract Management" button text to a "Contracts" sidebar item
+    // (matching this milestone's own suggested naming, "Contracts /
+    // Contract Management") — the link to the standalone module itself
+    // is unchanged and still confirmed above.
+    expect(adminSource).toContain("Contracts");
   });
 
   describe("Source content — every required scenario is represented", () => {
