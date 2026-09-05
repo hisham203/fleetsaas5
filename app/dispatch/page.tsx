@@ -161,7 +161,43 @@ function DispatchPageInner() {
       if (match && (match.status === "PENDING" || match.status === "VALIDATED")) {
         setSelected([match.id]);
       } else if (match) {
-        setDeepLinkNotice(`Order ${match.orderNumber} is already assigned — check Live Trips instead of the dispatch queue.`);
+        // Task S.1 root-cause fix: an order this far along already has a
+        // real trip — GET /api/orders embeds tripStop.trip precisely so
+        // this lookup is possible without a second API call. The old
+        // code here never followed this link at all; it just told the
+        // user to "check Live Trips" without verifying the trip was
+        // actually there, which is exactly how a user could end up
+        // looking at an empty Live Trips section for an order the app
+        // itself says is assigned. The full trip object (with vehicle/
+        // driver/warehouse/stops embeds the detail drawer needs) is
+        // looked up from the separately-loaded `trips` array, which
+        // includes every status — not just the active ones "Live Trips"
+        // displays — so a completed trip's readonly detail still opens
+        // correctly (Part 3, bucket 5) even though it won't appear in
+        // the Live Trips list itself.
+        const linkedTripId = match.tripStop?.trip?.id;
+        const linkedTrip = linkedTripId ? trips.find((t) => t.id === linkedTripId) : null;
+        if (linkedTrip) {
+          setFocusTripId(linkedTrip.id);
+          setFocusToken((x) => x + 1);
+          setDetailTripId(linkedTrip.id);
+          if (linkedTrip.status === "PLANNED" && !linkedTrip.loadingConfirmed) {
+            setDeepLinkNotice(`Order ${match.orderNumber} is assigned and waiting for loading confirmation.`);
+          } else if (linkedTrip.status === "PLANNED" && linkedTrip.loadingConfirmed) {
+            setDeepLinkNotice(`Order ${match.orderNumber} is loaded and ready to dispatch. Shown below under Live Trips.`);
+          } else if (linkedTrip.status === "DISPATCHED") {
+            setDeepLinkNotice(`Order ${match.orderNumber} is active and shown under Live Trips.`);
+          } else if (linkedTrip.status === "COMPLETED") {
+            setDeepLinkNotice(`Order ${match.orderNumber} is already completed. Showing readonly trip details.`);
+          } else {
+            setDeepLinkNotice(`Order ${match.orderNumber} is already assigned. It is shown below under Live Trips.`);
+          }
+        } else {
+          // A genuine data anomaly (the order says assigned but no
+          // matching trip is in the currently loaded set) — never
+          // silently hidden behind the old generic message.
+          setDeepLinkNotice(`Order ${match.orderNumber} is marked as assigned, but its trip could not be located — try refreshing the page.`);
+        }
       } else {
         setDeepLinkNotice(`Order ${deepLinkOrderId} was not found.`);
       }

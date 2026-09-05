@@ -158,7 +158,18 @@ function DispatchControlTowerPageInner() {
           {loading ? (
             <p className="p-6 text-steel text-sm">Loading…</p>
           ) : filteredRows.length === 0 ? (
-            <p className="p-6 text-steel text-sm text-center">No demand matches this filter.</p>
+            contextContractId ? (
+              <div className="p-6 text-center text-sm">
+                <p className="text-steel">No active operational trips/orders for this contract yet.</p>
+                <p className="mt-2">
+                  <a href={`/admin/contract-planner?contractId=${contextContractId}`} className="text-aquaDark hover:underline">Back to Planner</a>
+                  {" · "}
+                  <a href={`/admin/contracts?contractId=${contextContractId}`} className="text-aquaDark hover:underline">View in Contract Management</a>
+                </p>
+              </div>
+            ) : (
+              <p className="p-6 text-steel text-sm text-center">No demand matches this filter.</p>
+            )
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

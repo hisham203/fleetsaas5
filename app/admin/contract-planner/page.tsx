@@ -139,13 +139,23 @@ function ContractPlannerPageInner() {
                     <th className="text-left px-4 py-2">Customer</th>
                     <th className="text-left px-4 py-2">Site Scope</th>
                     <th className="text-left px-4 py-2">Usage</th>
+                    <th className="text-left px-4 py-2">Operational Path</th>
                     <th className="text-left px-4 py-2">Readiness</th>
                     <th className="text-left px-4 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.map((r) => (
-                    <tr key={r.contractId} className={`border-t border-slate-100 ${focusContractId === r.contractId ? "bg-aqua/10" : ""}`}>
+                  {filteredRows.map((r) => {
+                    // Task S.1, Part 7 — the exact explanation text this
+                    // task specifies, chosen by the contract's real type
+                    // (operationalPath, from the API) rather than an
+                    // invented label.
+                    const pathExplanation =
+                      r.operationalPath === "MONTHLY_ACCUMULATION"
+                        ? "Deliveries accumulate during the month and are invoiced manually at month-end."
+                        : "Each delivered trip consumes one purchased trip; over-limit trips require OVERAGE pricing.";
+                    return (
+                    <tr key={r.contractId} className={`border-t border-slate-100 align-top ${focusContractId === r.contractId ? "bg-aqua/10" : ""}`}>
                       <td className="px-4 py-2 font-medium">
                         <a href={`/admin/contracts?contractId=${r.contractId}`} className="text-ink hover:text-aquaDark hover:underline">{r.contractNumber}</a>
                       </td>
@@ -153,28 +163,42 @@ function ContractPlannerPageInner() {
                       <td className="px-4 py-2">{r.customer?.name ?? "—"}</td>
                       <td className="px-4 py-2 text-steel">{r.appliesToAllSites ? "All sites" : `${r.siteCount} site(s)`}</td>
                       <td className="px-4 py-2 text-steel">
-                        {r.type === "ONE_TIME_TRIP_COUNT" && r.totalTripsPurchased != null
-                          ? `${r.tripsUsed} / ${r.totalTripsPurchased} trips`
-                          : "Monthly accumulation"}
+                        {r.type === "ONE_TIME_TRIP_COUNT" && r.totalTripsPurchased != null ? (
+                          <>
+                            <p>{r.tripsUsed} / {r.totalTripsPurchased} trips ({r.tripsRemaining} remaining)</p>
+                            {r.overageActive && <p className="text-warn">At/over limit — OVERAGE pricing applies</p>}
+                          </>
+                        ) : (
+                          "Monthly accumulation"
+                        )}
                       </td>
-                      <td className="px-4 py-2">
+                      <td className="px-4 py-2 text-steel max-w-[220px]">{pathExplanation}</td>
+                      <td className="px-4 py-2 max-w-[260px]">
                         {r.readyForDispatch ? (
                           <span className="status-pill bg-ok/15 text-ok">Ready</span>
                         ) : (
-                          <span className="status-pill bg-warn/15 text-warn" title={r.blockedReasons.join(", ")}>
-                            Blocked: {r.blockedReasons[0] ?? "Not ready"}
-                          </span>
+                          <div>
+                            <span className="status-pill bg-warn/15 text-warn">Blocked</span>
+                            <ul className="text-steel text-xs mt-1 list-disc list-inside">
+                              {r.blockedReasons.map((reason: string) => (
+                                <li key={reason}>{reason}</li>
+                              ))}
+                            </ul>
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-2">
                         {r.readyForDispatch ? (
-                          <a href={`/admin/dispatch?contractId=${r.contractId}`} className="text-aquaDark hover:underline text-xs font-medium">Plan in Control Tower</a>
+                          <a href={`/admin/dispatch?contractId=${r.contractId}`} className="text-aquaDark hover:underline text-xs font-medium">
+                            View in Control Tower
+                          </a>
                         ) : (
                           <a href={`/admin/contracts?contractId=${r.contractId}`} className="text-aquaDark hover:underline text-xs font-medium">Fix in Contract Management</a>
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

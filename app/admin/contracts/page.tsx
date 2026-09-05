@@ -321,6 +321,39 @@ function ContractDetail({ contractId, distanceBands, onChange }: { contractId: s
         <p className="text-steel text-xs mt-2">Informational only — nothing here blocks using this contract.</p>
       </div>
 
+      {/* Task S.1, Part 8 — operational guidance, not just contract data.
+          Uses the same readiness definition as the Planner API fix: a
+          MISSING item or an expired/not-yet-started date blocks
+          operations; every other WARNING/UNSUPPORTED item does not. */}
+      {(() => {
+        const dateItem = readinessItems.find((i) => i.label === "Within valid date period");
+        const dateBlocking = dateItem?.state === "WARNING";
+        const missingItems = readinessItems.filter((i) => i.state === "MISSING");
+        const operationallyReady = missingItems.length === 0 && !dateBlocking;
+        return (
+          <div className="border border-slate-100 rounded-lg p-3 text-xs space-y-1.5">
+            <p className="text-steel uppercase tracking-wide">Operational guidance</p>
+            <p>
+              {isMonthly
+                ? "Monthly accumulation contract: deliveries accumulate during the month and are invoiced manually at month-end."
+                : "One-time trip-count contract: each delivered trip consumes one purchased trip; over-limit trips require OVERAGE pricing."}
+            </p>
+            {operationallyReady ? (
+              <a href={`/admin/dispatch?contractId=${contract.id}`} className="text-aquaDark hover:underline font-medium inline-block">
+                View active trips in Control Tower
+              </a>
+            ) : (
+              <p className="text-warn">
+                Not yet ready for operations — missing: {missingItems.map((i) => i.label).join(", ") || "within valid date period"}.
+              </p>
+            )}
+            <a href={`/admin/contract-planner?contractId=${contract.id}`} className="text-aquaDark hover:underline font-medium inline-block">
+              View in Planner
+            </a>
+          </div>
+        );
+      })()}
+
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div><span className="text-steel text-xs block">Type</span>{isMonthly ? "Monthly accumulated" : "One-time trip count"}</div>
         <div><span className="text-steel text-xs block">Billing cadence</span>{contract.billingCadence ?? "—"}</div>

@@ -1152,6 +1152,47 @@ only placeholders.
   `app/api/trips/[id]/stops/[stopId]/route.ts`, `lib/contractPricing.ts`,
   and `lib/erp/sync.ts` still carry their own Task P.2 markers unchanged,
   and by a full contract-priced-delivery regression test run end to end.
+- **Task S.1 ("Dispatch Context Resolution & Contract Operations
+  Readiness")** — a real root cause found and fixed in each of the two
+  areas this task targeted.
+  **Dispatch**: when Control Tower links to an already-assigned order
+  (no `tripId` yet at click time, only `orderId`), the deep-link
+  resolver previously only handled `PENDING`/`VALIDATED` orders — for
+  anything further along it just showed "check Live Trips" without ever
+  looking up the order's real trip, which is exactly how a user could
+  end up staring at an empty Live Trips section for an order the app
+  itself called assigned. Fixed by following `order.tripStop.trip`
+  (already embedded by `GET /api/orders`, no new API call) to find the
+  real trip, then treating it exactly like a `tripId` deep link — focus,
+  highlight, and an automatically-opened detail drawer — with the
+  message now describing the trip's real state (assigned/waiting
+  loading, loaded, dispatched, or already completed) instead of a single
+  generic line. A genuine data anomaly (assigned order, no locatable
+  trip) now says so honestly rather than repeating the old false claim.
+  **Contract Planner**: found that `readyForDispatch` required *every*
+  readiness item to be `READY`, including two ("Payment terms",
+  "Billing requirements") that `computeReadinessItems` always reports as
+  `UNSUPPORTED` by design, since neither feature exists in this schema
+  yet — meaning **no contract could structurally ever be marked ready**,
+  regardless of its actual configuration. This is the real reason so
+  many contracts showed as blocked. Fixed to block only on a genuinely
+  `MISSING` item plus an expired/not-yet-started contract date — every
+  other `WARNING`/`UNSUPPORTED` item is informational, exactly as Task
+  J's own design intended. The Planner UI now shows every blocked reason
+  (not just the first), the contract's real trips-used/remaining/overage
+  state, and an exact, type-specific explanation of the operational path
+  (`MONTHLY_ACCUMULATION` vs `DISPATCH_READY_TRIP`) — and, since no
+  one-click "create a trip for this contract" flow actually exists yet,
+  the ready-state action honestly says "View in Control Tower" rather
+  than claiming an unsupported capability. Contract Management gained a
+  matching "Operational guidance" section with the same explanation and
+  links to both Planner and Control Tower. The Control Tower's
+  contract-filtered empty state now shows a specific message with links
+  back to Planner/Contract Management, instead of the generic "No demand
+  matches this filter." No schema, migration, seedData, pricing, billing,
+  or ERP changes — confirmed by file-timestamp inspection of every
+  file this task's own boundaries named, and by a full contract-priced
+  delivery regression test run end to end.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive
