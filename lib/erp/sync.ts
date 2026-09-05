@@ -42,6 +42,31 @@ export async function syncInvoiceToOdoo(tenantId: string, invoiceId: string): Pr
 
   const config = toOdooConfig(connection);
 
+  // Task P.2 dependent fix: for a contract-linked order (today, only
+  // ONE_TIME_TRIP_COUNT reaches this point with invoice.order set —
+  // MONTHLY_ACCUMULATED orders never get a single-order invoice at all,
+  // already guarded above), order.pricePerBottle and bottleSizeLtr are
+  // not the real price or product this invoice represents at all — the
+  // real, frozen financial truth is the invoice's own subtotal/total,
+  // computed by calculateContractPrice at delivery time. Using them here
+  // would sync a wrong price and a nonsensical "bottles" line to Odoo for
+  // what is actually a per-trip tanker delivery. A legacy, non-contract
+  // invoice is completely unaffected — same description, same priceUnit,
+  // same everything as before this fix.
+  const isContractPriced = invoice.order.contractId != null;
+  const erpDescription = isContractPriced
+    ? `Bulk water tanker delivery — Order ${invoice.order.orderNumber}`
+    : `Order ${invoice.order.orderNumber} — ${invoice.order.qtyOrdered} × ${invoice.order.bottleSizeLtr}L bottles`;
+  // Reconstructs a real per-unit price from the invoice's own frozen
+  // total -- the same "total / quantity" approach
+  // generate-monthly-invoice/route.ts already uses for its own line
+  // items -- rather than inventing a new pricing concept here.
+  const erpPriceUnit = isContractPriced
+    ? invoice.order.qtyOrdered > 0
+      ? Math.round((invoice.subtotal / invoice.order.qtyOrdered) * 100) / 100
+      : invoice.subtotal
+    : invoice.order.pricePerBottle;
+
   try {
     const uid = await odooAuthenticate(config);
 
@@ -59,9 +84,9 @@ export async function syncInvoiceToOdoo(tenantId: string, invoiceId: string): Pr
       partnerId,
       invoiceNumber: invoice.invoiceNumber,
       invoiceDate: invoice.createdAt.toISOString().slice(0, 10),
-      description: `Order ${invoice.order.orderNumber} — ${invoice.order.qtyOrdered} × ${invoice.order.bottleSizeLtr}L bottles`,
+      description: erpDescription,
       quantity: invoice.order.qtyOrdered,
-      priceUnit: invoice.order.pricePerBottle,
+      priceUnit: erpPriceUnit,
       taxId: connection.defaultTaxId ? Number(connection.defaultTaxId) : undefined,
     });
 

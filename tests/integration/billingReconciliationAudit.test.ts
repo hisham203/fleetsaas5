@@ -345,6 +345,13 @@ describe("Billing reconciliation audit (Task E.1)", () => {
       body: { customerId: testCustomerId, type: "ONE_TIME_TRIP_COUNT", totalTripsPurchased: 5, startDate: "2020-01-01" },
     }))).json();
     await patchContract(makeRequest(`/api/contracts/${oneTimeContract.id}`, { method: "PATCH", cookie: waterAdminCookie, body: { status: "ACTIVE" } }), { params: { id: oneTimeContract.id } });
+    // Task P.2: a real STANDARD pricing rule is now required for this
+    // contract to be invoiceable at all — calculateContractPrice never
+    // silently falls back to bottle pricing. A wildcard rule (no
+    // city/zone/band/capacity) matches any delivery under this contract.
+    await db.insert(contractPricingRules).values({
+      id: genId(), tenantId, pricingScope: "CONTRACT", contractId: oneTimeContract.id, rateType: "STANDARD", pricePerTrip: 500, vatRate: 0.15,
+    });
 
     const { GET: warehousesGet } = await import("@/app/api/warehouses/route");
     const warehouseId = (await (await warehousesGet(makeRequest("/api/warehouses", { cookie: waterAdminCookie }))).json()).find((w: any) => w.isDefault).id;
@@ -380,11 +387,13 @@ describe("Billing reconciliation audit (Task E.1)", () => {
     const monthlyOrderInvoices = await db.query.invoices.findMany({ where: eq(invoices.orderId, monthly.order.id) });
     expect(monthlyOrderInvoices.length).toBe(0); // and none in the database either
 
-    // ONE_TIME_TRIP_COUNT is a separate, pre-existing, documented
-    // limitation (wrong price, but not a double-bill) — deliberately
-    // UNCHANGED by this fix, confirmed still creates its usual invoice.
+    // Task P.2: ONE_TIME_TRIP_COUNT now gets a real contract-priced
+    // invoice (500 SAR base from the rule above) instead of the old,
+    // wrong bottle-priced one — still correctly not a double-bill.
     const oneTime = await deliverAndReturn(oneTimeContract.id, "e1-nodup-onetime");
     expect(oneTime.deliverBody.invoice).toBeTruthy();
+    expect(oneTime.deliverBody.invoice.subtotal).toBe(500);
+    expect(oneTime.deliverBody.billingError).toBeNull();
     const oneTimeOrderInvoices = await db.query.invoices.findMany({ where: eq(invoices.orderId, oneTime.order.id) });
     expect(oneTimeOrderInvoices.length).toBe(1);
 

@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { tripStops, epods, orders, invoices, inventoryItems, drivers, trips, exceptions, contracts } from "@/lib/db/schema";
-import { genId, genNumber, calcInvoiceTotals } from "@/lib/helpers";
+import { genId, genNumber, calcInvoiceTotals, VAT_RATE } from "@/lib/helpers";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { runAutomationRules } from "@/lib/automation";
+import { calculateContractPrice, PricingEngineError } from "@/lib/contractPricing";
+import { determineRateType } from "@/lib/contractEligibility";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
@@ -44,7 +46,13 @@ export async function PATCH(
   }
   const tenantId = getSessionTenantId(session)!;
 
-  const trip = await db.query.trips.findFirst({ where: and(eq(trips.id, id), eq(trips.tenantId, tenantId)) });
+  // Task P.2: trip.vehicle is now embedded — a ONE_TIME_TRIP_COUNT contract
+  // invoice needs the assigned vehicle's real capacityLiters as a pricing
+  // dimension, and it was never fetched here before.
+  const trip = await db.query.trips.findFirst({
+    where: and(eq(trips.id, id), eq(trips.tenantId, tenantId)),
+    with: { vehicle: true },
+  });
   if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
 
   // A driver can only act on stops belonging to their own trip.
@@ -57,16 +65,13 @@ export async function PATCH(
 
   const body = await req.json();
 
+  // Task P.2: stop.order.location is now embedded — a ONE_TIME_TRIP_COUNT
+  // contract invoice needs cityCode/zoneCode/distanceBandCode as pricing
+  // dimensions when the order has a location set; null when it doesn't,
+  // which the pricing engine already treats as a wildcard match.
   const stop = await db.query.tripStops.findFirst({
     where: eq(tripStops.id, stopId),
-    // S1 audit: this embed was fetched but never actually used anywhere in
-    // this function — only stop.order.customerId (a plain column, no
-    // embed needed) is referenced below. Removing it is pure cleanup: the
-    // customer object was never returned in any response here (every
-    // response in this file re-fetches its own plain, un-embedded rows),
-    // but leaving an unused, sensitive embed sitting around is a latent
-    // risk if a future change adds `stop` to a response without noticing.
-    with: { order: true },
+    with: { order: { with: { location: true } }, epod: true },
   });
   if (!stop || stop.tripId !== id) {
     return NextResponse.json({ error: "Trip stop not found" }, { status: 404 });
@@ -89,6 +94,17 @@ export async function PATCH(
   const data = parsed.data;
 
   if (data.action === "fail") {
+    if (stop.status === "FAILED") {
+      // Task P.2 idempotency fix: a retry (e.g. driver's app resubmitting
+      // after a network timeout it never got a response for) previously
+      // re-ran this whole block — inserting a second, duplicate exception
+      // row every time. Not billing-related, but the same "retries must be
+      // safe" principle this task requires for the deliver path applies
+      // here too, and it was a real gap sitting right next to the one this
+      // task exists to fix.
+      const existing = await db.query.tripStops.findFirst({ where: eq(tripStops.id, stop.id) });
+      return NextResponse.json(existing);
+    }
     await db.transaction(async (tx) => {
       await tx.update(tripStops).set({ status: "FAILED", completedAt: new Date() }).where(eq(tripStops.id, stop.id));
       await tx
@@ -122,48 +138,126 @@ export async function PATCH(
     return NextResponse.json({ error: "deliveredQty is required to confirm delivery" }, { status: 400 });
   }
 
+  // Task P.2 idempotency fix (Part 3/4 of this task): this stop may already
+  // have been delivered/partially delivered by an earlier request — a
+  // driver's app retrying after a network timeout it never got a response
+  // for is the concrete case, but any repeat call lands here the same way.
+  // Before this fix, a retry would attempt a second `invoices` insert for
+  // the same orderId, which the schema's own unique constraint on
+  // invoices.orderId would reject as an uncaught DB error (a real,
+  // pre-existing crash risk for every order type, not just contract-priced
+  // ones) — and, for a ONE_TIME_TRIP_COUNT contract, would have incremented
+  // tripsUsed a second time for one real delivery. Detected by stop status
+  // alone (not by re-checking for an existing invoice), since a stop that's
+  // already DELIVERED/PARTIALLY_DELIVERED unambiguously means this whole
+  // block already ran to completion once — nothing here is reprocessed.
+  if (stop.status === "DELIVERED" || stop.status === "PARTIALLY_DELIVERED") {
+    const existingStop = await db.query.tripStops.findFirst({ where: eq(tripStops.id, stop.id), with: { epod: true } });
+    const existingOrder = await db.query.orders.findFirst({ where: eq(orders.id, stop.orderId) });
+    const existingInvoice = await db.query.invoices.findFirst({ where: eq(invoices.orderId, stop.orderId) });
+    return NextResponse.json({ stop: existingStop, order: existingOrder, invoice: existingInvoice ?? null, billingError: null });
+  }
+
   const isPartial = data.action === "partial" || data.deliveredQty < stop.order.qtyOrdered;
   const orderStatus = isPartial ? "PARTIALLY_DELIVERED" : "DELIVERED";
 
-  // Task E.1 audit finding: this route previously created a standard,
-  // per-order invoice unconditionally — for EVERY delivered order,
-  // regardless of contractId. For a MONTHLY_ACCUMULATED contract, that
-  // order would later ALSO be picked up and billed again by
-  // POST /api/contracts/[id]/generate-monthly-invoice (which only
-  // excludes orders already present in invoice_line_items, not orders
-  // that already have a direct single-order invoice) — a genuine
-  // double-bill the customer would be charged twice for, and at the
-  // wrong (standard bottle) price the first time regardless. Skipping
-  // invoice creation here for exactly this one case is the narrow,
-  // correct fix: this order's real bill happens later, at the real
-  // contract price, via the monthly process it was always meant to go
-  // through.
+  // Task E.1 audit finding, extended by Task P/P.2: this route now
+  // branches into three cases by contract type.
   //
-  // ONE_TIME_TRIP_COUNT contract orders are deliberately NOT touched by
-  // this fix and still get the same standard-priced invoice as before —
-  // that pricing is wrong for those orders too (no per-delivery
-  // invoicing path currently uses the contract pricing engine at all),
-  // but it is a separate, pre-existing gap this task did not create and
-  // is out of scope to fix here (building real contract-priced
-  // per-delivery invoicing is a feature addition, not a narrow
-  // correctness bug) — documented in the final report as a real,
-  // recommended follow-up, not silently left unmentioned.
-  let skipInvoiceForMonthlyContract = false;
+  // MONTHLY_ACCUMULATED: unchanged from Task E.1 — no invoice at delivery
+  // at all, billed later via the monthly process. tripsUsed is never
+  // touched here for this type; it has no included-allowance concept to
+  // track (determineRateType always returns STANDARD for it).
+  //
+  // ONE_TIME_TRIP_COUNT (Task P.2, new): priced via calculateContractPrice
+  // instead of pricePerBottle, with tripsUsed incremented exactly once per
+  // successful contract-priced invoice, in the same transaction as the
+  // invoice write.
+  //
+  // No contract: unchanged standard pricePerBottle invoice.
+  let contractType: string | null = null;
+  let contract: typeof contracts.$inferSelect | null = null;
   if (stop.order.contractId) {
-    const contract = await db.query.contracts.findFirst({ where: eq(contracts.id, stop.order.contractId) });
-    if (contract?.type === "MONTHLY_ACCUMULATED") skipInvoiceForMonthlyContract = true;
+    contract = (await db.query.contracts.findFirst({ where: eq(contracts.id, stop.order.contractId) })) ?? null;
+    contractType = contract?.type ?? null;
+  }
+  const skipInvoiceForMonthlyContract = contractType === "MONTHLY_ACCUMULATED";
+  const isTripCountContract = contractType === "ONE_TIME_TRIP_COUNT" && contract != null;
+
+  // Task P.2: for a ONE_TIME_TRIP_COUNT contract, pricing is computed
+  // BEFORE the transaction opens — calculateContractPrice is pure/
+  // read-only (never writes anything), so calling it here is safe and
+  // matches the exact pattern already proven by
+  // generate-monthly-invoice/route.ts. Unlike that route, though, a
+  // pricing failure here must NOT abort the whole delivery: the driver
+  // physically completed the delivery regardless of whether the back-office
+  // pricing configuration is complete, and this task's own design
+  // (Task P) concluded delivery status should still succeed with a clear,
+  // separate billing error — never a silent fallback to standard pricing,
+  // and never a half-updated stop/order left with no explanation. The
+  // billingError field on the final response is exactly that explanation.
+  let contractPricingResult: Awaited<ReturnType<typeof calculateContractPrice>> | null = null;
+  let billingError: { code: string; message: string } | null = null;
+  if (isTripCountContract) {
+    const rateType = determineRateType(contract!);
+    try {
+      contractPricingResult = await calculateContractPrice({
+        tenantId,
+        customerId: stop.order.customerId,
+        contractId: contract!.id,
+        pricingDate: new Date(),
+        cityCode: stop.order.location?.cityCode ?? null,
+        zoneCode: stop.order.location?.zoneCode ?? null,
+        distanceBandCode: stop.order.location?.distanceBandCode ?? null,
+        tankerCapacityLtr: trip.vehicle?.capacityLiters ?? null,
+        rateType,
+        quantityLiters: data.deliveredQty,
+      });
+    } catch (err) {
+      if (err instanceof PricingEngineError) {
+        billingError = { code: err.code, message: err.message };
+      } else {
+        billingError = { code: "UNKNOWN_ERROR", message: err instanceof Error ? err.message : String(err) };
+      }
+    }
   }
 
   // BR-18: a flat discount is applied to the subtotal before VAT (clamped
   // at zero — a discount can never make the subtotal negative, e.g. on a
   // partial delivery where the billed portion is smaller than the
-  // discount amount).
-  const rawSubtotal = Math.round(data.deliveredQty * stop.order.pricePerBottle * 100) / 100;
+  // discount amount). Applied identically whether the base amount came
+  // from pricePerBottle (legacy/non-contract) or calculateContractPrice
+  // (ONE_TIME_TRIP_COUNT) — discountAmount is a generic order-level field,
+  // not a bottle-specific one, so there's no reason for a contract-priced
+  // order to skip it.
+  let rawSubtotal: number;
+  let effectiveVatRate = VAT_RATE;
+  if (isTripCountContract) {
+    if (contractPricingResult) {
+      rawSubtotal = contractPricingResult.baseAmount;
+      // The pricing rule's own VAT rate must be preserved through the
+      // discount recalculation below, not silently replaced by the
+      // tenant default — reverse-derived from the engine's own result
+      // since PricingResult doesn't separately expose the raw rate.
+      effectiveVatRate = contractPricingResult.baseAmount > 0 ? contractPricingResult.vatAmount / contractPricingResult.baseAmount : VAT_RATE;
+    } else {
+      rawSubtotal = 0; // unused — billingError is set, invoice is never created below
+    }
+  } else {
+    rawSubtotal = Math.round(data.deliveredQty * stop.order.pricePerBottle * 100) / 100;
+  }
   const subtotal = Math.max(0, Math.round((rawSubtotal - stop.order.discountAmount) * 100) / 100);
-  const { vatAmount, total } = calcInvoiceTotals(subtotal);
+  const { vatAmount, total } = calcInvoiceTotals(subtotal, effectiveVatRate);
   const invoiceId = genId();
   const invoiceNumber = genNumber("INV");
   const invoiceStatus = stop.order.paymentMethod === "ACCOUNT_CREDIT" ? "PENDING" : "PAID";
+
+  // Whether an invoice (and, for a trip-count contract, a tripsUsed
+  // increment) should be written in the transaction below. Never true for
+  // a monthly contract (unchanged Task E.1 behavior). For a trip-count
+  // contract, true only when pricing actually succeeded — a failed
+  // contract-priced lookup blocks the invoice, not the delivery.
+  const shouldCreateInvoice = !skipInvoiceForMonthlyContract && (!isTripCountContract || contractPricingResult != null);
 
   await db.transaction(async (tx) => {
     await tx
@@ -197,7 +291,7 @@ export async function PATCH(
       }
     }
 
-    if (!skipInvoiceForMonthlyContract) {
+    if (shouldCreateInvoice) {
       await tx.insert(invoices).values({
         id: invoiceId,
         tenantId: stop.order.tenantId,
@@ -210,6 +304,19 @@ export async function PATCH(
         total,
         status: invoiceStatus,
       });
+
+      // Task P.2, Part 3: tripsUsed was confirmed never incremented by any
+      // real code path before this fix — only read (determineRateType),
+      // displayed (admin UI), and statically seeded. Incremented here,
+      // in the same transaction as the invoice write, exactly once per
+      // successful contract-priced invoice — never on assignment, loading,
+      // dispatch, or a failed/ambiguous pricing lookup (billingError case
+      // above never reaches this branch), and never twice for one
+      // delivery (guarded by the idempotency check earlier in this
+      // function, before any of this runs).
+      if (isTripCountContract) {
+        await tx.update(contracts).set({ tripsUsed: contract!.tripsUsed + 1 }).where(eq(contracts.id, contract!.id));
+      }
     }
 
     // BR-11: a partial delivery is also an exception — the undelivered
@@ -229,7 +336,7 @@ export async function PATCH(
 
   const updatedStop = await db.query.tripStops.findFirst({ where: eq(tripStops.id, stop.id), with: { epod: true } });
   const updatedOrder = await db.query.orders.findFirst({ where: eq(orders.id, stop.orderId) });
-  const invoice = await db.query.invoices.findFirst({ where: eq(invoices.id, invoiceId) });
+  const invoice = shouldCreateInvoice ? await db.query.invoices.findFirst({ where: eq(invoices.id, invoiceId) }) : null;
 
   await runAutomationRules(tenantId, "DELIVERY_COMPLETED", {
     orderId: stop.orderId,
@@ -244,5 +351,5 @@ export async function PATCH(
     }).catch(() => {});
   }
 
-  return NextResponse.json({ stop: updatedStop, order: updatedOrder, invoice });
+  return NextResponse.json({ stop: updatedStop, order: updatedOrder, invoice, billingError });
 }

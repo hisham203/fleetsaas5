@@ -905,6 +905,82 @@ only placeholders.
   `MONTHLY_ACCUMULATED` contract, which correctly skips per-delivery
   invoicing entirely. No schema, migration, seedData, pricing-engine,
   invoice-generation-behavior, or ERP changes — nothing needed fixing.
+- **Task P ("ONE_TIME_TRIP_COUNT Contract-Priced Delivery Invoice
+  Design")** — design/audit only, no code changed. Confirmed
+  `calculateContractPrice` is pure and safe to call at delivery
+  completion; confirmed `tripsUsed` was never incremented by any real
+  code path (only read, displayed, and statically seeded); found three
+  real dependent gaps beyond the core pricing bug — ERP sync hardcoding
+  `order.pricePerBottle`/`bottleSizeLtr`, `creditCheck.ts` (later found,
+  on deeper inspection during P.2, to already be safe for the invoiced
+  case), and reschedule/reassign silently dropping `contractId`.
+  Recommended Option A (minimal fix, reusing existing proven functions,
+  no schema change) over line-item or deferred-invoicing alternatives.
+- **Task P.2 ("Implement ONE_TIME_TRIP_COUNT Contract-Priced Delivery
+  Invoice")** — implemented Task P's Option A in full, plus every
+  dependent fix it identified.
+  **Core fix** (`app/api/trips/[id]/stops/[stopId]/route.ts`):
+  `ONE_TIME_TRIP_COUNT` contract orders are now priced via
+  `calculateContractPrice` at delivery completion, with STANDARD/OVERAGE
+  selected by the existing `determineRateType`, using the assigned
+  vehicle's real `capacityLiters` (now embedded via `trip.vehicle`,
+  previously never fetched here) and the order's location dimensions
+  (now embedded via `stop.order.location`, previously never fetched
+  either — `null` when no location is set, which the pricing engine
+  already treats as a wildcard). A missing or ambiguous pricing rule
+  never falls back to standard pricing — delivery itself still succeeds
+  (ePOD recorded, stop/order marked delivered/partially-delivered
+  exactly as before), but the response carries a `billingError` field
+  and no invoice is created, exactly matching Task P's own design
+  conclusion that a back-office pricing gap should never block a
+  driver's real, physical delivery. `MONTHLY_ACCUMULATED` and
+  non-contract orders are completely unaffected — same skip-invoice and
+  same bottle-priced-invoice behavior as before, respectively.
+  **A real, previously-undiscovered bug fixed along the way**: this
+  route had *no idempotency guard at all* for a repeat delivery call.
+  Since `invoices.orderId` carries a unique database constraint, a
+  driver's app retrying after a network timeout (never having received
+  the first response) would have thrown an uncaught constraint
+  violation on the second attempt — for every order type, not only
+  contract-priced ones, and for the `fail` action too. Fixed by checking
+  stop status at the top of both the `deliver`/`partial` and `fail`
+  branches and returning the already-completed result unchanged on any
+  repeat call, rather than reprocessing anything.
+  **`tripsUsed`**: now incremented exactly once, in the same transaction
+  as a successful contract-priced invoice write — never on assignment,
+  loading, dispatch, a failed/ambiguous pricing lookup, or a retried
+  delivery call.
+  **ERP sync** (`lib/erp/sync.ts`): for a contract-linked order, now uses
+  a generic tanker-delivery description and a price derived from the
+  invoice's own real `subtotal` (the same "total ÷ quantity" approach
+  `generate-monthly-invoice/route.ts` already uses for its own line
+  items) instead of the wrong `order.pricePerBottle`/`bottleSizeLtr`. A
+  legacy, non-contract invoice syncs with byte-identical description and
+  price to before this fix.
+  **Credit check** (`lib/creditCheck.ts`): audited in depth during
+  implementation and confirmed **already correct** for the case that
+  actually matters — `pendingInvoicesTotal` already reads from the real,
+  frozen `invoices.total`, not `pricePerBottle`. Task P's own audit had
+  slightly overstated this as a definite bug; the only genuinely
+  approximate part is the separate *undelivered-order* estimate, which
+  this task's own instructions explicitly permit staying as-is. No code
+  change was made here — confirmed safe by two new tests instead.
+  **Reschedule/reassign** (`app/api/exceptions/[id]/resolve/route.ts`):
+  the replacement-order insert now carries `contractId` forward from the
+  original order, exactly as `locationId` already did — a rescheduled or
+  reassigned contract-linked order no longer silently reverts to
+  standard pricing on its next delivery attempt. A legacy, non-contract
+  order's reschedule is completely unaffected (`contractId` stays
+  `null`, exactly as before).
+  One existing test (`billingReconciliationAudit.test.ts`) was updated,
+  not just left passing by accident — it had been asserting the exact
+  old, buggy behavior this task exists to fix (a bare `ONE_TIME_TRIP_COUNT`
+  contract with no pricing rules "still creates its usual invoice");
+  updated to add a real pricing rule and assert the new, correct
+  contract-priced amount instead.
+  No schema, migration, or seedData changes; `MONTHLY_ACCUMULATED`
+  behavior, ERP connection settings, and Odoo integration structure are
+  all untouched beyond the price-source correction described above.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

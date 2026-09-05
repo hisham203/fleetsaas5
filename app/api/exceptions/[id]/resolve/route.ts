@@ -90,6 +90,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         orderNumber: genNumber("ORD"),
         customerId: order.customerId,
         locationId: order.locationId,
+        // Task P.2 dependent fix: this previously dropped contractId
+        // entirely — a rescheduled/reassigned contract-linked order would
+        // silently revert to standard (bottle) pricing on its next
+        // delivery attempt, with no error or warning anywhere, even
+        // though the original order was correctly contract-priced. The
+        // replacement is the same logical delivery obligation continuing
+        // under the same contract, so it must carry the same contractId
+        // forward, exactly as locationId already does.
+        contractId: order.contractId,
         type: order.type,
         bottleSizeLtr: order.bottleSizeLtr,
         qtyOrdered: undeliveredQty,
