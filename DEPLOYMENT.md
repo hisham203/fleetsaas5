@@ -981,6 +981,105 @@ only placeholders.
   No schema, migration, or seedData changes; `MONTHLY_ACCUMULATED`
   behavior, ERP connection settings, and Odoo integration structure are
   all untouched beyond the price-source correction described above.
+- **Milestone Q ("Smarty1 Operations Control Tower & Phase-1 Core")** —
+  a major, gated milestone. Executed Q0 (pre-flight) through Q6 (Loading
+  Points) in full; Q7 (Phase-1 alignment matrix) and the remaining
+  documentation-only portions of Q8 are covered below rather than as
+  separate implementation work, since nothing in this milestone's core
+  slice required code beyond what Q0-Q6 already cover.
+
+  **Q0/Q1 audit finding that shaped everything else**: every status
+  column in this schema (orders, trips, trip_stops, invoices,
+  exceptions, contracts) is an unconstrained `text` field, confirmed by
+  direct inspection — meaning a fully normalized Control Tower
+  presentation layer could be built with **zero schema change**, exactly
+  the outcome Gate Q2 asked to determine before writing any UI. No git
+  repository exists in this working environment (every prior task has
+  operated directly on the filesystem, packaged via zip rather than
+  git commits) — noted honestly rather than treated as a stop condition,
+  since there is no history here to check for unexplained changes.
+
+  **New status-normalization module** (`lib/controlTowerStatus.ts`):
+  three pure functions — `deriveOperationalStatus`, `deriveBillingStatus`,
+  `deriveDemandSource` — read-only over existing order/trip/stop/
+  invoice/exception data, changing nothing about any underlying status
+  field. An open exception or a cancelled order always overrides
+  whatever the trip/order status alone would suggest. Demand source is
+  derived only from `customers.type` (B2B/B2C) and `orders.contractId` —
+  both already fully reliable — with anything that doesn't cleanly match
+  reported as `UNKNOWN`, never guessed. 21 unit tests cover every branch.
+
+  **Dispatch Control Tower** (`/admin/dispatch`, `GET /api/control-tower`):
+  a new, read-mostly aggregation view across the full demand lifecycle —
+  new demand through billing — built entirely on the existing order/
+  trip/invoice/exception tables via two batched queries (no N+1: the
+  same `inArray` batching pattern `lib/monthlyBillingEligibility.ts`
+  already uses). Every KPI card is a real count over the tenant's own
+  returned rows; none are hardcoded. Every action link points at the
+  existing, already-protected `/dispatch` console rather than
+  duplicating any assignment/loading/dispatch business logic here.
+
+  **Contract Trip Planner** (`/admin/contract-planner`,
+  `GET /api/contract-planner`): reuses `computeReadinessItems` (Task J)
+  verbatim — the exact same readiness logic Contract Management's own
+  summary already uses, so the two views can never disagree. "Ready for
+  Dispatch" is a planner-specific, stricter verdict (every readiness
+  item must be `READY`, not merely non-`MISSING`) layered on top of that
+  same data. Never creates a trip or order automatically; "Plan in
+  Control Tower" links to the real, existing creation flow.
+
+  **Loading Points** (`/admin/loading-points`): deliberately reuses the
+  existing `warehouses` table and its `GET /api/warehouses`/
+  `PATCH /api/warehouses/[id]` APIs directly — no duplicate entity, no
+  new backend at all. Government/private classification and active/
+  inactive status are honestly *not* shown as fake KPI splits, since no
+  field distinguishes them today (Task M's own prior audit already
+  covered the active/inactive question specifically).
+
+  **Reusable UI foundation** (Gate Q3): `components/AdminShell.tsx`
+  (persistent sidebar + light workspace header) and `components/
+  KpiCard.tsx`, applied *only* to these three new modules — `/admin`,
+  `/admin/contracts`, `/admin/customers`, `/dispatch`, and `/driver` are
+  completely untouched, exactly matching this milestone's own "avoid a
+  giant UI rewrite" and "existing modules migrate incrementally"
+  instructions. `components/StatusBadge.tsx` was extended with colors
+  for every new normalized status — one duplicate-key build error
+  (`IN_TRANSIT` already existed for a different, pre-existing status)
+  was caught and fixed before this shipped.
+
+  **P1/P4 Phase-1 alignment** (Gate Q7): P1 (Order/contract operational
+  linkage, native dispatch, Loading Points) is now substantially
+  represented by the Control Tower + Planner + Loading Points trio built
+  here; weighbridge integration remains a genuine gap with no existing
+  data model, documented as an integration point rather than built.
+  P4's B2B Contract and B2B Cash flows are both fully representable
+  today via `deriveDemandSource`; B2C Cash is representable wherever
+  `customers.type = "B2C"` is set correctly, though the pilot's real
+  orders today are predominantly B2B — this is a data-population
+  question, not a code gap. Government royalty tracking has a real,
+  minimal, zero-schema-change foundation available today: the existing
+  `expenseClaims` table (driverId/vehicleId/tripId/category/amount/
+  status) can represent a royalty charge via `category: "ROYALTY"`,
+  linked to a trip which itself links to its loading point via
+  `warehouseId` — a dedicated `loadingPointId`/configurable-rate model
+  is a real future schema change, explicitly deferred and not
+  implemented here. Native routing/dispatch, ePOD, and P2/P3's
+  near-term scope (driver dossiers, existing operational workflow) all
+  already exist and were not regressed. The Saudi compliance gate (Q23)
+  was not touched, correctly — no HOS/ELD/DVIR schema was proposed or
+  implemented.
+
+  **Explicitly deferred, per this milestone's own instructions**:
+  weighbridge integration, a dedicated royalty ledger/settlement model,
+  a recurrence/scheduling engine for the Contract Planner, `code`/
+  `type`/`operatingHours`/`allowedTankerCapacities`/active-inactive
+  fields for Loading Points (all genuinely require schema changes, none
+  applied), and every item Section 24 of the milestone prompt itself
+  lists as out of scope (EV charging, AI assistant, predictive
+  maintenance, HOS/ELD, etc.) — none of these were implemented,
+  attempted, or scaffolded.
+
+  No schema, migration, or seedData changes anywhere in this milestone.
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive
