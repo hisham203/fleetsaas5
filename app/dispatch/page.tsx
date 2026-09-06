@@ -741,6 +741,12 @@ function DispatchPageInner() {
                 <DetailRow label="Delivery status" value={firstStop?.status ?? "Not available"} />
                 {firstStop?.epod && <DetailRow label="Delivered qty" value={firstStop.epod.deliveredQty} />}
                 {firstStop?.epod && <DetailRow label="POD receiver" value={firstStop.epod.recipientName ?? "Not captured"} />}
+                {trip.vehicle?.id && (
+                  <DetailRow
+                    label="Vehicle expenses"
+                    value={<a href={`/admin/expenses?vehicleId=${trip.vehicle.id}`} className="text-aquaDark hover:underline">View in Finance</a>}
+                  />
+                )}
                 {order?.status === "FAILED" && <DetailRow label="Failure reason" value={order.failureReason ?? "Not specified"} />}
               </div>
 

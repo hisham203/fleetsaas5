@@ -27,7 +27,7 @@ const DEFAULT_SECTIONS: AdminNavSection[] = [
     label: "Operations",
     items: [
       { label: "Dispatch Control Tower", href: "/admin/dispatch" },
-      { label: "Contract Trip Planner", href: "/admin/contract-planner" },
+      { label: "Contract & Capacity Planner", href: "/admin/contract-planner" },
       { label: "Loading Points", href: "/admin/loading-points" },
       { label: "Dispatch (Live)", href: "/dispatch" },
     ],
@@ -45,6 +45,7 @@ const DEFAULT_SECTIONS: AdminNavSection[] = [
     label: "Finance",
     items: [
       { label: "Billing", href: "/admin?tab=billing" },
+      { label: "Expenses", href: "/admin/expenses" },
       { label: "Scorecards", href: "/admin?tab=scorecards" },
       { label: "Reports", href: "/admin?tab=reports" },
     ],

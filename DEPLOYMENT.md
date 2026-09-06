@@ -1443,6 +1443,83 @@ only placeholders.
   migration, or seedData changes — confirmed by file-timestamp
   inspection of every protected file.
 
+- **Milestone X ("Finance Expenses & Fleet Operations Hub")** — a
+  discoverability and visibility milestone; no schema change was
+  required or made.
+
+  **Root cause of the reported "missing" expense approval**: nothing
+  was lost. `expenseClaims` already had every field needed (driver/
+  vehicle/trip links, category, amount, status, `reviewedByUserId`/
+  `reviewedAt`, and `reviewNotes` as a required rejection reason), and
+  `GET /api/expenses` plus `POST /api/expenses/[id]/approve|reject`
+  already existed, fully working and already tenant-isolated/
+  ADMIN-gated. The screen showing them was a "Field Ops" > "Expenses"
+  sub-tab inside the large `app/admin/page.tsx` — a label nobody
+  looking for "expense approval" would think to check, especially
+  since Milestone R's sidebar put "Finance" front and center as its own
+  section. This was a pure discoverability gap, not a missing
+  capability, confirmed by direct code inspection before writing
+  anything.
+
+  **Finance Expense Approval Center**: a new `/admin/expenses` page,
+  added under Finance in the sidebar (both the shared `AdminShell`
+  defaults and the main admin page's own sidebar function), reusing the
+  existing approve/reject APIs verbatim — summary cards (pending/
+  approved/rejected counts and amounts), status filtering, a
+  `vehicleId` deep-link filter, and inline approve/reject actions
+  (reject requires a reason, exactly matching the pre-existing backend
+  rule). The old Field Ops sub-tab is left completely untouched and
+  still works — nothing was removed, this is purely a second, more
+  discoverable path to the same data.
+
+  **Fleet Operations Hub**: a new `GET /api/vehicles/[id]/operations`
+  read API (empty-safe, tenant-isolated, same ADMIN/DISPATCHER
+  permission as the Fleet screen itself) aggregates a vehicle's trips,
+  expenses, and maintenance records from existing tables — no new
+  table. The Fleet tab gained a "View operations" action per vehicle
+  opening a `VehicleOperationsDrawer` with overview KPIs (active/
+  completed/failed trip counts, pending expenses), a trip list linking
+  to Dispatch, an expense list linking to the new Finance page filtered
+  by vehicle, and a maintenance section with an honest "No maintenance
+  records found for this vehicle." empty state — never fake data. A
+  real security exposure was caught and fixed during implementation:
+  the new route's trip/order embed initially included
+  `customer: true` unrestricted, which the project's own
+  `checkSensitiveExposure` scanner correctly flagged as a passwordHash
+  risk (B2B customers have login credentials in that same table) —
+  fixed to use the established `SAFE_CUSTOMER_COLUMNS` pattern, same as
+  every other route in this codebase, confirmed clean by re-running the
+  scanner.
+
+  **Cross-system impact (Parts 10-20)** — implemented where safe, data
+  already existed, and the change was small; explicitly deferred
+  everywhere else:
+  - *Dashboard*: implemented — a self-contained pending-expense count
+    with a link to Finance, using the same real count Expenses itself
+    computes, never a fake KPI.
+  - *Dispatch*: implemented — the trip detail drawer now links to
+    Finance Expenses filtered by the trip's vehicle; Dispatch never
+    approves or rejects expenses itself.
+  - *Sidebar label*: fixed "Contract Trip Planner" to "Contract &
+    Capacity Planner" in both sidebar sources, matching the screen's
+    own already-correct title (Part 8.6).
+  - *Executive Dashboard, Reports, Scorecards, Billing, Maintenance
+    screen, Customers/Contracts operational activity, Contract &
+    Capacity Planner deeper integration*: reviewed and deliberately
+    deferred — each would need either new aggregation logic beyond a
+    small link/count (Reports/Scorecards), or risks conflating
+    concepts this task explicitly warns against (Billing must never
+    mix with expense approval), or the existing screens already work
+    correctly and adding cross-links there was judged lower-value than
+    the two changes above given this task's own "small safe changes
+    only" instruction. Billing and expense approval remain fully
+    separate — confirmed directly: neither the approve nor reject route
+    touches the `invoices` table at all.
+
+  No schema, migration, or seedData changes — confirmed by
+  file-timestamp inspection of every protected file (`lib/db/schema.ts`
+  predates this milestone entirely, from V.1).
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

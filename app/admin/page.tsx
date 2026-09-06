@@ -43,7 +43,7 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
       label: "Operations",
       items: [
         { label: "Dispatch Control Tower", href: "/admin/dispatch" },
-        { label: "Contract Trip Planner", href: "/admin/contract-planner" },
+        { label: "Contract & Capacity Planner", href: "/admin/contract-planner" },
         { label: "Loading Points", href: "/admin/loading-points" },
       ],
     },
@@ -59,7 +59,7 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
     },
     {
       label: "Finance",
-      items: [item("Billing", "billing"), item("Scorecards", "scorecards"), item("Reports", "reports")],
+      items: [item("Billing", "billing"), { label: "Expenses", href: "/admin/expenses" }, item("Scorecards", "scorecards"), item("Reports", "reports")],
     },
     {
       label: "Platform",
@@ -362,6 +362,20 @@ function Card({ title, value, sub }: { title: string; value: string | number; su
 }
 
 function Overview({ tenant, customers, vehicles, drivers }: any) {
+  // Milestone X, Part 11 — a small, self-contained addition: Overview
+  // fetches its own pending-expense count rather than threading a new
+  // prop through the whole page's data-loading chain, keeping this a
+  // safe, isolated change. No new KPI is invented — this is the same
+  // real count the Expenses screen itself computes from the same,
+  // unmodified GET /api/expenses endpoint.
+  const [pendingExpenseCount, setPendingExpenseCount] = useState<number | null>(null);
+  useEffect(() => {
+    fetch("/api/expenses?status=PENDING")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setPendingExpenseCount(Array.isArray(rows) ? rows.length : 0))
+      .catch(() => setPendingExpenseCount(null));
+  }, []);
+
   return (
     <div className="space-y-6">
       <div>
@@ -374,6 +388,15 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
         <Card title="Vehicles" value={vehicles.length} sub={`${vehicles.filter((v: any) => v.status === "AVAILABLE").length} available`} />
         <Card title="Drivers" value={drivers.length} sub={`${drivers.filter((d: any) => d.status === "AVAILABLE").length} available`} />
       </div>
+      {pendingExpenseCount !== null && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-steel text-xs uppercase tracking-wide">Finance</p>
+            <p className="text-sm mt-0.5">{pendingExpenseCount} expense request{pendingExpenseCount === 1 ? "" : "s"} awaiting approval.</p>
+          </div>
+          <a href="/admin/expenses" className="text-aquaDark hover:underline text-sm font-medium">View Expenses</a>
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-slate-200 p-5">
         <h3 className="font-medium mb-4">Team &amp; Users</h3>
         <table className="w-full text-sm">
@@ -400,6 +423,7 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
 }
 
 function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
+  const [detailVehicleId, setDetailVehicleId] = useState<string | null>(null);
   const [plateNumber, setPlate] = useState("");
   const [vehicleType, setType] = useState("Delivery Vehicle");
   const [capacityUnits, setCapacity] = useState(100);
@@ -500,6 +524,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
               <th className="pb-2">Capacity</th>
               <th className="pb-2">Status</th>
               <th className="pb-2">Home warehouse / loading point</th>
+              <th className="pb-2">Operations</th>
             </tr>
           </thead>
           <tbody>
@@ -556,6 +581,11 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
                     ))}
                   </select>
                 </td>
+                <td className="py-2">
+                  <button onClick={() => setDetailVehicleId(v.id)} className="text-aquaDark hover:underline text-xs font-medium">
+                    View operations
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -596,6 +626,120 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
           </button>
         </div>
       </div>
+      {detailVehicleId && <VehicleOperationsDrawer vehicleId={detailVehicleId} onClose={() => setDetailVehicleId(null)} />}
+    </div>
+  );
+}
+
+// Milestone X, Part 6 — Fleet Operations Hub. Selecting a vehicle opens
+// this detail drawer, reading from the new, empty-safe
+// GET /api/vehicles/[id]/operations endpoint. Every section below shows
+// only real data this API returns — no invented utilization figures, no
+// fake maintenance records. Expense/trip links route to the real,
+// existing screens (Finance > Expenses, Dispatch) rather than
+// duplicating those views here.
+function VehicleOperationsDrawer({ vehicleId, onClose }: { vehicleId: string; onClose: () => void }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/vehicles/${vehicleId}/operations`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setData)
+      .finally(() => setLoading(false));
+  }, [vehicleId]);
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end">
+      <div className="absolute inset-0 bg-ink/30" onClick={onClose} />
+      <aside className="relative w-full max-w-lg bg-white h-full overflow-auto shadow-xl p-5 space-y-5">
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium">{data?.vehicle?.plateNumber ?? "Vehicle"}</h3>
+          <button onClick={onClose} className="text-steel hover:text-ink text-sm">✕</button>
+        </div>
+
+        {loading ? (
+          <p className="text-steel text-sm">Loading…</p>
+        ) : !data ? (
+          <p className="text-danger text-sm">Could not load this vehicle&apos;s operations.</p>
+        ) : (
+          <>
+            <div>
+              <p className="text-steel text-xs uppercase tracking-wide mb-2">Overview</p>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-steel text-xs block">Type</span>{data.vehicle.vehicleType}</div>
+                <div><span className="text-steel text-xs block">Status</span><StatusBadge status={data.vehicle.status} /></div>
+                <div><span className="text-steel text-xs block">Tanker capacity</span>{data.vehicle.capacityLiters ? `${data.vehicle.capacityLiters.toLocaleString()} L` : "Not set"}</div>
+                <div><span className="text-steel text-xs block">Home loading point</span>{data.homeWarehouse?.name ?? "Not set"}</div>
+                <div><span className="text-steel text-xs block">Active trips</span>{data.activeTrips.length}</div>
+                <div><span className="text-steel text-xs block">Completed trips</span>{data.completedTripCount}</div>
+                <div><span className="text-steel text-xs block">Failed/exception trips</span>{data.failedTripCount}</div>
+                <div><span className="text-steel text-xs block">Pending expenses</span>{data.expenseSummary.pendingCount}</div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-steel text-xs uppercase tracking-wide">Trips</p>
+              </div>
+              {data.recentTrips.length === 0 ? (
+                <p className="text-steel text-sm">No trips recorded for this vehicle yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {data.recentTrips.slice(0, 10).map((t: any) => {
+                    const stop = t.stops?.[0];
+                    return (
+                      <div key={t.id} className="flex items-center justify-between text-sm border-t border-slate-50 pt-1.5">
+                        <span>{t.tripNumber}</span>
+                        <span className="text-steel text-xs">{stop?.order?.customer?.name ?? "—"}</span>
+                        <StatusBadge status={stop?.status === "FAILED" ? "FAILED" : t.status} />
+                        <a href={`/admin/dispatch?tripId=${t.id}`} className="text-aquaDark hover:underline text-xs font-medium">Open</a>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-steel text-xs uppercase tracking-wide">Expenses</p>
+                <a href={`/admin/expenses?vehicleId=${vehicleId}`} className="text-aquaDark hover:underline text-xs font-medium">View in Finance</a>
+              </div>
+              {data.expenses.length === 0 ? (
+                <p className="text-steel text-sm">No expense requests for this vehicle yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {data.expenses.slice(0, 10).map((e: any) => (
+                    <div key={e.id} className="flex items-center justify-between text-sm border-t border-slate-50 pt-1.5">
+                      <span>{e.category}</span>
+                      <span className="text-steel text-xs">{e.amount.toLocaleString(undefined, { style: "currency", currency: "SAR" })}</span>
+                      <StatusBadge status={e.status} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="text-steel text-xs uppercase tracking-wide mb-2">Maintenance</p>
+              {data.maintenanceRecords.length === 0 ? (
+                <p className="text-steel text-sm">No maintenance records found for this vehicle.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {data.maintenanceRecords.slice(0, 10).map((m: any) => (
+                    <div key={m.id} className="flex items-center justify-between text-sm border-t border-slate-50 pt-1.5">
+                      <span>{m.description}</span>
+                      <StatusBadge status={m.status} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </aside>
     </div>
   );
 }

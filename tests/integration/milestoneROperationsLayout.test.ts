@@ -36,8 +36,8 @@ describe("Left-sidebar Admin shell (Milestone R, Parts 3/10)", () => {
     expect(shellSource).toContain("/admin/dispatch");
   });
 
-  it("4. Contract Trip Planner is a first-class sidebar item", () => {
-    expect(shellSource).toContain("Contract Trip Planner");
+  it("4. Contract & Capacity Planner is a first-class sidebar item (relabeled from 'Contract Trip Planner' in Milestone X, Part 8.6, for clarity)", () => {
+    expect(shellSource).toContain("Contract & Capacity Planner");
     expect(shellSource).toContain("/admin/contract-planner");
   });
 
