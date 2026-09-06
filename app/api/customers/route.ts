@@ -46,6 +46,7 @@ const SAFE_CUSTOMER_LIST_COLUMNS = {
   lat: true,
   lng: true,
   creditLimit: true,
+  contractPricePerBottle: true,
   loginEmail: true,
   createdAt: true,
 } as const;

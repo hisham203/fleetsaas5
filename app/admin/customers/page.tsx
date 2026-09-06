@@ -281,6 +281,14 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
   const [name, setName] = useState(customer.name);
   const [phone, setPhone] = useState(customer.phone ?? "");
   const [address, setAddress] = useState(customer.address);
+  // Milestone Z, Part 10 — migrated from the legacy Customers tab
+  // (app/admin/page.tsx's CustomersTab), the one capability that screen
+  // had and this one didn't. Deliberately labeled "default bottle price"
+  // below, not "contract price" — this is a per-customer fallback price
+  // used only where no contract pricing rule applies; it is a
+  // completely separate concept from lib/contractPricing.ts's contract
+  // pricing engine, which this migration does not touch at all.
+  const [contractPricePerBottle, setContractPricePerBottle] = useState(customer.contractPricePerBottle != null ? String(customer.contractPricePerBottle) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -288,6 +296,7 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
     setName(customer.name);
     setPhone(customer.phone ?? "");
     setAddress(customer.address);
+    setContractPricePerBottle(customer.contractPricePerBottle != null ? String(customer.contractPricePerBottle) : "");
     setEditing(false);
     setError("");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately keyed only on customer.id: resets local edit state when the selected customer changes, not on every field edit, which would fight with the user's own in-progress typing
@@ -299,7 +308,7 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
     const res = await fetch(`/api/customers/${customer.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, phone: phone || null, address }),
+      body: JSON.stringify({ name, phone: phone || null, address, contractPricePerBottle: contractPricePerBottle === "" ? null : Number(contractPricePerBottle) }),
     });
     const data = await res.json();
     setBusy(false);
@@ -324,6 +333,17 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" />
+          <div>
+            <label className="text-steel text-xs block mb-1">Default bottle price (legacy — used only where no contract pricing rule applies)</label>
+            <input
+              type="number"
+              step="0.01"
+              className="w-full border rounded-lg px-2 py-1.5 text-sm"
+              value={contractPricePerBottle}
+              onChange={(e) => setContractPricePerBottle(e.target.value)}
+              placeholder="No default set"
+            />
+          </div>
           {error && <p className="text-danger text-xs">{error}</p>}
           <div className="flex gap-2">
             <button disabled={!name || !address || busy} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
@@ -335,6 +355,9 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
           <p className="font-medium">{customer.name} <StatusBadge status={customer.type} /></p>
           <p className="text-steel">{customer.address}</p>
           {customer.phone && <p className="text-steel">{customer.phone}</p>}
+          {customer.contractPricePerBottle != null && (
+            <p className="text-steel text-xs">Default bottle price: {customer.contractPricePerBottle} SAR (legacy fallback, not a contract pricing rule)</p>
+          )}
         </div>
       )}
     </div>

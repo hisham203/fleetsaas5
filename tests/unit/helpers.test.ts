@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { calcInvoiceTotals, genNumber, genId } from "@/lib/helpers";
 
 describe("calcInvoiceTotals", () => {
@@ -35,10 +35,22 @@ describe("genNumber", () => {
     expect(genNumber("INV")).toMatch(/^INV-/);
   });
 
-  it("produces different values on successive calls", () => {
+  it("produces different values when the underlying random draw differs (deterministic, not relying on timing/chance)", () => {
+    // genNumber combines Date.now() (which can be identical across
+    // calls made in the same millisecond — a real risk in a tight test
+    // loop) with Math.random() (only 900 possible values, 100-999).
+    // Testing this by simply calling genNumber twice in a row is
+    // genuinely flaky: it can hit the same millisecond AND the same
+    // random draw. Mocking Math.random to return two different values
+    // isolates exactly the property this test cares about — a
+    // different random draw produces a different number — without any
+    // dependency on real timing.
+    const randomSpy = vi.spyOn(Math, "random");
+    randomSpy.mockReturnValueOnce(0.1).mockReturnValueOnce(0.9);
     const a = genNumber("ORD");
     const b = genNumber("ORD");
     expect(a).not.toBe(b);
+    randomSpy.mockRestore();
   });
 });
 

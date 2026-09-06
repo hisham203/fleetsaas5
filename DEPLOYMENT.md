@@ -1590,6 +1590,89 @@ only placeholders.
   No schema, migration, or seedData changes — confirmed by
   file-timestamp inspection of every protected file.
 
+- **Milestone Z ("Maintenance Inventory, Workshops, Warehouses &
+  Procurement Foundation")** — a business-model correction and design
+  milestone; no schema change was made for the Bucket B design (per its
+  own hard-stop rule).
+
+  **Business correction confirmed by direct audit**: `inventoryItems.itemName`
+  is literally commented `"19L Bottle - Full", "19L Bottle - Empty"`,
+  and the Inventory tab's default form value is `"19L Bottle - Full"` —
+  this table is genuinely bottled-water retail delivery stock, not
+  maintenance/fleet inventory, exactly matching the user's correction.
+  `warehouses` is the same table used throughout for dispatch/loading
+  points — confirmed unsafe to repurpose for maintenance stock. This
+  means workshops, maintenance warehouses, an ERP-style item master,
+  stock balances/movements, and the full PR->PO->Receiving procurement
+  cycle all genuinely require new schema (Bucket B, design only, not
+  implemented this milestone).
+
+  **Bucket A (implemented, no schema)**:
+  - *Customer cleanup*: `contractPricePerBottle` editing migrated into
+    `/admin/customers`'s `CustomerProfileCard`, clearly labeled "legacy/
+    default bottle price" and distinct from contract pricing rules
+    (`lib/contractPricing.ts`, untouched). A real gap was found and
+    fixed along the way: the field wasn't in `GET /api/customers`'s
+    safe column list at all, so the new UI would have silently shown
+    nothing — added `contractPricePerBottle: true` there. The legacy
+    Customers tab (`?tab=customers`) now redirects to `/admin/customers`
+    rather than rendering its own screen; its code is kept in the file,
+    unreferenced, not deleted.
+  - *Inventory clarification*: the existing Inventory screen now shows
+    a clear banner explaining it is customer-delivery product stock
+    (Demo Water Co.'s bottle model), not maintenance inventory — no
+    functionality removed, since it's still genuinely needed.
+  - *Honest placeholder*: a new `/admin/maintenance-inventory` page
+    explains what's designed (below) and explicitly states no live
+    stock data exists — no fake tables, no fake rows, no fetch calls.
+    Linked from the sidebar as "(Planned)", never presented as live.
+
+  **Bucket B — schema proposal only, not implemented**:
+  - `workshops` (workshopCode, name, type INTERNAL/EXTERNAL/MOBILE_SERVICE,
+    status, address, contact fields) — service locations distinct from
+    both loading points (customer delivery) and the existing `vehicles`
+    table.
+  - `maintenance_warehouses` (warehouseCode, name, type WORKSHOP_STORE/
+    CENTRAL_SPARES/TYRE_STORE/MOBILE_VAN/OTHER, nullable workshopId,
+    status) — a genuinely separate table from the existing `warehouses`
+    (dispatch loading points), never repurposing it.
+  - Item master: `item_categories` -> `item_subcategories` -> `items`
+    (itemCode unique per tenant, itemType, unitOfMeasure, isStocked/
+    isSerialized/isTire flags, minimumStockLevel/reorderPoint) — an
+    ERP-style hierarchy separate from `inventoryItems` (bottle stock).
+  - Stock: `maintenance_inventory_balances` (per warehouse+item, on-hand/
+    reserved/available) and `maintenance_inventory_movements`
+    (RECEIPT/ISSUE_TO_MAINTENANCE/ADJUSTMENT/TRANSFER types, always
+    tenant+warehouse-scoped, every balance change backed by a movement
+    row, no negative stock by default).
+  - Procurement: `suppliers`, `purchase_requisitions` + lines (PR
+    lifecycle DRAFT->SUBMITTED->APPROVED/REJECTED->CONVERTED_TO_PO),
+    `purchase_orders` + lines (PO lifecycle DRAFT->ISSUED->PARTIALLY_RECEIVED
+    ->RECEIVED/CLOSED), `goods_receipts` + lines (posting a receipt
+    creates a RECEIPT movement, updates the PO line's receivedQuantity,
+    and can never be posted twice or exceed the ordered quantity unless
+    explicitly allowed) — deliberately never creates a customer invoice
+    or touches customer billing at any step.
+  - Full future test plan (47 items across workshop/warehouse/item/
+    inventory/procurement/maintenance-integration/regression coverage)
+    and a nine-phase implementation plan (Z.1 schema approval through
+    Z.9 advanced ERP controls) are recorded in this milestone's own
+    final report.
+
+  **A real, pre-existing test flake found and fixed during this
+  milestone's own stability testing (unrelated to any Milestone Z
+  change)**: `genNumber`'s "produces different values" unit test
+  combined `Date.now()` (which can repeat across calls in the same
+  millisecond) with only 900 possible random values — a real collision
+  risk. An initial attempted fix (generating 50 values in a loop)
+  actually made this worse due to the birthday paradox against such a
+  small random space, failing consistently. Properly fixed with
+  deterministic `Math.random` mocking (`vi.spyOn`), confirmed stable
+  across 8 consecutive isolated runs and 3 consecutive full-suite runs.
+
+  No schema, migration, or seedData changes — confirmed by
+  file-timestamp inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

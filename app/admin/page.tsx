@@ -202,7 +202,7 @@ function AdminPageInner() {
         {tab === "overview" && <Overview tenant={tenant} customers={customers} vehicles={vehicles} drivers={drivers} />}
         {tab === "fleet" && <FleetTab tenant={tenant} vehicles={vehicles} warehouses={warehouses} onChange={load} />}
         {tab === "drivers" && <DriversTab tenant={tenant} drivers={drivers} onChange={load} />}
-        {tab === "customers" && <CustomersTab tenant={tenant} customers={customers} onChange={load} />}
+        {tab === "customers" && <LegacyCustomersRedirect />}
         {tab === "billing" && <BillingTab invoices={invoices} onChange={load} />}
         {tab === "maintenance" && <MaintenanceTab tenant={tenant} vehicles={vehicles} onChange={load} />}
         {tab === "inventory" && <InventoryTab tenant={tenant} inventory={inventory} warehouses={warehouses} onChange={load} />}
@@ -847,6 +847,24 @@ function DriversTab({ tenant, drivers, onChange }: any) {
   );
 }
 
+// Milestone Z, Part 10 — contractPricePerBottle editing (the one
+// capability CustomersTab below had that /admin/customers didn't) is
+// now fully migrated there (see CustomerProfileCard in
+// app/admin/customers/page.tsx). With no remaining reason to show the
+// legacy screen, ?tab=customers now redirects immediately rather than
+// rendering a deprecation banner — the migration is complete, so a
+// redirect is clearer than asking the user to notice a banner and click
+// through themselves. CustomersTab's code is deliberately left intact
+// below (unreferenced, not deleted) in case any gap in this migration
+// surfaces later — safer than deleting working code outright.
+function LegacyCustomersRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/admin/customers");
+  }, [router]);
+  return <p className="text-steel text-sm">Redirecting to Customers &amp; Sites…</p>;
+}
+
 function CustomersTab({ tenant, customers, onChange }: any) {
   const [name, setName] = useState("");
   const [type, setType] = useState<"B2C" | "B2B">("B2C");
@@ -1391,6 +1409,19 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
   return (
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 space-y-4">
+        {/* Milestone Z, Part 2/12 — business correction: this screen
+            tracks customer-delivery product stock (e.g. filled/empty
+            bottles at a loading point) for tenants whose business model
+            needs it (Demo Water Co.'s bottle delivery) — it was never,
+            and is not becoming, truck/tanker maintenance inventory
+            (spare parts, tires, oils, filters). That is a distinct,
+            not-yet-built module — see Maintenance Inventory below in
+            the Platform section, which is honestly marked as
+            design-pending rather than showing fake stock data here or
+            there. */}
+        <div className="bg-warn/10 text-warn rounded-lg px-4 py-2 text-sm">
+          This tracks customer-delivery product stock (e.g. bottles at a loading point) — not truck/tanker maintenance inventory. See Maintenance Inventory (Platform section) for spare parts/tires, once built.
+        </div>
         <div className="flex items-center justify-between">
           <h3 className="font-medium">Loading Points / Warehouses &amp; Stock</h3>
           <button onClick={() => setShowNewWarehouse((s) => !s)} className="text-xs text-aquaDark font-medium">
