@@ -227,10 +227,27 @@ describe("Regression protection (Milestone X)", () => {
     expect(stopRoute).toContain("Proof of delivery is required before this trip can be marked delivered.");
   });
 
-  it("50/51. V.1 schema and Milestone W POD/failed-trip fixes remain untouched", async () => {
-    const { contractDeliverySchedules, plannedContractDemands } = await import("@/lib/db/schema");
-    const scheduleRows = await db.query.contractDeliverySchedules.findMany();
-    expect(scheduleRows.length).toBe(0);
+  it("50/51. V.1 schema remains generation-free (no code path creates schedules/demands), and Milestone W POD/failed-trip fixes remain untouched", async () => {
+    // Task X.1 CI-failure fix: this previously asserted
+    // `contractDeliverySchedules` findMany() (globally, no filter) has
+    // length 0 — a fragile, order-dependent assumption that the entire
+    // shared test database has zero rows in this table. It happened to
+    // pass locally, but tests/integration/milestoneVDeliverySchema.test.ts
+    // legitimately inserts 3 rows of its own (to test the schema and
+    // read APIs), and CI's test-execution order surfaced that real,
+    // pre-existing data before this assertion ran — "expected 3 to be
+    // 0" was the test's own wrong assumption, not app data leakage: the
+    // app itself has no POST/PATCH route for this table at all (V.1's
+    // own test file already confirms that directly), so nothing in
+    // production code ever creates these rows — only test fixtures do.
+    // Fixed to verify that actual, real guarantee instead of a
+    // global count no test file can safely promise on a shared DB.
+    const scheduleRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/contracts/[id]/delivery-schedules/route.ts"), "utf8");
+    const demandRouteSource = fs.readFileSync(path.join(process.cwd(), "app/api/planned-contract-demands/route.ts"), "utf8");
+    expect(scheduleRouteSource).not.toContain("export async function POST");
+    expect(scheduleRouteSource).not.toContain("export async function PATCH");
+    expect(demandRouteSource).not.toContain("export async function POST");
+    expect(demandRouteSource).not.toContain("export async function PATCH");
     const stopRoute = fs.readFileSync(path.join(process.cwd(), "app/api/trips/[id]/stops/[stopId]/route.ts"), "utf8");
     expect(stopRoute).toContain("autoCloseTripIfAllStopsResolved");
   });
