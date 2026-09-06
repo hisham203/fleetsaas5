@@ -1355,6 +1355,94 @@ only placeholders.
   (`ONE_TIME_TRIP_COUNT`, STANDARD pricing, `tripsUsed` incrementing
   exactly once) passing unmodified alongside the new tables' own tests.
 
+- **Milestone W ("Trip Execution, POD & Exception Lifecycle")** — audited
+  first, then implemented every fix that existing schema safely
+  supports; produced schema/storage proposals for the two capabilities
+  that genuinely don't exist yet, without implementing them.
+
+  **Root causes found (confirmed empirically)**: (1) `recipientName` on
+  the delivery/ePOD payload was fully optional — a driver could close a
+  delivery with zero proof of who received it; the backend never
+  enforced anything, only the UI happened to show a text field. (2)
+  `failureReason` was equally optional, silently defaulting to "Not
+  specified" even when never provided — a driver could fail a stop with
+  no explanation at all. (3) A trip's own `status` never automatically
+  changed when its stop resolved — only the stop/order did. For this
+  pilot's one-trip-one-stop model, a FAILED stop left its trip sitting
+  at `DISPATCHED` forever unless a dispatcher separately remembered to
+  click "Close trip" — and the Driver App's own active-trip query
+  (`status === "DISPATCHED"`) kept resurfacing that same trip
+  indefinitely. This is the exact "stuck in Driver App and Dispatch"
+  symptom reported.
+
+  **Fixed, no schema needed**: the delivery-completion route now
+  rejects a missing/blank `recipientName` with a 422
+  ("Proof of delivery is required before this trip can be marked
+  delivered."), checked *after* the existing Task P.2 idempotency
+  short-circuit so a legitimate retry is never rejected on a
+  technicality about its own payload. The fail action now requires a
+  real `failureReason` with a matching 422. A new shared
+  `autoCloseTripIfAllStopsResolved` helper closes the trip (releasing
+  vehicle/driver back to AVAILABLE) the instant every one of its stops
+  is resolved — delivered, partially delivered, or failed — reusing the
+  exact same "no stop left PENDING/ARRIVED" condition the pre-existing
+  manual "complete" trip action already used, so the two paths can
+  never disagree about when a trip is genuinely done. Never touches
+  invoices, `tripsUsed`, or billing — those remain governed entirely by
+  the existing per-stop logic, confirmed unchanged by a full
+  end-to-end regression test. The Driver App's own UI now disables
+  "Confirm failure"/"Submit ePOD" until a real reason/recipient is
+  entered (no silent fallback substitution) and shows a clear result
+  message after every action, including Part 8.A's own specified
+  "Trip failed and sent to dispatch for review." text.
+
+  **Lifecycle timeline (Part 6)**: reconstructed, not event-logged — a
+  new `buildTripTimeline` function in the Dispatch detail drawer builds
+  a visible timeline entirely from existing persisted timestamps
+  (order.createdAt, trip.startedAt/loadingConfirmedAt/completedAt,
+  stop.arrivedAt/completedAt, epod.deliveredAt), with any event lacking
+  a real stored timestamp (invoice creation timing) explicitly labeled
+  "(timestamp not available)" rather than invented or left blank.
+  Recommendation: this reconstruction is sufficient for the pilot's
+  current needs; a `trip_lifecycle_events` table (schema proposed below)
+  is a real future enhancement, not an immediate requirement, since
+  every event this milestone's own "minimum visible timeline" asks for
+  is already covered by a genuine, persisted timestamp.
+
+  **Failed trip flow (Parts 7-9)**: the Exception Center
+  (reschedule/reassign/return/cancel) already existed and needed no
+  change — confirmed still correct by a dedicated test. Control Tower
+  already correctly showed a failed order as `EXCEPTION`, never `NEW`
+  or `ACTIVE` (Milestone T's own fix) — also confirmed unchanged.
+  Reschedule already correctly preserves `contractId`/`customerId` on
+  the replacement order (Task P.2's own fix) — re-verified here.
+
+  **POD schema/storage proposal — not implemented, design only** (Part
+  5): a `delivery_pod_records` table (id, tenantId, orderId, tripId,
+  stopId, podType [OTP|PHOTO|SIGNATURE|RECEIVER_NAME|GPS|NOTE],
+  podStatus [CAPTURED|VERIFIED|REJECTED], receiverName, receiverPhone,
+  otpCodeHash/otpVerifiedAt nullable, imageUrl/fileId nullable,
+  signatureDataUrl/fileId nullable, latitude/longitude nullable, notes,
+  capturedByUserId, capturedAt, verifiedByUserId/verifiedAt nullable)
+  would be required for real OTP verification, photo upload, or a
+  genuine digital signature — none of which exist in this schema today
+  (`epods.signatureNote` is a plain text note, not a captured
+  signature). Image/signature storage would need an external object
+  store (this environment has no file/blob storage configured) with
+  `imageUrl`/`signatureDataUrl` as pointers, never inline binary in
+  Postgres. OTP would need generation, a short expiry window, and
+  server-side verification against `otpCodeHash` (never storing the
+  raw code). This proposal is not implemented — no migration was
+  created for it.
+
+  Explicitly confirmed unaffected: pricing engine semantics
+  (`lib/contractPricing.ts`, unchanged), ERP (`lib/erp/sync.ts`,
+  unchanged), monthly billing, Task P.2's contract-priced invoice
+  rules, Milestone T's planner/status consistency, and V.1's
+  schema (both new tables remain empty, untouched). No schema,
+  migration, or seedData changes — confirmed by file-timestamp
+  inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

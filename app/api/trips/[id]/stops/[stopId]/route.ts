@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { tripStops, epods, orders, invoices, inventoryItems, drivers, trips, exceptions, contracts } from "@/lib/db/schema";
+import { tripStops, epods, orders, invoices, inventoryItems, drivers, trips, exceptions, contracts, vehicles } from "@/lib/db/schema";
 import { genId, genNumber, calcInvoiceTotals, VAT_RATE } from "@/lib/helpers";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { runAutomationRules } from "@/lib/automation";
@@ -10,6 +10,35 @@ import { calculateContractPrice, PricingEngineError } from "@/lib/contractPricin
 import { determineRateType } from "@/lib/contractEligibility";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+
+// Milestone W, Part 7/9 root-cause fix: a trip's own status never
+// automatically changed when its stop(s) resolved — only the stop/order
+// did. For this pilot's one-trip-one-stop model, that meant a FAILED
+// stop left its trip sitting at "DISPATCHED" forever unless a dispatcher
+// separately remembered to click "Close trip" (app/api/trips/[id]/
+// route.ts's own "complete" action). The Driver App's own active-trip
+// query (`t.status === "DISPATCHED" || "IN_PROGRESS"`) then kept
+// surfacing that same trip indefinitely — the exact "stuck in Driver App
+// and Dispatch" symptom this milestone was opened to fix. This closes
+// the trip automatically the moment every one of its stops is resolved
+// (delivered, partially delivered, or failed — never while any stop is
+// still PENDING/ARRIVED), reusing the exact same "no stop left
+// PENDING/ARRIVED" condition and vehicle/driver-release logic the manual
+// "complete" action already used, so the two paths can never disagree
+// about when a trip is genuinely done. Never touches invoices,
+// tripsUsed, or billing — those remain governed entirely by the
+// per-stop logic below, unchanged.
+async function autoCloseTripIfAllStopsResolved(tripId: string) {
+  const trip = await db.query.trips.findFirst({ where: eq(trips.id, tripId), with: { stops: true } });
+  if (!trip || trip.status === "COMPLETED") return;
+  const unresolved = trip.stops.filter((s) => s.status === "PENDING" || s.status === "ARRIVED");
+  if (unresolved.length > 0) return;
+  await db.transaction(async (tx) => {
+    await tx.update(trips).set({ status: "COMPLETED", completedAt: new Date() }).where(eq(trips.id, tripId));
+    await tx.update(vehicles).set({ status: "AVAILABLE" }).where(eq(vehicles.id, trip.vehicleId));
+    await tx.update(drivers).set({ status: "AVAILABLE" }).where(eq(drivers.id, trip.driverId));
+  });
+}
 
 const arriveSchema = z.object({ action: z.literal("arrive") });
 
@@ -94,6 +123,15 @@ export async function PATCH(
   const data = parsed.data;
 
   if (data.action === "fail") {
+    // Milestone W, Part 7/8/9 — a driver cannot mark a stop failed
+    // without providing a real reason. Previously failureReason was
+    // fully optional and silently defaulted to "Not specified" even
+    // when never provided at all — the exact "driver can currently
+    // close/fail without proper information" gap this milestone was
+    // opened to close, applied to the failure path alongside delivery.
+    if (!data.failureReason || data.failureReason.trim().length === 0) {
+      return NextResponse.json({ error: "A failure reason is required before this stop can be marked failed." }, { status: 422 });
+    }
     if (stop.status === "FAILED") {
       // Task P.2 idempotency fix: a retry (e.g. driver's app resubmitting
       // after a network timeout it never got a response for) previously
@@ -123,6 +161,7 @@ export async function PATCH(
         reason: data.failureReason ?? "Not specified",
       });
     });
+    await autoCloseTripIfAllStopsResolved(id);
     const updated = await db.query.tripStops.findFirst({ where: eq(tripStops.id, stop.id) });
 
     await runAutomationRules(tenantId, "DELIVERY_FAILED", {
@@ -151,11 +190,36 @@ export async function PATCH(
   // alone (not by re-checking for an existing invoice), since a stop that's
   // already DELIVERED/PARTIALLY_DELIVERED unambiguously means this whole
   // block already ran to completion once — nothing here is reprocessed.
+  //
+  // Milestone W, Part 4: the POD gate below is checked AFTER this
+  // short-circuit, deliberately — a retry of an already-resolved stop
+  // must always return the original, already-valid result regardless of
+  // what a repeat payload happens to contain, never be rejected on a
+  // technicality about the retry's own body.
   if (stop.status === "DELIVERED" || stop.status === "PARTIALLY_DELIVERED") {
     const existingStop = await db.query.tripStops.findFirst({ where: eq(tripStops.id, stop.id), with: { epod: true } });
     const existingOrder = await db.query.orders.findFirst({ where: eq(orders.id, stop.orderId) });
     const existingInvoice = await db.query.invoices.findFirst({ where: eq(invoices.orderId, stop.orderId) });
     return NextResponse.json({ stop: existingStop, order: existingOrder, invoice: existingInvoice ?? null, billingError: null });
+  }
+
+  // Milestone W, Part 4 — mandatory POD gate, enforced server-side (not
+  // just a UI restriction the driver app could be worked around by
+  // calling this API directly). This is the interim minimum POD this
+  // schema can support today: receiver name + delivered quantity
+  // (already required above) + a server-set timestamp (epods.deliveredAt
+  // already defaults server-side) + driver identity (the authenticated
+  // session, already enforced by the role check above) + GPS if the
+  // driver's device provided it (epods.lat/lng, already optional and
+  // unchanged). Real OTP verification, photo upload, and a genuine
+  // digital signature do not exist in this schema — see this
+  // milestone's own POD schema/storage proposal for that; this gate
+  // never claims those methods are active.
+  if (!data.recipientName || data.recipientName.trim().length === 0) {
+    return NextResponse.json(
+      { error: "Proof of delivery is required before this trip can be marked delivered." },
+      { status: 422 }
+    );
   }
 
   const isPartial = data.action === "partial" || data.deliveredQty < stop.order.qtyOrdered;
@@ -334,6 +398,7 @@ export async function PATCH(
     }
   });
 
+  await autoCloseTripIfAllStopsResolved(id);
   const updatedStop = await db.query.tripStops.findFirst({ where: eq(tripStops.id, stop.id), with: { epod: true } });
   const updatedOrder = await db.query.orders.findFirst({ where: eq(orders.id, stop.orderId) });
   const invoice = shouldCreateInvoice ? await db.query.invoices.findFirst({ where: eq(invoices.id, invoiceId) }) : null;

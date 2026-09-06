@@ -12,6 +12,7 @@ export default function DriverPage() {
   const [epodStop, setEpodStop] = useState<any | null>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [actionMessage, setActionMessage] = useState<{ text: string; tone: "ok" | "danger" } | null>(null);
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const driverId = session?.driverProfileId ?? null;
@@ -102,11 +103,20 @@ export default function DriverPage() {
   }
 
   async function markFailed(tripId: string, stopId: string, reason: string) {
-    await fetch(`/api/trips/${tripId}/stops/${stopId}`, {
+    const res = await fetch(`/api/trips/${tripId}/stops/${stopId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "fail", failureReason: reason }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setActionMessage({ text: typeof data.error === "string" ? data.error : "Could not record this failure.", tone: "danger" });
+    } else {
+      // Part 8.A's own specified driver-facing message — the trip
+      // moves to Dispatch's Exception Center for recovery, it is not
+      // simply gone.
+      setActionMessage({ text: "Trip failed and sent to dispatch for review.", tone: "ok" });
+    }
     load();
   }
 
@@ -118,6 +128,13 @@ export default function DriverPage() {
     <main className="min-h-screen bg-paper">
       <TopNav role={`Driver — ${session.name}`} />
       <div className="p-6 max-w-lg mx-auto">
+        {actionMessage && (
+          <div
+            className={`rounded-lg px-3 py-2 text-sm mb-4 ${actionMessage.tone === "ok" ? "bg-ok/10 text-ok" : "bg-danger/10 text-danger"}`}
+          >
+            {actionMessage.text}
+          </div>
+        )}
         {!myTrip && (
           <div className="bg-white rounded-xl border border-slate-200 p-4 text-center text-steel text-sm">
             {myPlannedTrip
@@ -161,11 +178,17 @@ export default function DriverPage() {
           stop={epodStop}
           onClose={() => setEpodStop(null)}
           onSubmit={async (payload: Record<string, unknown>) => {
-            await fetch(`/api/trips/${epodStop.tripId}/stops/${epodStop.id}`, {
+            const res = await fetch(`/api/trips/${epodStop.tripId}/stops/${epodStop.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(payload),
             });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              setActionMessage({ text: typeof data.error === "string" ? data.error : "Could not record this delivery.", tone: "danger" });
+            } else {
+              setActionMessage({ text: "Delivery confirmed.", tone: "ok" });
+            }
             setEpodStop(null);
             load();
           }}
@@ -226,7 +249,11 @@ function StopCard({ stop, onArrive, onDeliver, onFail }: any) {
         <div className="space-y-2 mt-2">
           <input className="w-full border rounded-lg px-2 py-1.5 text-xs" placeholder="Reason (e.g. customer not home)" value={reason} onChange={(e) => setReason(e.target.value)} />
           <div className="flex gap-2">
-            <button onClick={() => { onFail(reason || "Not specified"); setShowFail(false); }} className="flex-1 bg-danger text-white rounded-lg py-1.5 text-xs font-medium">
+            <button
+              onClick={() => { onFail(reason.trim()); setShowFail(false); }}
+              disabled={!reason.trim()}
+              className="flex-1 bg-danger text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
+            >
               Confirm failure
             </button>
             <button onClick={() => setShowFail(false)} className="flex-1 border border-slate-200 rounded-lg py-1.5 text-xs">
@@ -288,15 +315,19 @@ function EpodModal({ stop, onClose, onSubmit }: any) {
                 action: isPartial ? "partial" : "deliver",
                 deliveredQty,
                 emptiesCollected,
-                recipientName,
+                recipientName: recipientName.trim(),
                 notes,
               })
             }
-            className="flex-1 bg-ok text-white rounded-lg py-2 text-sm font-medium"
+            disabled={!recipientName.trim()}
+            className="flex-1 bg-ok text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
           >
             Submit ePOD
           </button>
         </div>
+        {!recipientName.trim() && (
+          <p className="text-warn text-xs mt-2">Proof of delivery is required — enter who received the delivery before submitting.</p>
+        )}
       </div>
     </div>
   );

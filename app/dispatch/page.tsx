@@ -740,6 +740,30 @@ function DispatchPageInner() {
                 <DetailRow label="Loading status" value={trip.loadingConfirmed ? "Confirmed" : "Awaiting loading"} />
                 <DetailRow label="Delivery status" value={firstStop?.status ?? "Not available"} />
                 {firstStop?.epod && <DetailRow label="Delivered qty" value={firstStop.epod.deliveredQty} />}
+                {firstStop?.epod && <DetailRow label="POD receiver" value={firstStop.epod.recipientName ?? "Not captured"} />}
+                {order?.status === "FAILED" && <DetailRow label="Failure reason" value={order.failureReason ?? "Not specified"} />}
+              </div>
+
+              {/* Milestone W, Part 6 — reconstructed lifecycle timeline.
+                  Built entirely from timestamps this system already
+                  persists (order.createdAt, trip.startedAt/completedAt,
+                  stop.arrivedAt/completedAt, epod.deliveredAt,
+                  invoice.createdAt) — no new event-log table. Each
+                  event that genuinely happened is shown with its real
+                  timestamp; nothing here is invented or backfilled for
+                  an event that didn't leave a timestamp behind. */}
+              <div>
+                <p className="text-steel text-xs uppercase tracking-wide mb-2">Lifecycle timeline</p>
+                <ol className="space-y-2 text-sm">
+                  {buildTripTimeline(trip, order, firstStop, ctRow).map((ev, i) => (
+                    <li key={i} className="flex items-start justify-between gap-3 border-b border-slate-50 pb-2">
+                      <span>{ev.label}</span>
+                      <span className="text-right text-steel text-xs shrink-0">
+                        {ev.at ? new Date(ev.at).toLocaleString() : "(timestamp not available)"}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
               </div>
             </aside>
           </div>
@@ -747,6 +771,37 @@ function DispatchPageInner() {
       })()}
     </main>
   );
+}
+
+// Milestone W, Part 6 — reconstructs a trip's lifecycle from existing
+// persisted timestamps only. Every entry here corresponds to a real,
+// stored timestamp on order/trip/stop/epod/invoice — this function
+// never invents a time for an event that wasn't actually recorded.
+// Events with no real timestamp today (loading confirmed at the exact
+// moment, invoice/billing-deferred distinction) are covered by the
+// closest real field available, noted inline. A true trip_lifecycle_events
+// table (this milestone's own schema proposal) would let a future
+// version show driver-app-open/POD-capture-attempt-level granularity
+// this reconstruction cannot.
+function buildTripTimeline(trip: any, order: any, stop: any, ctRow: any) {
+  const events: { label: string; at: string | null }[] = [];
+  if (order?.createdAt) events.push({ label: "Order created", at: order.createdAt });
+  if (trip?.createdAt) events.push({ label: "Assigned to trip", at: trip.createdAt });
+  if (trip?.loadingConfirmedAt) events.push({ label: "Loading confirmed", at: trip.loadingConfirmedAt });
+  if (trip?.startedAt) events.push({ label: "Dispatched", at: trip.startedAt });
+  if (stop?.arrivedAt) events.push({ label: "Driver arrived on site", at: stop.arrivedAt });
+  if (stop?.status === "FAILED" && stop?.completedAt) {
+    events.push({ label: `Failed — ${order?.failureReason ?? "reason not specified"}`, at: stop.completedAt });
+  } else if ((stop?.status === "DELIVERED" || stop?.status === "PARTIALLY_DELIVERED") && stop?.epod?.deliveredAt) {
+    events.push({ label: stop.status === "PARTIALLY_DELIVERED" ? "Partially delivered (POD captured)" : "Delivered (POD captured)", at: stop.epod.deliveredAt });
+  }
+  if (ctRow?.billingStatus === "DEFERRED_MONTHLY") {
+    events.push({ label: "Billing deferred to monthly consolidation", at: null });
+  } else if (ctRow?.billingStatus === "INVOICED_PENDING" || ctRow?.billingStatus === "INVOICED_PAID") {
+    events.push({ label: "Invoice created", at: null });
+  }
+  if (trip?.completedAt) events.push({ label: "Trip closed", at: trip.completedAt });
+  return events;
 }
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
