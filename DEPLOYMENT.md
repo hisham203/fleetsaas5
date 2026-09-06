@@ -1520,6 +1520,76 @@ only placeholders.
   file-timestamp inspection of every protected file (`lib/db/schema.ts`
   predates this milestone entirely, from V.1).
 
+- **Milestone Y ("Navigation QA, Reports Integrity & Relationship Audit")**
+  — a QA milestone; no schema change was required or made.
+
+  **Root cause of the stale-URL bug (Parts 2/3)**: the main `/admin`
+  page's in-page sidebar items called `setTab(key)` directly — a pure
+  React state change that never touched the browser URL at all.
+  Landing on a real link like `/admin?tab=scorecards` and then clicking
+  "Reports" in the sidebar switched the visible content to Reports
+  while the URL bar stayed frozen at `?tab=scorecards` forever — this
+  precisely explains every reported symptom (Reports/Inventory/
+  Customers appearing to render "under" the scorecards URL). Fixed with
+  a `changeTab` wrapper that calls `router.replace()` alongside the
+  state update, aliased as `setTab` so every existing call site across
+  the 2700-line file got the fix automatically without a broad rename
+  or route-per-tab refactor.
+
+  **Old Customers screen (Part 3/4)**: removed as a separate primary
+  sidebar item — Customers & Sites (`/admin/customers`) is now the sole
+  primary customer screen. Audited first and found the legacy tab
+  retains exactly one unmigrated capability (editing
+  `contractPricePerBottle` for the legacy Demo Water Co. tenant), so
+  rather than deleting it, it now shows a clear deprecation banner
+  linking to the new screen and remains reachable via the old
+  `?tab=customers` URL so no existing bookmark breaks.
+
+  **Expense reference (Part 5)**: confirmed `expenseClaims` has no
+  reference column; no migration was needed or made. Implemented a
+  deterministic, display-only `expenseRef()` helper
+  (`EXP-<year>-<6-char-id>`) derived purely from each expense's
+  existing, immutable `id`/`createdAt` — the same expense always
+  produces the same reference, with no schema change. Shown in the
+  Finance Expenses table and the Fleet vehicle drawer's expense list.
+
+  **Fuel report fix (Part 6) — the specific reported bug**: audited
+  first and found Fuel Logs and Expense Claims were already correctly
+  separated at the data level (Fuel Logs reads only the `fuelLogs`
+  table; no mixing existed). The actual gap was discoverability: fuel
+  expense claims lived only inside the general "Expense Claims" report,
+  filterable by category but not separately named, so a user checking
+  "Fuel Logs" for fuel expense data correctly found nothing there.
+  Added a new, dedicated "Fuel Expenses" report dataset
+  (`category = FUEL`, pre-filtered at the query level in a new
+  `fetchFuelExpenseClaimsRows` function) — verified directly that a real
+  fuel expense claim now appears in it and a non-fuel claim doesn't,
+  and that the general Expense Claims report is unaffected.
+
+  **Relationship audit (Part 7)**: spot-checked the critical
+  relationships this milestone flagged (Expense→Driver/Vehicle/Trip,
+  Vehicle→Trips/Expenses/Maintenance, Customer→Contracts/Orders,
+  Contract→pending orders, Trip→Expenses) against the accumulated
+  audits from Milestones Q through X — all confirmed still correctly
+  linked, tenant-scoped, and using safe column selections; no broken or
+  leaking relationship was found.
+
+  **A real test-pollution bug caught and fixed during this milestone's
+  own test-writing**: one of this milestone's new tests inserted an
+  arbitrarily large (999) expense amount into Demo Water Co.'s shared
+  tenant to prove tenant isolation — large enough to occasionally break
+  a pre-existing test (`seed-data-quality.test.ts`'s "Acme's expenses
+  are priced at wholesale fuel scale, distinctly larger than Demo Water
+  Co.'s retail scale") when execution order put the new insert first.
+  The application's tenant isolation itself was never at fault — fixed
+  by using a small, realistic amount (37.5) that still proves isolation
+  without skewing another test's aggregate statistics on the same
+  shared tenant. Confirmed stable across 4 consecutive full-suite runs
+  after the fix.
+
+  No schema, migration, or seedData changes — confirmed by
+  file-timestamp inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

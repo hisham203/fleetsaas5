@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, Fragment, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import AdminShell, { AdminNavSection } from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import { expenseRef } from "@/lib/helpers";
 
 type Tenant = { id: string; name: string; sector: string; users: any[] };
 type TabKey = "overview" | "fleet" | "drivers" | "customers" | "billing" | "maintenance" | "inventory" | "reports" | "scorecards" | "erp" | "automation" | "fieldops" | "executive";
@@ -52,7 +53,6 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
       items: [
         item("Fleet", "fleet"),
         item("Drivers", "drivers"),
-        item("Customers", "customers"),
         { label: "Customers & Sites", href: "/admin/customers" },
         { label: "Contracts", href: "/admin/contracts" },
       ],
@@ -106,7 +106,25 @@ function AdminPageInner() {
     const requested = searchParams.get("tab");
     return (VALID_TABS as string[]).includes(requested ?? "") ? (requested as TabKey) : "overview";
   };
-  const [tab, setTab] = useState<TabKey>(initialTab);
+  const [tab, setTabState] = useState<TabKey>(initialTab);
+  // Milestone Y, Part 3 root-cause fix: the sidebar's in-page tab items
+  // previously called setTab(key) directly — a pure React state change
+  // that never touched the browser URL at all. Landing on a real link
+  // like /admin?tab=scorecards and then clicking "Reports" in the
+  // sidebar switched the visible content to Reports while the URL bar
+  // stayed at ?tab=scorecards forever — exactly the reported "URL
+  // remains stale" symptom. changeTab keeps both in sync: the state
+  // update still drives the render (no page remount, no data reload),
+  // and router.replace (not push, so the tab-browsing history doesn't
+  // pile up entries) updates the query string to match, so a page
+  // refresh or a shared link always reopens on the same section the
+  // user was actually looking at.
+  const router = useRouter();
+  const changeTab = useCallback((key: TabKey) => {
+    setTabState(key);
+    router.replace(`/admin?tab=${key}`, { scroll: false });
+  }, [router]);
+  const setTab = changeTab;
   const [loading, setLoading] = useState(true);
 
   // S1 hotfix: a single failing/erroring endpoint (bad status, or a body
@@ -713,6 +731,7 @@ function VehicleOperationsDrawer({ vehicleId, onClose }: { vehicleId: string; on
                 <div className="space-y-1.5">
                   {data.expenses.slice(0, 10).map((e: any) => (
                     <div key={e.id} className="flex items-center justify-between text-sm border-t border-slate-50 pt-1.5">
+                      <span className="font-mono text-xs">{expenseRef(e)}</span>
                       <span>{e.category}</span>
                       <span className="text-steel text-xs">{e.amount.toLocaleString(undefined, { style: "currency", currency: "SAR" })}</span>
                       <StatusBadge status={e.status} />
@@ -872,7 +891,20 @@ function CustomersTab({ tenant, customers, onChange }: any) {
   }
 
   return (
-    <div className="grid md:grid-cols-3 gap-6">
+    <div className="space-y-4">
+      {/* Milestone Y, Part 3/4 — this legacy screen is no longer in the
+          primary sidebar; /admin/customers (Customers & Sites) is now
+          the one primary customer screen. This tab is kept reachable
+          only via a direct/old ?tab=customers link, for exactly one
+          reason: editing contractPricePerBottle below (a bottle-pricing
+          field still used by the legacy Demo Water Co. tenant) has not
+          yet been migrated to the new screen. Everything else this tab
+          could do, Customers & Sites already does. */}
+      <div className="bg-warn/10 text-warn rounded-lg px-4 py-2 text-sm flex items-center justify-between">
+        <span>This screen is deprecated. Use Customers &amp; Sites for customer management — this legacy view remains only for editing a customer&apos;s contract bottle price.</span>
+        <a href="/admin/customers" className="underline text-xs font-medium whitespace-nowrap ml-3">Go to Customers &amp; Sites</a>
+      </div>
+      <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Customers</h3>
         <table className="w-full text-sm">
@@ -946,6 +978,7 @@ function CustomersTab({ tenant, customers, onChange }: any) {
             Add customer
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

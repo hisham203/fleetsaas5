@@ -6,6 +6,7 @@ import AdminShell from "@/components/AdminShell";
 import KpiCard from "@/components/KpiCard";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import { expenseRef } from "@/lib/helpers";
 
 // Milestone X, Part 3 — Finance Expense Approval Center. This is a
 // discoverability fix, not a new capability: GET /api/expenses and
@@ -149,6 +150,7 @@ function ExpensesPageInner() {
               <table className="w-full text-sm">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>
+                    <th className="text-left px-4 py-2">Ref</th>
                     <th className="text-left px-4 py-2">Submitted</th>
                     <th className="text-left px-4 py-2">Driver</th>
                     <th className="text-left px-4 py-2">Vehicle</th>
@@ -164,6 +166,7 @@ function ExpensesPageInner() {
                 <tbody>
                   {filtered.map((e) => (
                     <tr key={e.id} className="border-t border-slate-100 align-top">
+                      <td className="px-4 py-2 font-mono text-xs">{expenseRef(e)}</td>
                       <td className="px-4 py-2 text-steel">{new Date(e.createdAt).toLocaleDateString()}</td>
                       <td className="px-4 py-2">{e.driver?.user?.name ?? "—"}</td>
                       <td className="px-4 py-2 text-steel">{e.vehicle?.plateNumber ?? "—"}</td>

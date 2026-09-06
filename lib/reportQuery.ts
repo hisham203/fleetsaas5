@@ -1,6 +1,6 @@
 import { db } from "./db/client";
 import { orders, invoices, trips, vehicles, fuelLogs, maintenanceRecords, tasks, expenseClaims, creditNotes } from "./db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { DATASETS, getDataset, isValidColumn, type ReportConfig, type ReportFilter, type ReportSort } from "./reportDatasets";
 
 // A hard cap independent of any `limit` the report config requests — this
@@ -142,6 +142,33 @@ async function fetchExpenseClaimsRows(tenantId: string): Promise<Row[]> {
   }));
 }
 
+// Milestone Y, Part 6 — a dedicated, named "Fuel Expenses" report.
+// Reuses the exact same expenseClaims table and row-mapping as the
+// general Expense Claims report above — this is NOT a different data
+// source or a merge with fuelLogs, it's the same driver-submitted
+// reimbursement claims, pre-filtered to category="FUEL" at the query
+// level. Deliberately kept separate from Fuel Logs (fetchFuelLogsRows,
+// reading the unrelated fuelLogs table — physical fill-up records) per
+// this task's own explicit warning not to conflate the two concepts:
+// a fuel log is an operational fill-up event; a fuel expense claim is a
+// driver's reimbursement request, which may or may not correspond to
+// any particular fill-up recorded elsewhere.
+async function fetchFuelExpenseClaimsRows(tenantId: string): Promise<Row[]> {
+  const rows = await db.query.expenseClaims.findMany({
+    where: and(eq(expenseClaims.tenantId, tenantId), eq(expenseClaims.category, "FUEL")),
+    with: { driver: { with: { user: true } }, vehicle: true, trip: true },
+  });
+  return rows.map((e) => ({
+    driverName: e.driver?.user?.name ?? null,
+    vehiclePlate: e.vehicle?.plateNumber ?? null,
+    tripNumber: e.trip?.tripNumber ?? null,
+    amount: e.amount,
+    status: e.status,
+    description: e.description ?? e.reason ?? null,
+    createdAt: e.createdAt,
+  }));
+}
+
 async function fetchCreditNotesRows(tenantId: string): Promise<Row[]> {
   const rows = await db.query.creditNotes.findMany({
     where: eq(creditNotes.tenantId, tenantId),
@@ -166,6 +193,7 @@ const FETCHERS: Record<string, (tenantId: string) => Promise<Row[]>> = {
   maintenanceRecords: fetchMaintenanceRows,
   tasks: fetchTasksRows,
   expenseClaims: fetchExpenseClaimsRows,
+  fuelExpenseClaims: fetchFuelExpenseClaimsRows,
   creditNotes: fetchCreditNotesRows,
 };
 

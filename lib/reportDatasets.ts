@@ -171,6 +171,31 @@ export const DATASETS: Record<string, DatasetDef> = {
       { key: "createdAt", label: "Submitted At", type: "date" },
     ],
   },
+  // Milestone Y, Part 6 — a separate, named dataset for fuel expense
+  // claims specifically (category = FUEL, pre-filtered at the query
+  // level in lib/reportQuery.ts's fetchFuelExpenseClaimsRows). This is
+  // the same expenseClaims data the general "Expense Claims" report
+  // above already includes (filterable there by category too) — this
+  // dataset exists purely so "fuel expenses" is directly discoverable
+  // by name in the report picker, addressing the reported confusion
+  // between this (a driver's reimbursement request) and "Fuel Logs"
+  // below (an unrelated, physical fill-up record from the fuelLogs
+  // table). The two are never merged.
+  fuelExpenseClaims: {
+    key: "fuelExpenseClaims",
+    label: "Fuel Expenses",
+    description: "Driver-submitted fuel expense claims specifically — not physical fill-up records (see Fuel Logs for those).",
+    defaultSortColumn: "createdAt",
+    columns: [
+      { key: "driverName", label: "Driver", type: "text" },
+      { key: "vehiclePlate", label: "Vehicle", type: "text" },
+      { key: "tripNumber", label: "Trip", type: "text" },
+      { key: "amount", label: "Amount (SAR)", type: "number" },
+      { key: "status", label: "Status", type: "enum", enumValues: ["PENDING", "APPROVED", "REJECTED"] },
+      { key: "description", label: "Description", type: "text" },
+      { key: "createdAt", label: "Submitted At", type: "date" },
+    ],
+  },
   creditNotes: {
     key: "creditNotes",
     label: "Credit Notes",
