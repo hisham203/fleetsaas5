@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import TopNav from "@/components/TopNav";
+import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import LiveMap from "@/components/LiveMap";
 import { useRequireSession } from "@/lib/useSession";
@@ -381,15 +382,27 @@ function DispatchPageInner() {
     }
   }
 
-  if (sessionLoading || !session || !tenant) return <main className="min-h-screen bg-paper"><TopNav role="Dispatcher" /><p className="p-6 text-steel">Loading…</p></main>;
+  // Milestone AA, Part 4 — root-cause fix: a Dispatcher logs in and
+  // lands directly on this page (see app/login/page.tsx's own
+  // ROLE_DESTINATIONS), which previously used only TopNav (a header bar,
+  // no sidebar at all) — meaning "Dispatch (Live)" and every other
+  // sidebar item were invisible until the user separately navigated to
+  // an /admin/* page. Wrapping this page in the same AdminShell every
+  // other admin screen uses fixes both the reported "Dispatch (Live)
+  // not consistently visible after login" symptom and the "different
+  // layout without the same sidebar shell" complaint at once — nothing
+  // below this wrapper changes at all (map, live trips, exception
+  // center, deep-link resolution all untouched).
+  if (sessionLoading || !session || !tenant) {
+    return (
+      <AdminShell title="Dispatch (Live)">
+        <p className="p-6 text-steel">Loading…</p>
+      </AdminShell>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-paper">
-      <TopNav
-        role={`Dispatcher — ${tenant.name}`}
-        extra={<a href="/admin/dispatch" className="text-steel hover:text-white text-sm">← Control Tower</a>}
-      />
-
+    <AdminShell title="Dispatch (Live)" tenantName={tenant.name}>
       {deepLinkNotice && (
         <div className="bg-warn/10 border-b border-warn/30 px-6 py-2 text-sm text-warn flex items-center justify-between">
           <span>{deepLinkNotice}</span>
@@ -775,7 +788,7 @@ function DispatchPageInner() {
           </div>
         );
       })()}
-    </main>
+    </AdminShell>
   );
 }
 
@@ -942,11 +955,20 @@ function EscalationsPanel({ escalations, onChange }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-warn/40 p-4">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-1">
         <span className="w-2 h-2 rounded-full bg-warn" />
-        <h3 className="font-medium">Escalations</h3>
+        <h3 className="font-medium">SLA Escalations</h3>
         <span className="text-steel text-xs">({escalations.length} open)</span>
       </div>
+      {/* Milestone AA, Part 7 — clarified, not removed: these are
+          SLA-lateness alerts (an order taking too long, before or after
+          dispatch), a genuinely different concept from Milestone W's
+          Exception Center below (an actual failed delivery attempt).
+          Acknowledge/Resolve are real, working actions — the confusion
+          this milestone was opened to fix was naming/context, not a
+          fake workflow, so both concepts are kept distinct rather than
+          merged into one bucket. */}
+      <p className="text-steel text-xs mb-3">Orders taking longer than expected (SLA at-risk/breached) — separate from failed deliveries below.</p>
       <div className="space-y-2">
         {escalations
           .slice()
@@ -959,7 +981,7 @@ function EscalationsPanel({ escalations, onChange }: any) {
                     {esc.severity}
                   </span>
                   <span className="text-sm font-medium">{esc.order?.customer?.name}</span>
-                  <span className="text-steel text-xs ml-2">{esc.order?.orderNumber}</span>
+                  <a href={`/dispatch?orderId=${esc.orderId}`} className="text-aquaDark hover:underline text-xs ml-2">{esc.order?.orderNumber}</a>
                   {esc.status === "ACKNOWLEDGED" && <span className="ml-2 text-xs text-aquaDark font-medium">Acknowledged</span>}
                 </div>
                 <div className="flex gap-2">

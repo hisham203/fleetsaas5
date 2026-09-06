@@ -20,7 +20,7 @@ const placeholderSource = () => fs.readFileSync(path.join(process.cwd(), "app/ad
 describe("Customer cleanup — contractPricePerBottle migration (Milestone Z, Part 10)", () => {
   it("1. /admin/customers exposes contractPricePerBottle editing", () => {
     expect(customersPageSource()).toContain("contractPricePerBottle");
-    expect(customersPageSource()).toContain("Default bottle price");
+    expect(customersPageSource()).toContain("Legacy fallback pricing");
   });
 
   it("2. updating contractPricePerBottle via PATCH /api/customers/[id] works", async () => {
@@ -66,10 +66,10 @@ describe("Customer cleanup — contractPricePerBottle migration (Milestone Z, Pa
 });
 
 describe("Inventory business-model clarification (Milestone Z, Part 2/12)", () => {
-  it("6/7. Inventory page clarifies it is customer-delivery product stock, not maintenance inventory, and points to the new module", () => {
+  it("6/7. Inventory page is clearly retired/legacy-labeled, no longer implying it's part of the bulk water business model, and points to the new module (Milestone AA strengthened this from a mere clarification to full retirement from primary navigation)", () => {
     const source = adminPageSource();
-    expect(source).toContain("customer-delivery product stock");
-    expect(source).toContain("not truck/tanker maintenance inventory");
+    expect(source).toContain("Legacy Delivery Stock");
+    expect(source).toContain("not part of the bulk water tanker business model");
     expect(source).toContain("Maintenance Inventory");
   });
 

@@ -54,7 +54,6 @@ const DEFAULT_SECTIONS: AdminNavSection[] = [
     label: "Platform",
     items: [
       { label: "Maintenance", href: "/admin?tab=maintenance" },
-      { label: "Inventory", href: "/admin?tab=inventory" },
       { label: "Maintenance Inventory & Procurement (Planned)", href: "/admin/maintenance-inventory" },
       { label: "ERP Sync", href: "/admin?tab=erp" },
       { label: "Automation", href: "/admin?tab=automation" },

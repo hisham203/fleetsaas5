@@ -333,17 +333,20 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" />
-          <div>
-            <label className="text-steel text-xs block mb-1">Default bottle price (legacy — used only where no contract pricing rule applies)</label>
-            <input
-              type="number"
-              step="0.01"
-              className="w-full border rounded-lg px-2 py-1.5 text-sm"
-              value={contractPricePerBottle}
-              onChange={(e) => setContractPricePerBottle(e.target.value)}
-              placeholder="No default set"
-            />
-          </div>
+          <details className="border border-slate-100 rounded-lg px-2 py-1.5">
+            <summary className="text-steel text-xs cursor-pointer">Legacy fallback pricing</summary>
+            <div className="mt-2">
+              <p className="text-steel text-xs mb-1">Bulk water contracts should use contract pricing rules by tanker capacity, trip, liter, zone, distance, or site. This fallback is only for old/manual flows where no contract pricing applies.</p>
+              <input
+                type="number"
+                step="0.01"
+                className="w-full border rounded-lg px-2 py-1.5 text-sm"
+                value={contractPricePerBottle}
+                onChange={(e) => setContractPricePerBottle(e.target.value)}
+                placeholder="No default set"
+              />
+            </div>
+          </details>
           {error && <p className="text-danger text-xs">{error}</p>}
           <div className="flex gap-2">
             <button disabled={!name || !address || busy} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
@@ -356,7 +359,7 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
           <p className="text-steel">{customer.address}</p>
           {customer.phone && <p className="text-steel">{customer.phone}</p>}
           {customer.contractPricePerBottle != null && (
-            <p className="text-steel text-xs">Default bottle price: {customer.contractPricePerBottle} SAR (legacy fallback, not a contract pricing rule)</p>
+            <p className="text-steel text-xs">Legacy default fallback price: {customer.contractPricePerBottle} SAR (not a contract pricing rule — see Contracts for tanker/trip/liter pricing)</p>
           )}
         </div>
       )}

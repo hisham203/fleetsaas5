@@ -22,11 +22,10 @@ describe("Permanent sidebar routing fix (Milestone Y, Parts 2/3)", () => {
     expect(source).toContain("const setTab = changeTab;");
   });
 
-  it("Reports, Scorecards, and Inventory each have their own distinct query-param value, never sharing state", () => {
+  it("Reports and Scorecards each have their own distinct query-param value, never sharing state (Inventory was intentionally retired from primary navigation in Milestone AA)", () => {
     const source = shellSource();
     expect(source).toContain('{ label: "Reports", href: "/admin?tab=reports" }');
     expect(source).toContain('{ label: "Scorecards", href: "/admin?tab=scorecards" }');
-    expect(source).toContain('{ label: "Inventory", href: "/admin?tab=inventory" }');
   });
 
   it("Customers & Sites is the sole primary customer sidebar item — the legacy 'Customers' in-page tab was removed from primary navigation", () => {

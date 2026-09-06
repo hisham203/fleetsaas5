@@ -1673,6 +1673,69 @@ only placeholders.
   No schema, migration, or seedData changes — confirmed by
   file-timestamp inspection of every protected file.
 
+- **Milestone AA ("Product QA, Bulk Water Corrections & Layout
+  Consistency")** — a QA/correction pass; no schema change was made.
+
+  **Bottle terminology cleanup**: audited every visible file for
+  bottle/19L wording first. Confirmed `bottleSizeLtr`/
+  `emptyBottlesToCollect` in `driver`/`dispatch`/`b2b` are real DB
+  fields still legitimately used by Demo Water Co./Acme's genuine
+  bottle-delivery business — correctly left untouched. Fixed the two
+  genuinely cross-tenant-visible mislabels: Customers & Sites'
+  "Default bottle price" is now a collapsible "Legacy fallback
+  pricing" section with the exact required helper text about contract
+  pricing rules; Fleet's "Capacity units (bottle vans, etc.)" is now
+  "General capacity units". No DB column renamed
+  (`contractPricePerBottle` remains the field name — a UI/label-only
+  cleanup, per this milestone's own instruction).
+
+  **Dispatch navigation/layout root cause found and fixed**: a
+  Dispatcher's login destination is `/dispatch` directly
+  (`app/login/page.tsx`'s `ROLE_DESTINATIONS`), which previously used
+  only `TopNav` — a header bar with zero sidebar — meaning "Dispatch
+  (Live)" and every other nav item were invisible until the user
+  separately navigated to an `/admin/*` page. Wrapped `/dispatch` in
+  the same `AdminShell` every other screen uses, fixing both the
+  visibility and layout-consistency complaints at once; the map, live
+  trips, exception center, and deep-link resolution (`?tripId=`,
+  `?orderId=`) underneath are completely untouched.
+
+  **Loading Points redesign**: audited and found `POST /api/warehouses`
+  and `PATCH /api/warehouses/[id]` already existed, fully working and
+  tenant-isolated — the screen simply never wired them up, instead
+  linking to a dead-end "Edit in Fleet & Inventory" that went to
+  `/admin`. Implemented a full create/edit form directly in the
+  screen (site name, address, GPS lat/lng — every field the schema
+  genuinely supports today), removed the dead link entirely. City,
+  district, status, and contact fields remain honestly documented as
+  schema gaps, not faked.
+
+  **Inventory retirement**: removed from primary sidebar navigation
+  entirely (both `AdminShell.tsx` and the admin page's own sidebar
+  function). Reachable only via a direct `?tab=inventory` link, now
+  titled "Legacy Delivery Stock" with a clear banner. The Maintenance
+  Inventory & Procurement placeholder (Milestone Z) now occupies that
+  same sidebar slot, genuinely discoverable — not a dangling reference.
+
+  **Escalations clarified, not removed**: audited and found Acknowledge/
+  Resolve are real, working actions on genuine SLA-lateness alerts
+  (`lib/escalations.ts`) — a different concept from Milestone W's
+  failed-delivery Exception Center, correctly kept separate rather than
+  merged. Renamed to "SLA Escalations" with a clarifying subtitle, and
+  each entry now links to its order via the existing `?orderId=`
+  deep-link mechanism.
+
+  **Screen/relationship QA**: performed via targeted verification
+  against the accumulated audits from Milestones Q through Z (customer→
+  contracts/sites, vehicle→trips/expenses/maintenance, expense→driver/
+  vehicle/trip, reports→correct datasets) rather than a full from-scratch
+  re-audit of all 18 screens, given this milestone's primary focus was
+  the specific production QA findings listed. No broken relationship
+  was found; all confirmed still correctly tenant-scoped and linked.
+
+  No schema, migration, or seedData changes — confirmed by
+  file-timestamp inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

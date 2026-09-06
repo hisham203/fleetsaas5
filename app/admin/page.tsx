@@ -18,7 +18,7 @@ const TAB_TITLES: Record<TabKey, string> = {
   customers: "Customers",
   billing: "Billing",
   maintenance: "Maintenance",
-  inventory: "Inventory",
+  inventory: "Legacy Delivery Stock",
   reports: "Reports",
   scorecards: "Scorecards",
   erp: "ERP Sync",
@@ -65,7 +65,7 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
       label: "Platform",
       items: [
         item("Maintenance", "maintenance"),
-        item("Inventory", "inventory"),
+        { label: "Maintenance Inventory & Procurement (Planned)", href: "/admin/maintenance-inventory" },
         item("ERP Sync", "erp"),
         item("Automation", "automation"),
         item("Field Ops", "fieldops"),
@@ -615,7 +615,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Plate number" value={plateNumber} onChange={(e) => setPlate(e.target.value)} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Vehicle type" value={vehicleType} onChange={(e) => setType(e.target.value)} />
           <div>
-            <label className="text-xs text-steel">Capacity units (bottle vans, etc.)</label>
+            <label className="text-xs text-steel">General capacity units</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="Capacity units" value={capacityUnits} onChange={(e) => setCapacity(Number(e.target.value))} />
           </div>
           <div>
@@ -1409,18 +1409,17 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
   return (
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 space-y-4">
-        {/* Milestone Z, Part 2/12 — business correction: this screen
-            tracks customer-delivery product stock (e.g. filled/empty
-            bottles at a loading point) for tenants whose business model
-            needs it (Demo Water Co.'s bottle delivery) — it was never,
-            and is not becoming, truck/tanker maintenance inventory
-            (spare parts, tires, oils, filters). That is a distinct,
-            not-yet-built module — see Maintenance Inventory below in
-            the Platform section, which is honestly marked as
-            design-pending rather than showing fake stock data here or
-            there. */}
+        {/* Milestone AA, Part 6 — business decision: this screen is
+            retired from primary navigation (it no longer appears in
+            the sidebar) because it tracks customer-delivery product
+            stock, not the bulk water tanker business model. It remains
+            reachable only via a direct ?tab=inventory link, clearly
+            labeled as legacy — no functionality removed for tenants
+            that still genuinely use it (e.g. Demo Water Co.'s legacy
+            delivery model), but it is no longer presented as an active
+            module for Riyadh Bulk Water. */}
         <div className="bg-warn/10 text-warn rounded-lg px-4 py-2 text-sm">
-          This tracks customer-delivery product stock (e.g. bottles at a loading point) — not truck/tanker maintenance inventory. See Maintenance Inventory (Platform section) for spare parts/tires, once built.
+          Legacy Delivery Stock — this is not part of the bulk water tanker business model and no longer appears in primary navigation. See Maintenance Inventory &amp; Procurement (Platform section) for the planned spare parts/tires module.
         </div>
         <div className="flex items-center justify-between">
           <h3 className="font-medium">Loading Points / Warehouses &amp; Stock</h3>
