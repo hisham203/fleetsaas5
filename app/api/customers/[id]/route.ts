@@ -10,6 +10,14 @@ import { z } from "zod";
 const updateSchema = z.object({
   contractPricePerBottle: z.number().positive().nullable().optional(),
   creditLimit: z.number().positive().nullable().optional(),
+  // Milestone U, Part 3 — safe master-data fields, editable by any admin.
+  // `type` is deliberately excluded: changing B2C/B2B has real downstream
+  // effects on pricing/statement logic elsewhere in this codebase and
+  // isn't something this task asked for. `loginEmail`/`passwordHash` are
+  // login credentials, not master data, and are excluded too.
+  name: z.string().min(1).optional(),
+  phone: z.string().min(1).nullable().optional(),
+  address: z.string().min(1).optional(),
 });
 
 // BR-18: sets (or clears) a B2B customer's negotiated contract rate. Once

@@ -241,6 +241,100 @@ function ReadinessBadge({ state }: { state: ReadinessState }) {
   return <span className={`${styles[state]} font-medium`}>{labels[state]}</span>;
 }
 
+// Milestone U, Parts 4/5 — contract date editing (start + end), using
+// the newly-extended PATCH /api/contracts/[id] (startDate was
+// previously not patchable at all; endDate already was). For
+// MONTHLY_ACCUMULATED contracts, a term-length quick-pick is a pure
+// frontend helper — it only sets the endDate input's value from
+// startDate + N months; the user can still manually override it before
+// saving, and no schema change was needed since startDate/endDate
+// already exist. This page is entirely ADMIN-only (see
+// useRequireSession(["ADMIN"]) above), matching this task's own "admin
+// only for now" instruction — no separate isAdmin check is needed here.
+function ContractDatesEditor({ contract, isMonthly, onChange }: { contract: any; isMonthly: boolean; onChange: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const toInputDate = (d: string | Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+  const [startDate, setStartDate] = useState(toInputDate(contract.startDate));
+  const [endDate, setEndDate] = useState(toInputDate(contract.endDate));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setStartDate(toInputDate(contract.startDate));
+    setEndDate(toInputDate(contract.endDate));
+    setEditing(false);
+    setError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately keyed only on contract.id, matching the same pattern as CustomerProfileCard above
+  }, [contract.id]);
+
+  function applyTerm(months: number) {
+    if (!startDate) return;
+    const d = new Date(startDate);
+    d.setMonth(d.getMonth() + months);
+    setEndDate(d.toISOString().slice(0, 10));
+  }
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/contracts/${contract.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startDate, endDate: endDate || null }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : "Failed to update dates");
+      return;
+    }
+    setEditing(false);
+    onChange();
+  }
+
+  if (!editing) {
+    return (
+      <div className="grid grid-cols-2 gap-3 text-sm items-end">
+        <div><span className="text-steel text-xs block">Start date</span>{new Date(contract.startDate).toLocaleDateString()}</div>
+        <div className="flex items-center justify-between">
+          <div><span className="text-steel text-xs block">End date</span>{contract.endDate ? new Date(contract.endDate).toLocaleDateString() : "Open-ended"}</div>
+          <button onClick={() => setEditing(true)} className="text-aquaDark hover:underline text-xs font-medium">Edit dates</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-slate-100 rounded-lg p-3 space-y-2">
+      <div className="flex gap-2">
+        <div className="w-1/2">
+          <label className="text-steel text-xs block mb-1">Start date</label>
+          <input type="date" className="w-full border rounded-lg px-2 py-1.5 text-sm" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </div>
+        <div className="w-1/2">
+          <label className="text-steel text-xs block mb-1">End date</label>
+          <input type="date" className="w-full border rounded-lg px-2 py-1.5 text-sm" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+      </div>
+      {isMonthly && (
+        <div className="flex gap-1.5">
+          <span className="text-steel text-xs">Term:</span>
+          {[1, 3, 6, 12].map((m) => (
+            <button key={m} onClick={() => applyTerm(m)} className="text-xs border border-slate-200 rounded px-2 py-0.5 hover:border-aquaDark">
+              {m}mo
+            </button>
+          ))}
+        </div>
+      )}
+      {error && <p className="text-danger text-xs">{error}</p>}
+      <div className="flex gap-2">
+        <button disabled={!startDate || busy} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button onClick={() => setEditing(false)} className="text-steel text-xs">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function ContractDetail({ contractId, distanceBands, onChange }: { contractId: string; distanceBands: any[]; onChange: () => void }) {
   const [contract, setContract] = useState<any>(null);
   const [pricingRules, setPricingRules] = useState<any[]>([]);
@@ -450,9 +544,9 @@ function ContractDetail({ contractId, distanceBands, onChange }: { contractId: s
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div><span className="text-steel text-xs block">Type</span>{isMonthly ? "Monthly accumulated" : "One-time trip count"}</div>
         <div><span className="text-steel text-xs block">Billing cadence</span>{contract.billingCadence ?? "—"}</div>
-        <div><span className="text-steel text-xs block">Start date</span>{new Date(contract.startDate).toLocaleDateString()}</div>
-        <div><span className="text-steel text-xs block">End date</span>{contract.endDate ? new Date(contract.endDate).toLocaleDateString() : "Open-ended"}</div>
       </div>
+
+      <ContractDatesEditor contract={contract} isMonthly={isMonthly} onChange={() => { load(); onChange(); }} />
 
       {isTripCount && (
         <div className="border-t border-slate-100 pt-3">
@@ -982,6 +1076,26 @@ function NewContractForm({ customers, onCreated, initialCustomerId }: { customer
         <input type="date" className="w-1/2 border rounded-lg px-3 py-2 text-sm" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         <input type="date" className="w-1/2 border rounded-lg px-3 py-2 text-sm" placeholder="End date (optional)" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
       </div>
+      {type === "MONTHLY_ACCUMULATED" && (
+        <div className="flex gap-1.5 items-center">
+          <span className="text-steel text-xs">Term:</span>
+          {[1, 3, 6, 12].map((m) => (
+            <button
+              key={m}
+              type="button"
+              disabled={!startDate}
+              onClick={() => {
+                const d = new Date(startDate);
+                d.setMonth(d.getMonth() + m);
+                setEndDate(d.toISOString().slice(0, 10));
+              }}
+              className="text-xs border border-slate-200 rounded px-2 py-0.5 hover:border-aquaDark disabled:opacity-40"
+            >
+              {m}mo
+            </button>
+          ))}
+        </div>
+      )}
 
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={appliesToAllSites} onChange={(e) => setAppliesToAllSites(e.target.checked)} />

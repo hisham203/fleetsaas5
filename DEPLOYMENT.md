@@ -1231,6 +1231,81 @@ only placeholders.
   migration, seedData, pricing, billing, or ERP changes — confirmed by
   file-timestamp inspection of every protected file and a full
   contract-priced-delivery regression test run end to end.
+- **Milestone U ("Contract Lifecycle & Demand Generation")** — no-schema
+  workflow gaps closed; delivery scheduling and demand generation
+  produced as a design proposal only, per this task's own hard-stop
+  rule.
+
+  **A real regression caught and reverted during implementation**: Part
+  6 ("mandatory pricing coverage") was initially built as a hard block
+  preventing DRAFT/SUSPENDED -> ACTIVE without a STANDARD pricing rule.
+  This broke 56 tests across 9 files — an established pattern across
+  Tasks C, D.5, E.1, P.2, and S.1 that deliberately activates a contract
+  without pricing specifically to exercise the pricing engine's own
+  downstream error handling at trip/delivery time. Since this task's own
+  instructions explicitly offered "block OR warn," and the warning is
+  already fully surfaced via the existing Contract Readiness Summary
+  (`lib/contractReadiness.ts` reports "STANDARD pricing configured":
+  MISSING, visible on every contract detail view), the hard block was
+  reverted rather than break this much working test coverage.
+
+  **Customer creation & editing** (Part 3): `PATCH /api/customers/[id]`
+  extended to support `name`/`phone`/`address` (previously only
+  `contractPricePerBottle`/`creditLimit`) — `type` and login credentials
+  deliberately excluded, since changing B2C/B2B has real downstream
+  pricing/statement effects and login fields aren't master data. Added
+  "+ New customer" (admin-gated in the UI) using the existing,
+  unmodified `POST /api/customers`, and a `CustomerProfileCard` for
+  viewing/editing the profile fields.
+
+  **Contract editing** (Part 4) **and monthly term helper** (Part 5):
+  `PATCH /api/contracts/[id]` extended to support `startDate`
+  (previously only `endDate` was patchable), with validation that end
+  date must be strictly after start date — checked against whichever
+  value applies for a partial update, so sending only `startDate` can't
+  silently invert an existing range. A `ContractDatesEditor` component
+  provides view/edit plus a 1/3/6/12-month quick-pick for
+  `MONTHLY_ACCUMULATED` contracts (a pure frontend helper — no schema
+  needed, since `startDate`/`endDate` already existed), applied to both
+  the contract detail view and the creation form.
+
+  **Delivery scheduling & demand generation (Parts 8-9) — schema
+  proposal only, not implemented**, per this task's own hard-stop rule.
+  Audited first: `orders.requestedTime` already exists (a nullable
+  timestamp) and can represent a single scheduled future delivery today
+  with zero schema change. What genuinely requires new schema is (a)
+  recurrence (no field anywhere stores "every Tuesday/Thursday" or "every
+  N days") and (b) a staged demand concept distinct from a real,
+  dispatchable order.
+
+  Proposed model (Option B, recommended): a new `contract_delivery_schedules`
+  table (contractId, scheduleType [FIXED_DATE | WEEKLY_DAYS |
+  RECURRING_INTERVAL | MONTHLY_ACCUMULATION_OPEN | TRIP_COUNT_MANUAL],
+  daysOfWeek, intervalDays, preferredTime, activeFrom/activeTo) and a new
+  `planned_contract_demands` table (contractId, scheduleId, plannedDate,
+  quantityLiters, status [PENDING_REVIEW | APPROVED | CONVERTED |
+  CANCELLED], convertedOrderId) — generation writes rows into the
+  planned-demand table only, never directly into `orders`; a dispatcher
+  explicitly reviews and converts an approved planned-demand row into a
+  real order via the existing `POST /api/orders`, at which point
+  `convertedOrderId` links them and duplicate generation is prevented by
+  checking for an existing non-cancelled planned-demand row for the same
+  `(scheduleId, plannedDate)`. This keeps the dispatch queue from being
+  flooded with future-dated orders and avoids any risk of accidental
+  billing/dispatch on an unapproved future record — directly matching
+  this task's own stated preference for Option B over generating real
+  orders in advance (Option A) or computing purely virtual, unpersisted
+  demand (Option C, which can't survive a page reload or support
+  reschedule/cancel history). Rescheduling edits the planned-demand row
+  directly (before conversion); cancelling sets its status to CANCELLED;
+  a contract date/schedule edit after generation would need an explicit
+  "regenerate remaining unconverted demand" action, not automatic
+  silent regeneration. No migration was created; this is design only,
+  awaiting explicit approval per the hard-stop rule.
+
+  No schema, migration, seedData, pricing, billing, or ERP changes —
+  confirmed by file-timestamp inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

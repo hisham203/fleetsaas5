@@ -33,16 +33,20 @@ describe("Contract Readiness Summary UI (Task J)", () => {
     expect(moduleSource).not.toMatch(/readiness\s*score/i);
   });
 
-  it("12/6. no readiness-related code path issues a write request (POST/PATCH/DELETE) — only GET fetches appear near the readiness computation", () => {
+  it("12/6. no readiness-related code path issues an unexpected write request (POST/PATCH/DELETE) — only the specific, intentional writes this task already accounts for appear near the readiness computation", () => {
     const readinessSectionStart = moduleSource.indexOf("function ReadinessBadge");
     const readinessSectionEnd = moduleSource.indexOf("function SiteScopeManager");
     const readinessAndDetailSection = moduleSource.slice(readinessSectionStart, readinessSectionEnd);
     // ContractDetail's own status-change control is a real, pre-existing,
-    // intentional write (unrelated to the readiness summary itself) —
-    // confirm THAT stays confined to its own dedicated Status section,
-    // and that nothing else in this slice of the file issues a write.
+    // intentional write (unrelated to the readiness summary itself).
+    // Milestone U added a second, equally intentional write here:
+    // ContractDatesEditor's PATCH for start/end date editing. Both are
+    // confirmed confined to their own dedicated, purposeful controls —
+    // this test's job is to catch an UNEXPECTED third write appearing
+    // near the readiness computation, not to freeze the count at its
+    // original value forever.
     const writeMethodCalls = readinessAndDetailSection.match(/method:\s*"(POST|PATCH|DELETE)"/g) ?? [];
-    expect(writeMethodCalls.length).toBe(1); // exactly the pre-existing status-change PATCH, nothing new
+    expect(writeMethodCalls.length).toBe(2); // the pre-existing status-change PATCH, plus Milestone U's date-editing PATCH
   });
 
   it("11. the Monthly Billing Readiness preview section remains read-only and still never references the generation endpoint", () => {

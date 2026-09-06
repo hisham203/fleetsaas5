@@ -85,25 +85,28 @@ export default function CustomersConfigPage() {
   return (
     <AdminShell title="Customers & Sites" tenantName={tenant?.name}>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-lg font-semibold">Customers & Sites</h1>
-          <p className="text-steel text-sm mt-0.5">
-            Customer master data and delivery sites — what contracts, pricing, and dispatch all depend on being accurate.{" "}
-            {isAdmin ? (
-              <>
-                <a href="/admin" className="text-aquaDark hover:underline">Back to Admin</a>
-                {" · "}
-                <a href="/admin/contracts" className="text-aquaDark hover:underline">Contract Management</a>
-              </>
-            ) : (
-              // Task K.4, Part 4: Contract Management is never linked
-              // for DISPATCHER here — that page is ADMIN-only anyway
-              // (would just redirect them away), and this task's own
-              // boundary is explicit that DISPATCHER shouldn't be
-              // steered toward contracts/pricing/billing at all.
-              <a href="/dispatch" className="text-aquaDark hover:underline">Back to Dispatch</a>
-            )}
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold">Customers & Sites</h1>
+            <p className="text-steel text-sm mt-0.5">
+              Customer master data and delivery sites — what contracts, pricing, and dispatch all depend on being accurate.{" "}
+              {isAdmin ? (
+                <>
+                  <a href="/admin" className="text-aquaDark hover:underline">Back to Admin</a>
+                  {" · "}
+                  <a href="/admin/contracts" className="text-aquaDark hover:underline">Contract Management</a>
+                </>
+              ) : (
+                // Task K.4, Part 4: Contract Management is never linked
+                // for DISPATCHER here — that page is ADMIN-only anyway
+                // (would just redirect them away), and this task's own
+                // boundary is explicit that DISPATCHER shouldn't be
+                // steered toward contracts/pricing/billing at all.
+                <a href="/dispatch" className="text-aquaDark hover:underline">Back to Dispatch</a>
+              )}
+            </p>
+          </div>
+          {isAdmin && <NewCustomerButton onCreated={(id) => { setSelectedId(id); load(); }} />}
         </div>
 
         {loading ? (
@@ -119,6 +122,7 @@ export default function CustomersConfigPage() {
             <div className="space-y-4">
               {selectedCustomer ? (
                 <>
+                  <CustomerProfileCard customer={selectedCustomer} isAdmin={isAdmin} onUpdated={load} />
                   <CustomerOperationsPanel customer={selectedCustomer} contracts={contractsByCustomer.get(selectedCustomer.id) ?? []} isAdmin={isAdmin} />
                   <CustomerSitesPanel
                     customer={selectedCustomer}
@@ -206,6 +210,137 @@ function SiteReadinessBadges({ site }: { site: any }) {
 // to the existing /admin/contracts creation flow with customerId
 // prefilled via query param, exactly per this task's own preferred
 // pattern, rather than building a second contract form here.
+// Milestone U, Part 3 — "New customer" using the existing, unmodified
+// POST /api/customers endpoint. `type` is included since it's already a
+// required, safe field on that endpoint (defaults to B2C) — this is a
+// real create action, not a stub.
+function NewCustomerButton({ onCreated }: { onCreated: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [type, setType] = useState<"B2C" | "B2B">("B2B");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    const res = await fetch("/api/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, type, address, phone: phone || undefined }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : "Failed to create customer");
+      return;
+    }
+    setOpen(false);
+    setName("");
+    setAddress("");
+    setPhone("");
+    onCreated(data.id);
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="bg-ink text-white rounded-lg px-4 py-2 text-sm font-medium shrink-0">
+        + New customer
+      </button>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 w-72 shrink-0">
+      <p className="font-medium text-sm">New customer</p>
+      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+      <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={type} onChange={(e) => setType(e.target.value as "B2C" | "B2B")}>
+        <option value="B2B">B2B</option>
+        <option value="B2C">B2C</option>
+      </select>
+      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
+      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      {error && <p className="text-danger text-xs">{error}</p>}
+      <div className="flex gap-2">
+        <button disabled={!name || !address || busy} onClick={submit} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
+          Create
+        </button>
+        <button onClick={() => setOpen(false)} className="text-steel text-xs">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// Milestone U, Part 3 — customer profile view/edit, using the
+// newly-extended PATCH /api/customers/[id] (name/phone/address only —
+// see that route's own comment for why `type`/loginEmail are excluded).
+function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; isAdmin: boolean; onUpdated: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(customer.name);
+  const [phone, setPhone] = useState(customer.phone ?? "");
+  const [address, setAddress] = useState(customer.address);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setName(customer.name);
+    setPhone(customer.phone ?? "");
+    setAddress(customer.address);
+    setEditing(false);
+    setError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately keyed only on customer.id: resets local edit state when the selected customer changes, not on every field edit, which would fight with the user's own in-progress typing
+  }, [customer.id]);
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/customers/${customer.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, phone: phone || null, address }),
+    });
+    const data = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : "Failed to update customer");
+      return;
+    }
+    setEditing(false);
+    onUpdated();
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-medium">Customer profile</h3>
+        {isAdmin && !editing && (
+          <button onClick={() => setEditing(true)} className="text-aquaDark hover:underline text-xs font-medium">Edit</button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+          <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
+          <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" />
+          {error && <p className="text-danger text-xs">{error}</p>}
+          <div className="flex gap-2">
+            <button disabled={!name || !address || busy} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+            <button onClick={() => setEditing(false)} className="text-steel text-xs">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div className="text-sm space-y-1">
+          <p className="font-medium">{customer.name} <StatusBadge status={customer.type} /></p>
+          <p className="text-steel">{customer.address}</p>
+          {customer.phone && <p className="text-steel">{customer.phone}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomerOperationsPanel({ customer, contracts, isAdmin }: { customer: any; contracts: any[]; isAdmin: boolean }) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

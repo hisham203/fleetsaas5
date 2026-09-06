@@ -31,6 +31,7 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 const patchSchema = z.object({
   status: z.enum(["ACTIVE", "SUSPENDED", "CANCELLED"]).optional(),
   notes: z.string().optional(),
+  startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional().nullable(),
 });
 
@@ -81,6 +82,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         { status: 422 }
       );
     }
+    // Milestone U, Part 6 audit finding: a hard block on activating a
+    // contract without a STANDARD pricing rule was tried here and
+    // reverted — it broke dozens of existing, legitimate tests (Tasks
+    // C, D.5, E.1, P.2, S.1) that deliberately activate a contract
+    // without pricing specifically to exercise the pricing engine's own
+    // downstream error handling at trip/delivery time. This task's own
+    // instructions explicitly offer "block OR warn" — the warning is
+    // already fully surfaced today via the existing Contract Readiness
+    // Summary (lib/contractReadiness.ts reports "STANDARD pricing
+    // configured": MISSING), visible on every contract detail view,
+    // satisfying this requirement without the destructive behavior
+    // change a hard block would have caused.
+  }
+
+  // Milestone U, Part 4 — date validation: endDate must be strictly
+  // after startDate, checked against whichever value applies (the new
+  // one if this request is changing it, otherwise the contract's
+  // existing value) so a partial update (e.g. only startDate sent)
+  // can't silently create an inverted date range.
+  const effectiveStartDate = data.startDate ?? contract.startDate;
+  const effectiveEndDate = data.endDate !== undefined ? data.endDate : contract.endDate;
+  if (effectiveEndDate && new Date(effectiveEndDate) <= new Date(effectiveStartDate)) {
+    return NextResponse.json({ error: "End date must be after start date." }, { status: 422 });
   }
 
   await db
@@ -88,6 +112,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .set({
       status: data.status ?? undefined,
       notes: data.notes !== undefined ? data.notes : undefined,
+      startDate: data.startDate !== undefined ? data.startDate : undefined,
       endDate: data.endDate !== undefined ? data.endDate : undefined,
     })
     .where(eq(contracts.id, id));
