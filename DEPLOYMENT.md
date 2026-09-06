@@ -1306,6 +1306,55 @@ only placeholders.
   No schema, migration, seedData, pricing, billing, or ERP changes —
   confirmed by file-timestamp inspection of every protected file.
 
+- **Milestone V ("Contract Delivery Schedule & Planned Demand Schema")**
+  — design and approval milestone only, per its own explicit hard stop.
+  No schema was modified, no migration was created, no runtime code
+  changed. Full audit, options analysis (Option B recommended — planned
+  demand staged for review before ever becoming a real order, exactly
+  matching Milestone U's own conclusion), two proposed tables
+  (`contract_delivery_schedules`, `planned_contract_demands`), full
+  lifecycle/generation/conversion/API/test/risk design, and a six-phase
+  implementation plan (V.1 schema through V.6 optional scheduler) are
+  recorded in this milestone's own final report rather than duplicated
+  here. Confirmed unchanged: `lib/db/schema.ts`, all `drizzle/*.sql`
+  files, `scripts/seedData.ts`. No Railway migration or redeploy is
+  required for this milestone itself — implementation awaits explicit
+  approval as its own future milestone.
+
+- **Milestone V.1 ("Contract Delivery Schedule & Planned Demand Schema
+  — Implementation")** — the design above was approved; this
+  implements exactly its approved scope and nothing more. Added
+  `contract_delivery_schedules` (22 columns, 3 indexes) and
+  `planned_contract_demands` (28 columns, 6 indexes) to `lib/db/schema.ts`,
+  matching this codebase's own established conventions exactly: plain
+  `text()` columns for every app-level reference (this schema has zero
+  DB-level foreign key constraints anywhere, by deliberate, consistent
+  choice — confirmed by inspection before writing a single line), text
+  fields for enum-style values (no pg enum type is used anywhere else in
+  this file), and comma-joined text for simple lists (`weekdays`,
+  `blockedReasons`) rather than a JSON column, matching `distanceBands`'
+  own precedent. `planned_contract_demands` has two NULL-safe unique
+  indexes — `convertedOrderId` (the actual duplicate-conversion guard)
+  and `generationKey` (the future generation job's idempotency check) —
+  both allowing multiple NULLs, matching `invoiceLineItems`' own
+  established use of exactly this pattern. Migration generated via
+  `npm run db:generate` (the same tool that produced all 16 prior
+  migrations, not hand-written SQL) as `drizzle/0016_superb_greymalkin.sql`,
+  applied to the dev database, and verified directly (`\d
+  contract_delivery_schedules`, row counts) rather than assumed correct.
+  Added two empty-safe, ADMIN-only, tenant-isolated **read-only** APIs —
+  `GET /api/contracts/[id]/delivery-schedules` and
+  `GET /api/planned-contract-demands` (with `contractId`/`customerId`/
+  `status` filters, matching `GET /api/orders`' own filtering
+  convention) — both correctly returning `[]` today, since neither table
+  has a single row anywhere. No POST/PATCH route exists for either
+  resource yet, deliberately: no generation, no approval, no conversion,
+  no scheduler, exactly as this phase's own approved scope specified.
+  Zero changes to dispatch, billing, pricing, or ERP — confirmed by a
+  full end-to-end contract-priced delivery regression test
+  (`ONE_TIME_TRIP_COUNT`, STANDARD pricing, `tripsUsed` incrementing
+  exactly once) passing unmodified alongside the new tables' own tests.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

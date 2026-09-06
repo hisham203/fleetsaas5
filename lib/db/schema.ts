@@ -562,6 +562,158 @@ export const contractPricingRules = pgTable(
   })
 );
 
+// ---------- Milestone V.1: Contract Delivery Schedule & Planned Demand ----------
+// Schema-only foundation from the Milestone V design proposal (Option B:
+// a contract's recurring/fixed delivery rules generate reviewable planned
+// demand FIRST — never a real order directly — which a dispatcher later
+// approves and converts into an actual order via the existing, unmodified
+// POST /api/orders. Nothing in this migration creates, generates, or
+// converts anything: both tables start and remain empty until a later
+// milestone (V.2+) builds the UI/generation/conversion code against them.
+// No dispatch, billing, or pricing-engine behavior changes with this
+// migration — orders.requestedTime and everything else these two tables
+// eventually feed into stay exactly as they are today.
+//
+// Recurring rules attached to a contract. `scheduleType` and `status` are
+// plain text, matching this schema's own established convention
+// throughout (no pg enum type is used anywhere in this file) — validated
+// at the application layer once schedule-creation code exists, the same
+// way contracts.status/contractPricingRules.rateType already are.
+// scheduleType: FIXED_DATE | WEEKLY | MONTHLY | DAILY | EVERY_N_DAYS | AD_HOC_WINDOW
+// status: DRAFT | ACTIVE | PAUSED | ENDED | CANCELLED
+export const contractDeliverySchedules = pgTable(
+  "contract_delivery_schedules",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    contractId: text("contract_id").notNull(),
+    // Nullable: null means "no specific site yet" — valid for an
+    // all-sites contract's schedule, where the site is resolved later,
+    // at planned-demand generation or conversion time, not here.
+    locationId: text("location_id"),
+    scheduleName: text("schedule_name").notNull(),
+    scheduleType: text("schedule_type").notNull(),
+    status: text("status").notNull().default("DRAFT"),
+    startDate: timestamp("start_date", { mode: "date" }).notNull(),
+    endDate: timestamp("end_date", { mode: "date" }), // nullable — open-ended, matching contracts.endDate's own nullability
+    preferredStartTime: text("preferred_start_time"), // "HH:MM" text, matching this schema's plain-text-over-structured-type convention (e.g. distanceBands.label, contracts.notes)
+    preferredEndTime: text("preferred_end_time"),
+    timezone: text("timezone"),
+    // WEEKLY only: comma-joined weekday abbreviations, e.g. "MON,WED,FRI" —
+    // plain text rather than a JSON/array column, matching this schema's
+    // own established convention of storing simple structured lists as
+    // delimited text (see distanceBands' own comment for the same
+    // reasoning applied to other fields in this file).
+    weekdays: text("weekdays"),
+    monthDay: integer("month_day"), // MONTHLY only: 1-31
+    intervalEveryDays: integer("interval_every_days"), // EVERY_N_DAYS only
+    quantityLiters: real("quantity_liters"), // informational/capacity-matching only — never a pricing input; real pricing always uses the assigned vehicle's real capacityLiters at delivery time (Task P.2, unaffected by this table)
+    preferredTankerCapacityLiters: integer("preferred_tanker_capacity_liters"),
+    loadingPointId: text("loading_point_id"), // app-level reference to warehouses.id
+    notes: text("notes"),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("contract_delivery_schedules_tenant_idx").on(table.tenantId),
+    // The generation job's own query shape: "every ACTIVE schedule for
+    // this contract" and, tenant-wide, "every ACTIVE schedule due to run
+    // today" — both need contractId and status available together.
+    contractStatusIdx: index("contract_delivery_schedules_contract_status_idx").on(
+      table.tenantId,
+      table.contractId,
+      table.status
+    ),
+    statusIdx: index("contract_delivery_schedules_status_idx").on(table.tenantId, table.status),
+  })
+);
+
+// Generated, reviewable planned demand — the staging layer between a
+// contract's schedule and a real, dispatchable order. A row here is
+// NEVER visible in Dispatch Queue or Live Trips; only after explicit
+// approval and conversion (a future milestone) does a real `orders` row
+// exist, at which point `convertedOrderId` links back to it here.
+// status: GENERATED | REVIEWED | APPROVED | CONVERTED_TO_ORDER | CANCELLED | SKIPPED | EXPIRED
+// readinessStatus: READY | BLOCKED | WARNING
+// capacityMatchStatus: MATCHED | PARTIAL | UNMATCHED | NOT_CHECKED
+export const plannedContractDemands = pgTable(
+  "planned_contract_demands",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    contractId: text("contract_id").notNull(),
+    // Nullable: a manually-created/ad hoc planned demand row has no
+    // originating schedule.
+    contractDeliveryScheduleId: text("contract_delivery_schedule_id"),
+    // Denormalized, matching orders.customerId's own established
+    // precedent in this schema (a direct pointer alongside the derivable
+    // contractId -> contracts.customerId join, for the same
+    // query-ergonomics reason contracts/invoices already do this).
+    customerId: text("customer_id").notNull(),
+    locationId: text("location_id"),
+    plannedDate: timestamp("planned_date", { mode: "date" }).notNull(),
+    plannedStartTime: text("planned_start_time"),
+    plannedEndTime: text("planned_end_time"),
+    timezone: text("timezone"),
+    quantityLiters: real("quantity_liters"),
+    preferredTankerCapacityLiters: integer("preferred_tanker_capacity_liters"),
+    loadingPointId: text("loading_point_id"),
+    status: text("status").notNull().default("GENERATED"),
+    readinessStatus: text("readiness_status"),
+    blockedReasons: text("blocked_reasons"), // comma-joined, matching contractDeliverySchedules.weekdays' own plain-text-list convention
+    capacityMatchStatus: text("capacity_match_status").default("NOT_CHECKED"),
+    generatedAt: timestamp("generated_at", { mode: "date" }),
+    approvedAt: timestamp("approved_at", { mode: "date" }),
+    approvedByUserId: text("approved_by_user_id"),
+    convertedOrderId: text("converted_order_id"), // app-level reference to orders.id
+    convertedAt: timestamp("converted_at", { mode: "date" }),
+    cancelledAt: timestamp("cancelled_at", { mode: "date" }),
+    cancelledByUserId: text("cancelled_by_user_id"),
+    cancellationReason: text("cancellation_reason"),
+    // The idempotency key a future generation job checks before inserting
+    // a new row — deliberately a plain nullable column with a unique
+    // index below, not a NOT NULL constraint, since this table's schema
+    // itself is generation-method-agnostic (a manually-created planned
+    // demand row legitimately has no generation key at all).
+    generationKey: text("generation_key"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("planned_contract_demands_tenant_idx").on(table.tenantId),
+    // The Planner's own primary query: "what's pending across all
+    // contracts this week" — status + date together, tenant-scoped.
+    statusDateIdx: index("planned_contract_demands_status_date_idx").on(
+      table.tenantId,
+      table.status,
+      table.plannedDate
+    ),
+    // Contract detail's own "operational activity" query shape.
+    contractDateIdx: index("planned_contract_demands_contract_date_idx").on(
+      table.tenantId,
+      table.contractId,
+      table.plannedDate
+    ),
+    // Customer hub's own "planned demand for this customer" query shape.
+    customerDateIdx: index("planned_contract_demands_customer_date_idx").on(
+      table.tenantId,
+      table.customerId,
+      table.plannedDate
+    ),
+    // Reverse lookup once an order exists: "which planned demand did
+    // this order come from" — and the actual duplicate-conversion guard,
+    // since a nullable column can still be declared unique (multiple
+    // NULLs are allowed, matching invoiceLineItems' own established use
+    // of exactly this NULL-safe uniqueness pattern elsewhere in this
+    // schema).
+    convertedOrderUnique: uniqueIndex("planned_contract_demands_converted_order_unique").on(table.convertedOrderId),
+    // The generation job's own idempotency check on rerun — same
+    // NULL-safe reasoning as convertedOrderId above.
+    generationKeyUnique: uniqueIndex("planned_contract_demands_generation_key_unique").on(table.generationKey),
+  })
+);
+
 // Line items on an invoice — replaces A1's `invoice_orders` (see the
 // section-level note above for why: the real relationship is one-to-many,
 // not many-to-many, and a join table had no room for a non-order line).
@@ -1069,6 +1221,8 @@ export const contractsRelations = relations(contracts, ({ one, many }) => ({
   siteScope: many(contractSiteScope),
   periods: many(contractPeriods),
   pricingRules: many(contractPricingRules),
+  deliverySchedules: many(contractDeliverySchedules),
+  plannedDemands: many(plannedContractDemands),
 }));
 
 export const contractSiteScopeRelations = relations(contractSiteScope, ({ one }) => ({
@@ -1089,6 +1243,24 @@ export const distanceBandsRelations = relations(distanceBands, ({ one }) => ({
 export const contractPricingRulesRelations = relations(contractPricingRules, ({ one }) => ({
   tenant: one(tenants, { fields: [contractPricingRules.tenantId], references: [tenants.id] }),
   contract: one(contracts, { fields: [contractPricingRules.contractId], references: [contracts.id] }),
+}));
+
+export const contractDeliverySchedulesRelations = relations(contractDeliverySchedules, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [contractDeliverySchedules.tenantId], references: [tenants.id] }),
+  contract: one(contracts, { fields: [contractDeliverySchedules.contractId], references: [contracts.id] }),
+  location: one(customerLocations, { fields: [contractDeliverySchedules.locationId], references: [customerLocations.id] }),
+  plannedDemands: many(plannedContractDemands),
+}));
+
+export const plannedContractDemandsRelations = relations(plannedContractDemands, ({ one }) => ({
+  tenant: one(tenants, { fields: [plannedContractDemands.tenantId], references: [tenants.id] }),
+  contract: one(contracts, { fields: [plannedContractDemands.contractId], references: [contracts.id] }),
+  schedule: one(contractDeliverySchedules, {
+    fields: [plannedContractDemands.contractDeliveryScheduleId],
+    references: [contractDeliverySchedules.id],
+  }),
+  customer: one(customers, { fields: [plannedContractDemands.customerId], references: [customers.id] }),
+  location: one(customerLocations, { fields: [plannedContractDemands.locationId], references: [customerLocations.id] }),
 }));
 
 export const invoiceLineItemsRelations = relations(invoiceLineItems, ({ one }) => ({
