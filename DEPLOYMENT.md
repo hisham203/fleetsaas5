@@ -1736,6 +1736,59 @@ only placeholders.
   No schema, migration, or seedData changes — confirmed by
   file-timestamp inspection of every protected file.
 
+- **Milestone AB ("Dispatch Visibility Fix & Fleet Maintenance ERP
+  Module Design")** — no schema change was made.
+
+  **Dispatch (Live) visibility — real, deeper root cause found**:
+  Milestone AA's fix (wrapping `/dispatch` in `AdminShell`) was correct
+  but incomplete. The actual persistent cause: `app/admin/page.tsx` has
+  its own SEPARATE sidebar definition (`adminSidebarSections`), distinct
+  from `components/AdminShell.tsx`'s `DEFAULT_SECTIONS` — and since an
+  ADMIN's login destination is `/admin` directly (not `/dispatch`), this
+  separate, duplicate list is what an admin actually sees immediately
+  after login. It had silently drifted out of sync, missing
+  "Dispatch (Live)" entirely — only "Dispatch Control Tower" was
+  listed. Fixed by adding the missing item to both sidebar sources and
+  documenting the duplication explicitly in the code, with a test
+  asserting both lists agree on every Operations item, so this specific
+  drift can't silently recur. A full consolidation into one shared nav
+  config was judged a broader refactor than this milestone's "low risk
+  only" instruction allows (the two lists mix real hrefs with onClick-
+  based in-page tab switches, which a single shared config can't express
+  cleanly) — documented as a known, intentional duplication instead.
+
+  **Four-module separation**: the single merged "Maintenance Inventory
+  & Procurement" placeholder from Milestone Z is now three separate,
+  dedicated pages — `/admin/inventory-planned`, `/admin/procurement-
+  planned`, `/admin/master-items-planned` — sharing one presentational
+  component (`components/PlannedModulePlaceholder.tsx`) but never
+  merged into one screen, since the user's future permission model
+  requires them distinct. Maintenance itself is untouched (it was
+  never a placeholder — it's a real, working screen). Each new page
+  explicitly states what it does NOT do (e.g. Procurement "does not
+  consume parts into maintenance... does not define item categories or
+  create new items") and documents its relationships to the other three
+  modules (Master Items → Inventory, Procurement → Receiving →
+  Inventory, Maintenance → Inventory issue, Workshops → Warehouses),
+  matching this milestone's own relationship model exactly. The old
+  merged route now redirects to Inventory's page rather than 404ing.
+
+  **Z.1 schema proposal updated** to the corrected four-module shape:
+  `item_groups` added above `item_categories`/`item_subcategories`/
+  `items` (Master Items); `workshops` and `maintenance_warehouses` kept
+  as designed in Milestone Z, both with city/district/lat/lng added per
+  this milestone's fuller field list; `maintenance_inventory_balances`/
+  `maintenance_inventory_movements` unchanged in shape but movements now
+  explicitly reference nullable `purchaseOrderId`/`goodsReceiptId` (not
+  just `maintenanceRecordId`), so a receipt movement's origin is always
+  traceable; the full `suppliers` → `purchase_requisitions`(+lines) →
+  `purchase_orders`(+lines) → `goods_receipts`(+lines) procurement chain
+  is unchanged from Milestone Z's own design. Still not implemented —
+  no migration was created.
+
+  No schema, migration, or seedData changes — confirmed by
+  file-timestamp inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

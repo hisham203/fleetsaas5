@@ -126,9 +126,9 @@ describe("Loading Points create/edit (Milestone AA, Part 5)", () => {
     expect(res.status).toBe(404);
   });
 
-  it("18. loading points are not confused with maintenance warehouses — the honest placeholder never references the warehouses table", () => {
-    const placeholderSource = fs.readFileSync(path.join(process.cwd(), "app/admin/maintenance-inventory/page.tsx"), "utf8");
-    expect(placeholderSource).toContain("Loading Points, which serve customer delivery dispatch, not maintenance stock");
+  it("18. loading points are not confused with maintenance warehouses — the honest Inventory placeholder never references the warehouses table (Milestone AB split the merged placeholder into separate Inventory/Procurement/Master Items pages)", () => {
+    const placeholderSource = fs.readFileSync(path.join(process.cwd(), "app/admin/inventory-planned/page.tsx"), "utf8");
+    expect(placeholderSource).toContain("distinct concept from Loading Points");
   });
 
   it("missing schema fields (city/district/status/contact) are honestly documented, not faked", () => {
@@ -150,8 +150,10 @@ describe("Inventory retirement (Milestone AA, Part 6)", () => {
     expect(source).toContain("not part of the bulk water tanker business model");
   });
 
-  it("22. Maintenance Inventory placeholder is discoverable in the sidebar, replacing Inventory's old slot", () => {
-    expect(shellSource()).toContain("Maintenance Inventory & Procurement (Planned)");
+  it("22. Inventory/Procurement/Master Items placeholders are all discoverable in the sidebar, replacing the old Inventory slot (Milestone AB split the one merged placeholder into three separate module links)", () => {
+    expect(shellSource()).toContain("Inventory (Planned)");
+    expect(shellSource()).toContain("Procurement (Planned)");
+    expect(shellSource()).toContain("Master Items (Planned)");
   });
 
   it("23. no fake maintenance inventory rows appear in the placeholder", () => {

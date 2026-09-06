@@ -15,7 +15,7 @@ import { genId } from "@/lib/helpers";
 const adminPageSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/page.tsx"), "utf8");
 const customersPageSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/customers/page.tsx"), "utf8");
 const shellSource = () => fs.readFileSync(path.join(process.cwd(), "components/AdminShell.tsx"), "utf8");
-const placeholderSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/maintenance-inventory/page.tsx"), "utf8");
+const placeholderSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/inventory-planned/page.tsx"), "utf8");
 
 describe("Customer cleanup — contractPricePerBottle migration (Milestone Z, Part 10)", () => {
   it("1. /admin/customers exposes contractPricePerBottle editing", () => {
@@ -81,10 +81,12 @@ describe("Inventory business-model clarification (Milestone Z, Part 2/12)", () =
 });
 
 describe("Maintenance Inventory & Procurement placeholder (Milestone Z, Part 9/12)", () => {
-  it("8. the placeholder clearly states design is pending and no live stock data exists", () => {
+  it("8. the placeholder clearly states design is pending and no live stock data exists (Milestone AB: now via the shared PlannedModulePlaceholder component)", () => {
     const source = placeholderSource();
-    expect(source).toContain("Design pending implementation approval");
-    expect(source).toContain("No live stock data exists yet");
+    expect(source).toContain("PlannedModulePlaceholder");
+    const componentSource = fs.readFileSync(path.join(process.cwd(), "components/PlannedModulePlaceholder.tsx"), "utf8");
+    expect(componentSource).toContain("Planned module — schema/design pending");
+    expect(componentSource).toContain("No live data exists yet");
   });
 
   it("9. no fake inventory/procurement rows appear — the page renders no data table or mock rows at all", () => {
@@ -96,11 +98,13 @@ describe("Maintenance Inventory & Procurement placeholder (Milestone Z, Part 9/1
 
   it("clearly distinguishes maintenance warehouses from dispatch Loading Points", () => {
     const source = placeholderSource();
-    expect(source).toContain("Loading Points, which serve customer delivery dispatch, not maintenance stock");
+    expect(source).toContain("distinct concept from Loading Points");
   });
 
-  it("10. sidebar links to the placeholder are clearly labeled Planned, not presented as a live module", () => {
-    expect(shellSource()).toContain("Maintenance Inventory & Procurement (Planned)");
+  it("10. sidebar links to the placeholders are clearly labeled Planned, not presented as a live module (Milestone AB: three separate links now, not one merged link)", () => {
+    expect(shellSource()).toContain("Inventory (Planned)");
+    expect(shellSource()).toContain("Procurement (Planned)");
+    expect(shellSource()).toContain("Master Items (Planned)");
   });
 
   it("11/12. existing Fleet, Finance, Reports, Dispatch navigation remains unchanged", () => {

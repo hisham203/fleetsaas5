@@ -36,6 +36,24 @@ const TAB_TITLES: Record<TabKey, string> = {
 // them moved from a top bar to a sidebar. Overview stays at the top,
 // ungrouped, since it's this page's own landing section rather than
 // belonging to any one operational category.
+// Milestone AB, Part 3 — navigation architecture finding: this function
+// is a SEPARATE, DUPLICATE sidebar definition from
+// components/AdminShell.tsx's own DEFAULT_SECTIONS. They are not a
+// single source of truth — this file needs its own copy because its
+// items mix real hrefs (Dispatch Control Tower, Loading Points) with
+// onClick-based in-page tab switches (Overview, Fleet, Drivers, ...),
+// which AdminShell's shared config has no way to express. This is
+// exactly how the "Dispatch (Live) invisible after login" bug
+// persisted through Milestone AA's fix: that milestone correctly fixed
+// /dispatch's OWN layout, but never touched this separate list, which
+// an ADMIN sees immediately on login (ROLE_DESTINATIONS.ADMIN =
+// "/admin") and which had silently drifted out of sync, missing
+// Dispatch (Live) entirely. A full consolidation into one shared
+// config was judged a broader refactor than this milestone's own "low
+// risk only" instruction allows — so both lists remain, but a
+// dedicated test (see Milestone AB's test suite) now asserts both
+// contain every Operations item together, so a future addition here
+// can't silently repeat this drift.
 function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
   const item = (label: string, key: TabKey) => ({ label, onClick: () => setTab(key), activeKey: key });
   return [
@@ -44,6 +62,7 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
       label: "Operations",
       items: [
         { label: "Dispatch Control Tower", href: "/admin/dispatch" },
+        { label: "Dispatch (Live)", href: "/dispatch" },
         { label: "Contract & Capacity Planner", href: "/admin/contract-planner" },
         { label: "Loading Points", href: "/admin/loading-points" },
       ],
@@ -65,7 +84,9 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
       label: "Platform",
       items: [
         item("Maintenance", "maintenance"),
-        { label: "Maintenance Inventory & Procurement (Planned)", href: "/admin/maintenance-inventory" },
+        { label: "Inventory (Planned)", href: "/admin/inventory-planned" },
+        { label: "Procurement (Planned)", href: "/admin/procurement-planned" },
+        { label: "Master Items (Planned)", href: "/admin/master-items-planned" },
         item("ERP Sync", "erp"),
         item("Automation", "automation"),
         item("Field Ops", "fieldops"),
