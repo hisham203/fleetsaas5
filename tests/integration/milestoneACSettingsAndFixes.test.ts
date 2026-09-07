@@ -138,11 +138,11 @@ describe("Settings module (Milestone AC, Part 4)", () => {
     expect(source).toContain("Operational Settings");
   });
 
-  it("21. the three remaining design-pending cards (Users & Access, Roles & Permissions, Operational Settings) still clearly mark themselves as such; Numbering & Sequences became a real read-only section in Milestone AD", () => {
+  it("21. the three remaining design-pending cards (Users & Access, Roles & Permissions, Operational Settings) still clearly mark themselves as such; Numbering & Sequences became a full configuration UI in Milestone AE (Suppliers pilot)", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
     const matches = source.match(/Design pending \/ schema required/g) ?? [];
     expect(matches.length).toBe(3);
-    expect(source).toContain("Configuration UI and automatic assignment will be added in later milestones");
+    expect(source).toContain("Only Suppliers currently use automatic numbering (pilot)");
   });
 });
 
@@ -186,10 +186,11 @@ describe("Security audit findings preserved (Milestone AC, Part 8/9 — design o
     expect(res.status).toBe(401);
   });
 
-  it("28. Settings does not expose fake role assignment controls", () => {
+  it("28. Settings does not expose fake role assignment controls (the real <select> elements now present are for numbering series configuration only, never roles)", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
     expect(source).not.toContain("assignRole");
-    expect(source).not.toContain("<select");
+    expect(source).not.toContain("roleId");
+    expect(source).not.toContain("/api/roles");
   });
 
   it("no roles/permissions/user_roles schema was added (design proposal only)", () => {

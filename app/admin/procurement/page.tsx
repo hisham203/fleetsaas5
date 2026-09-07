@@ -151,7 +151,7 @@ function SupplierForm({ supplier, onCancel, onSaved }: any) {
   async function save() {
     setSubmitting(true);
     setError("");
-    const body = { supplierCode, name, contactName, phone, email, status };
+    const body = { supplierCode: supplierCode || undefined, name, contactName, phone, email, status };
     const res = supplier
       ? await fetch(`/api/suppliers/${supplier.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/suppliers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -166,7 +166,10 @@ function SupplierForm({ supplier, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Supplier code" value={supplierCode} onChange={(e) => setSupplierCode(e.target.value)} />
+      <div>
+        <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Supplier code (optional)" value={supplierCode} onChange={(e) => setSupplierCode(e.target.value)} />
+        {!supplier && <p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p>}
+      </div>
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Contact name" value={contactName} onChange={(e) => setContactName(e.target.value)} />
       <div className="grid grid-cols-2 gap-2">
@@ -179,7 +182,7 @@ function SupplierForm({ supplier, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!supplierCode || !name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>

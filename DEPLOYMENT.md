@@ -1977,6 +1977,93 @@ only placeholders.
   driver-app-runtime changes — confirmed by file-timestamp inspection
   of every protected file.
 
+- **Milestone AE ("Sequence Allocation, Settings Configuration &
+  Supplier Pilot Conversion")** — no schema/migration change; built
+  entirely on Milestone AD's existing tables.
+
+  **A real bug caught and fixed during development**: the first
+  implementation of `allocateNextNumber()` read `nextNumber` from a
+  plain `SELECT` (no row lock) before the atomic increment — a genuine
+  20-way concurrency test immediately caught a real duplicate
+  (`CT06003` generated twice). Root cause: two concurrent transactions
+  could both read the same stale value before either committed. Fixed
+  by using the value returned by the atomic `UPDATE ... RETURNING`
+  itself (which Postgres genuinely row-locks and serializes) instead
+  of the earlier read. Re-verified at 20-way and 50-way concurrency —
+  zero duplicates in both runs, and the fix is now covered by a
+  dedicated 15-way concurrency test in the automated suite.
+
+  **APIs**: `POST`/`PATCH /api/settings/numbering-series` — ADMIN-only,
+  tenant-isolated, duplicate `entityType`/`seriesCode` return 409,
+  `entityType`/`seriesCode`/`nextNumber` are explicitly locked from
+  editing after creation.
+
+  **Supplier pilot conversion**: `POST /api/suppliers` now branches —
+  a manually provided `supplierCode` is preserved exactly (leading
+  zeros intact) with the pre-existing uniqueness check unchanged; a
+  blank code calls `allocateNextNumber()` and returns a clear 400
+  ("No active numbering series configured for supplier.") if none
+  exists. The allocated ledger row is linked back to the real supplier
+  record after creation. No other entity was converted — orders,
+  customers, trips, contracts, expenses, and every other creation flow
+  remain completely unchanged.
+
+  **UI**: Settings now has a full create/edit series form (safe fields
+  only — locked fields render as read-only text, never editable
+  inputs) with a live, purely client-side preview that mirrors the
+  real formatter but never calls the allocator, so it can never
+  consume a real number. The Supplier form's `supplierCode` field is
+  now genuinely optional, with the blank-string-to-`undefined`
+  normalization applied on submit (the same bug class fixed in
+  Milestone AC).
+
+  No seedData, pricing, billing, ERP, dispatch-runtime, or
+  driver-app-runtime changes — confirmed by file-timestamp inspection
+  of every protected file.
+
+- **Milestone AE ("Sequence Allocation, Settings Configuration &
+  Supplier Pilot Conversion")** — built entirely on AD's existing
+  schema; no schema change, no migration.
+
+  **Concurrency-safe allocator — a real duplicate caught and fixed
+  before shipping**: `allocateNextNumber()` in `lib/numbering.ts` uses
+  Postgres's atomic `UPDATE ... SET next_number = next_number + 1
+  RETURNING` inside a transaction — Postgres row-locks the series row
+  for the transaction's duration, so concurrent allocations against
+  the same series serialize structurally. The first implementation
+  read `nextNumber` from an unlocked `SELECT` *before* the atomic
+  `UPDATE`; a real 20-way concurrent test against the actual database
+  caught a genuine duplicate (`CT06003` allocated twice) because two
+  transactions could both read the same stale value before either
+  committed. Fixed by trusting only the value the atomic
+  `UPDATE ... RETURNING` hands back. Re-verified at 20-way and 50-way
+  concurrency: 0 duplicates. Every allocation writes a ledger row in
+  the same transaction; `periodKey` is `ALL` for NEVER, `YYYY` for
+  YEARLY, `YYYY-MM` for MONTHLY.
+
+  **Series configuration**: `POST`/`PATCH /api/settings/numbering-series`
+  — ADMIN-only, tenant-isolated, 409 on duplicate entityType or
+  seriesCode per tenant. `entityType`, `seriesCode`, and `nextNumber`
+  are immutable after creation (clear 400 if attempted), per this
+  milestone's own recommendation to not allow risky `nextNumber` edits
+  yet. Settings' Numbering & Sequences is now a full create/edit UI
+  with a live preview that mirrors the real formatter but never calls
+  the allocator — it can never consume a real number.
+
+  **Supplier pilot (the only entity converted)**: a manually provided
+  `supplierCode` is preserved exactly (leading zeros intact, existing
+  uniqueness check unchanged, no allocation, no ledger row). A blank
+  code allocates from the tenant's active SUPPLIER series (e.g.
+  `V06001`, then `V06002`) and links the ledger row to the new
+  supplier; a missing series returns a clear 400 ("No active numbering
+  series configured for supplier."), never a silent fallback. Supplier
+  PATCH never allocates. Customers, orders, trips, contracts, expenses,
+  items, workshops, and warehouses are all untouched; no existing
+  supplier was renumbered.
+
+  No seedData, pricing, billing, ERP, dispatch-runtime, or
+  driver-app-runtime changes — confirmed by file-timestamp inspection.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive
