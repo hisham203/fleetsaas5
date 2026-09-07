@@ -138,10 +138,11 @@ describe("Settings module (Milestone AC, Part 4)", () => {
     expect(source).toContain("Operational Settings");
   });
 
-  it("21. every Settings card clearly marks itself as design-pending — no fake implemented functionality", () => {
+  it("21. the three remaining design-pending cards (Users & Access, Roles & Permissions, Operational Settings) still clearly mark themselves as such; Numbering & Sequences became a real read-only section in Milestone AD", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
     const matches = source.match(/Design pending \/ schema required/g) ?? [];
-    expect(matches.length).toBe(4);
+    expect(matches.length).toBe(3);
+    expect(source).toContain("Configuration UI and automatic assignment will be added in later milestones");
   });
 });
 
@@ -152,16 +153,17 @@ describe("Numbering audit findings preserved (Milestone AC, Part 5/6 — design 
     expect(source).toContain('Date.now().toString(36).toUpperCase()');
   });
 
-  it("23/24. no new client-side or fake numbering was introduced — Settings shows no live sequence data", () => {
+  it("23/24. Milestone AD's real Settings fetches are empty-safe reads only, never client-side number generation or fabricated data", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
-    expect(source).not.toContain("nextNumber");
-    expect(source).not.toContain("fetch(");
+    expect(source).toContain('fetch("/api/settings/numbering-series")');
+    expect(source).not.toContain("Math.random()");
+    expect(source).not.toContain("Date.now()");
   });
 
-  it("no numbering_series or numbering_sequence_ledger schema was added (design proposal only, not implemented)", () => {
+  it("no numbering schema existed AT THE TIME of Milestone AC itself; Milestone AD, exactly as AC's own recommended next milestone anticipated, later implemented it", () => {
     const schemaSource = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
-    expect(schemaSource).not.toContain("numbering_series");
-    expect(schemaSource).not.toContain("numbering_sequence_ledger");
+    expect(schemaSource).toContain("export const numberingSeries = pgTable(");
+    expect(schemaSource).toContain("export const numberingSequenceLedger = pgTable(");
   });
 });
 

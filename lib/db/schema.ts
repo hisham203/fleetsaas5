@@ -1141,6 +1141,83 @@ export const goodsReceiptLines = pgTable(
   })
 );
 
+// ========== Milestone AD: Numbering & Sequence Schema Foundation ==========
+// Schema + pure formatter + empty-safe read APIs only, per this
+// milestone's own hard scope. No existing entity creation flow (orders,
+// trips, contracts, expenses, suppliers, items, ...) is converted to use
+// this yet — genNumber() and every manual code field remain completely
+// unchanged. No allocation/generator function was implemented (see
+// lib/numbering.ts's own comment for why) — only the pure, DB-free
+// formatter. Both tables below start and remain empty; no series row is
+// ever created automatically.
+
+// resetPolicy: NEVER | YEARLY | MONTHLY
+// status: ACTIVE | INACTIVE
+export const numberingSeries = pgTable(
+  "numbering_series",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    entityType: text("entity_type").notNull(),
+    seriesCode: text("series_code").notNull(),
+    displayName: text("display_name").notNull(),
+    prefix: text("prefix").notNull(),
+    seriesSegment: text("series_segment"), // e.g. "06" — meaning is tenant-defined (branch/city/fiscal period/etc.), never hardcoded here
+    suffix: text("suffix"),
+    separator: text("separator").notNull().default(""), // "" for C06001, "-" for C-06-0001, "/" for C/06/001
+    paddingLength: integer("padding_length").notNull().default(3),
+    nextNumber: integer("next_number").notNull().default(1),
+    resetPolicy: text("reset_policy").notNull().default("NEVER"),
+    includeYear: boolean("include_year").notNull().default(false),
+    includeMonth: boolean("include_month").notNull().default(false),
+    status: text("status").notNull().default("ACTIVE"),
+    description: text("description"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("numbering_series_tenant_idx").on(table.tenantId),
+    // The actual "one active series per entity per tenant" guarantee a
+    // future allocator will look up by.
+    entityTypeUnique: uniqueIndex("numbering_series_tenant_entity_type_unique").on(table.tenantId, table.entityType),
+    seriesCodeUnique: uniqueIndex("numbering_series_tenant_series_code_unique").on(table.tenantId, table.seriesCode),
+    statusIdx: index("numbering_series_tenant_status_idx").on(table.tenantId, table.status),
+  })
+);
+
+// Append-only audit trail of every number a future allocator hands out.
+// Never mutated or deleted — a reversal/void would be a new row, not an
+// edit to this one, matching this schema's own established pattern for
+// audit-style tables (see e.g. maintenanceInventoryMovements).
+export const numberingSequenceLedger = pgTable(
+  "numbering_sequence_ledger",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    seriesId: text("series_id").notNull(),
+    entityType: text("entity_type").notNull(),
+    generatedNumber: text("generated_number").notNull(), // the full formatted string, e.g. "C06001"
+    sequenceNumber: integer("sequence_number").notNull(), // the raw integer allocated, e.g. 1
+    periodKey: text("period_key"), // nullable — only meaningful when resetPolicy is YEARLY/MONTHLY, e.g. "2026" or "2026-03"
+    referenceTable: text("reference_table"),
+    referenceId: text("reference_id"),
+    generatedByUserId: text("generated_by_user_id"),
+    createdAt: createdAt(),
+  },
+  (table) => ({
+    tenantIdx: index("numbering_sequence_ledger_tenant_idx").on(table.tenantId),
+    seriesIdx: index("numbering_sequence_ledger_tenant_series_idx").on(table.tenantId, table.seriesId),
+    entityTypeIdx: index("numbering_sequence_ledger_tenant_entity_type_idx").on(table.tenantId, table.entityType),
+    // The real duplicate-prevention guarantee: no tenant can ever have
+    // the same formatted number twice.
+    generatedNumberUnique: uniqueIndex("numbering_sequence_ledger_tenant_generated_number_unique").on(table.tenantId, table.entityType, table.generatedNumber),
+    // The real gap-free-sequence guarantee within one series/period.
+    sequenceUnique: uniqueIndex("numbering_sequence_ledger_series_period_sequence_unique").on(table.tenantId, table.seriesId, table.periodKey, table.sequenceNumber),
+    referenceIdx: index("numbering_sequence_ledger_tenant_reference_idx").on(table.tenantId, table.referenceTable, table.referenceId),
+    createdAtIdx: index("numbering_sequence_ledger_tenant_created_idx").on(table.tenantId, table.createdAt),
+  })
+);
+
 // Line items on an invoice — replaces A1's `invoice_orders` (see the
 // section-level note above for why: the real relationship is one-to-many,
 // not many-to-many, and a join table had no room for a non-order line).
@@ -1770,6 +1847,14 @@ export const goodsReceiptLinesRelations = relations(goodsReceiptLines, ({ one })
   goodsReceipt: one(goodsReceipts, { fields: [goodsReceiptLines.goodsReceiptId], references: [goodsReceipts.id] }),
   purchaseOrderLine: one(purchaseOrderLines, { fields: [goodsReceiptLines.purchaseOrderLineId], references: [purchaseOrderLines.id] }),
   item: one(items, { fields: [goodsReceiptLines.itemId], references: [items.id] }),
+}));
+
+export const numberingSeriesRelations = relations(numberingSeries, ({ many }) => ({
+  ledgerEntries: many(numberingSequenceLedger),
+}));
+
+export const numberingSequenceLedgerRelations = relations(numberingSequenceLedger, ({ one }) => ({
+  series: one(numberingSeries, { fields: [numberingSequenceLedger.seriesId], references: [numberingSeries.id] }),
 }));
 
 export const invoiceLineItemsRelations = relations(invoiceLineItems, ({ one }) => ({

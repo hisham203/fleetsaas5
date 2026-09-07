@@ -127,6 +127,13 @@
       "when": 1788733574024,
       "tag": "0017_bored_black_panther",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788785798043,
+      "tag": "0018_clear_sinister_six",
+      "breakpoints": true
     }
   ]
 }

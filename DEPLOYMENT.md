@@ -1932,6 +1932,51 @@ only placeholders.
   No schema, migration, seedData, pricing, billing, or ERP changes —
   confirmed by file-timestamp inspection of every protected file.
 
+- **Milestone AD ("Numbering & Sequence Schema Foundation")** — schema
+  + pure formatter + empty-safe read APIs only, exactly as scoped. No
+  existing entity creation flow was converted; `genNumber()` and every
+  manual code field remain completely unchanged.
+
+  **Schema**: `numbering_series` (prefix/seriesSegment/separator/
+  paddingLength/nextNumber/resetPolicy/includeYear/includeMonth,
+  unique per tenant+entityType and per tenant+seriesCode) and
+  `numbering_sequence_ledger` (append-only audit trail — generatedNumber/
+  sequenceNumber/periodKey/referenceTable+referenceId, unique per
+  tenant+entityType+generatedNumber and per tenant+seriesId+periodKey+
+  sequenceNumber) — matching this schema's own established conventions
+  exactly (zero DB-level foreign keys, text status fields). Migration
+  generated via `npm run db:generate` as
+  `drizzle/0018_clear_sinister_six.sql` — exactly 2 `CREATE TABLE`
+  statements, zero destructive operations, applied locally and
+  verified empty; every existing table confirmed unaffected.
+
+  **Formatter** (`lib/numbering.ts`): a pure, DB-free
+  `formatSequenceNumber()` manually verified against every example in
+  this milestone's own spec — `C06001`, `V06001`, `PR06001`, `PO06025`,
+  `C-06-0001`, `EX-2026-00001` — all matched exactly. Plus a 20-entity
+  registry with recommended prefixes (validation/UI defaults only,
+  seeding nothing) and a pure `computePeriodKey()` helper.
+
+  **Allocator — deliberately not implemented**: a concurrency-safe,
+  transaction-locked increment against `nextNumber` needs careful
+  design against this project's actual transaction primitives;
+  building it in the same milestone as the schema itself risked
+  exactly the duplicate-number bug this foundation exists to prevent.
+  Documented as design-only in code, matching this milestone's own
+  explicit permission to defer.
+
+  **Read APIs and Settings UI**: three new empty-safe, ADMIN-only,
+  tenant-isolated `GET` routes (numbering-series, numbering-ledger,
+  numbering-entity-types). Settings' Numbering & Sequences card is now
+  a real read-only section (genuine empty-state list, live entity-type
+  registry, the same format examples) — Users & Access, Roles &
+  Permissions, and Operational Settings remain honestly marked
+  design-pending. No `nextNumber` editing UI anywhere.
+
+  No seedData, pricing, billing, ERP, dispatch-runtime, or
+  driver-app-runtime changes — confirmed by file-timestamp inspection
+  of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive
