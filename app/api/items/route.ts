@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { items, itemCategories, itemSubcategories, itemGroups } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { genId } from "@/lib/helpers";
+import { genId, optionalUrlSchema } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
@@ -26,7 +26,7 @@ const createSchema = z.object({
   brand: z.string().optional(),
   model: z.string().optional(),
   partNumber: z.string().optional(),
-  imageUrl: z.string().url().optional(),
+  imageUrl: optionalUrlSchema(),
   compatibleVehicleType: z.string().optional(),
   minimumStockLevel: z.number().min(0).nullable().optional(),
   reorderPoint: z.number().min(0).nullable().optional(),

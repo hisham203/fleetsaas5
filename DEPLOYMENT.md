@@ -1873,6 +1873,65 @@ only placeholders.
   No schema, migration, seedData, pricing, billing, or ERP changes —
   confirmed by file-timestamp inspection of every protected file.
 
+- **Milestone AC ("Settings, Numbering, Security Foundation & Dispatch
+  Workflow QA")** — no schema change was made; a production bug fix,
+  navigation consistency fix, and three design-only audits.
+
+  **Supplier save bug — root cause and fix**: `email: z.string().email().optional()`
+  only exempts `undefined` from the `.email()` format check, not an
+  empty string — but every Z.2 form's email field defaults to and sends
+  `""` when left blank, so any blank-email save hit a 400. That 400 was
+  then hidden by the UI's own error handling, which only checked
+  `typeof data.error === "string"` — Zod's validation errors are
+  objects, so every failure silently collapsed into a generic "Failed
+  to save." Fixed both sides with two new shared helpers in
+  `lib/helpers.ts` (`optionalEmailSchema`/`optionalUrlSchema` for the
+  API, `extractErrorMessage` for the client) and proactively found +
+  fixed the identical bug in workshops' `contactEmail` and items'
+  `imageUrl` (both POST and PATCH) before either could cause the same
+  failure once those fields reach the UI.
+
+  **Sidebar order — root cause and fix**: `AdminShell.tsx`'s Operations
+  section had "Dispatch (Live)" at the end, while `app/admin/page.tsx`'s
+  had it second — a real mismatch from Milestone AB's fix being applied
+  inconsistently across the two sources. Fixed to the canonical order
+  (Dispatch Control Tower, Dispatch (Live), Contract & Capacity
+  Planner, Loading Points) in both. Every other section was already
+  consistent between the two sources.
+
+  **Settings module**: added `/admin/settings` with four honest cards
+  (Numbering & Sequences, Users & Access, Roles & Permissions,
+  Operational Settings), each clearly marked "Design pending / schema
+  required" — no fake sequences, no fake roles.
+
+  **Numbering audit (design only)**: `genNumber()` (`Date.now()` +
+  random suffix) is used for orders/trips/contracts — not sequential,
+  not gapless. Most master-data codes (supplier/workshop/warehouse/item)
+  are fully user-entered with no generation at all; customers/vehicles/
+  drivers have no code field at all. Confirms a genuine
+  `numbering_series`/`numbering_sequence_ledger` need — not implemented,
+  no migration created.
+
+  **Security audit (design only)**: `users.role` is a plain text
+  field with exactly four hardcoded values in `hasRole()`'s type union
+  (ADMIN/DISPATCHER/DRIVER/CUSTOMER) — no `roles`/`permissions`/
+  `role_permissions`/`user_roles` table exists anywhere. Confirms every
+  future role (Dispatch Supervisor, Workshop Manager, Procurement
+  Manager, ...) genuinely requires new schema before it can be
+  supported — not implemented here.
+
+  **Driver trip lifecycle audit (design only)**: `trips` has `status`/
+  `startedAt`/`completedAt`/`loadingConfirmedAt`; `tripStops` has only
+  `arrivedAt`/`completedAt` — confirmed the schema cannot distinguish
+  the six target stages (Start/Arrived Loading/Complete Loading/
+  Arrived Customer/Complete Unloading/Close) without new columns or an
+  event-log table. No fake six-step buttons were added to the Driver
+  App; the existing POD gate and billing trigger (on delivery
+  completion) remain completely untouched.
+
+  No schema, migration, seedData, pricing, billing, or ERP changes —
+  confirmed by file-timestamp inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

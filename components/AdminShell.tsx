@@ -27,9 +27,9 @@ const DEFAULT_SECTIONS: AdminNavSection[] = [
     label: "Operations",
     items: [
       { label: "Dispatch Control Tower", href: "/admin/dispatch" },
+      { label: "Dispatch (Live)", href: "/dispatch" },
       { label: "Contract & Capacity Planner", href: "/admin/contract-planner" },
       { label: "Loading Points", href: "/admin/loading-points" },
-      { label: "Dispatch (Live)", href: "/dispatch" },
     ],
   },
   {
@@ -62,6 +62,7 @@ const DEFAULT_SECTIONS: AdminNavSection[] = [
       { label: "Automation", href: "/admin?tab=automation" },
       { label: "Field Ops", href: "/admin?tab=fieldops" },
       { label: "Executive", href: "/admin?tab=executive" },
+      { label: "Settings", href: "/admin/settings" },
     ],
   },
 ];

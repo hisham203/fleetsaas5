@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import { extractErrorMessage } from "@/lib/helpers";
 
 // Milestone Z.2, Part 7 — Inventory foundation screen. Stock control
 // for maintenance items, using the real Z.1 read APIs. No stock
@@ -206,7 +207,7 @@ function WarehouseForm({ warehouse, workshops, onCancel, onSaved }: any) {
     setSubmitting(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(typeof data.error === "string" ? data.error : "Failed to save");
+      setError(extractErrorMessage(data));
       return;
     }
     onSaved();

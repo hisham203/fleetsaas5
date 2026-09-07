@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import { extractErrorMessage } from "@/lib/helpers";
 
 // Milestone Z.2, Part 4 — Workshops CRUD. Service locations for
 // trucks/tankers — a distinct concept from Loading Points (customer
@@ -99,7 +100,7 @@ function WorkshopForm({ workshop, onCancel, onSaved }: any) {
     setSubmitting(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(typeof data.error === "string" ? data.error : "Failed to save");
+      setError(extractErrorMessage(data));
       return;
     }
     onSaved();

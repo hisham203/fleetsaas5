@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { suppliers } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
+import { optionalEmailSchema } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
@@ -12,7 +13,7 @@ const patchSchema = z.object({
   name: z.string().min(1).optional(),
   contactName: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email().optional(),
+  email: optionalEmailSchema(),
   address: z.string().optional(),
   taxNumber: z.string().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),

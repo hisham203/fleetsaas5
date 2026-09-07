@@ -6,6 +6,7 @@ import { workshops } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { optionalEmailSchema } from "@/lib/helpers";
 
 const patchSchema = z.object({
   workshopCode: z.string().min(1).optional(),
@@ -19,7 +20,7 @@ const patchSchema = z.object({
   lng: z.number().min(-180).max(180).nullable().optional(),
   contactName: z.string().optional(),
   contactPhone: z.string().optional(),
-  contactEmail: z.string().email().optional(),
+  contactEmail: optionalEmailSchema(),
   notes: z.string().optional(),
 });
 

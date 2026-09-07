@@ -4,16 +4,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { suppliers } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { genId } from "@/lib/helpers";
+import { genId, optionalEmailSchema } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
+// Milestone AC, Part 2 root-cause fix: the UI's email input defaults to
+// and sends an empty string ("") when left blank, never undefined —
+// see lib/helpers.ts's optionalEmailSchema for the full explanation.
 const createSchema = z.object({
   supplierCode: z.string().min(1),
   name: z.string().min(1),
   contactName: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email().optional(),
+  email: optionalEmailSchema(),
   address: z.string().optional(),
   taxNumber: z.string().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),

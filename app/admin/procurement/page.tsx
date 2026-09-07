@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
+import { extractErrorMessage } from "@/lib/helpers";
 import { useRequireSession } from "@/lib/useSession";
 
 // Milestone Z.2, Part 8 — Procurement foundation screen. Supplier CRUD
@@ -157,7 +158,7 @@ function SupplierForm({ supplier, onCancel, onSaved }: any) {
     setSubmitting(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(typeof data.error === "string" ? data.error : "Failed to save");
+      setError(extractErrorMessage(data));
       return;
     }
     onSaved();

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import { extractErrorMessage } from "@/lib/helpers";
 
 const ITEM_TYPES = ["SPARE_PART", "TIRE", "LUBRICANT", "CONSUMABLE", "TOOL", "SAFETY", "OTHER"];
 const UOMS = ["EA", "PCS", "LITER", "SET", "KG", "METER"];
@@ -125,7 +126,7 @@ function GroupForm({ group, onCancel, onSaved }: any) {
     setSubmitting(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(typeof data.error === "string" ? data.error : "Failed to save");
+      setError(extractErrorMessage(data));
       return;
     }
     onSaved();
@@ -202,7 +203,7 @@ function CategoryForm({ category, groups, onCancel, onSaved }: any) {
     setSubmitting(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(typeof data.error === "string" ? data.error : "Failed to save");
+      setError(extractErrorMessage(data));
       return;
     }
     onSaved();
@@ -283,7 +284,7 @@ function SubcategoryForm({ subcategory, categories, onCancel, onSaved }: any) {
     setSubmitting(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(typeof data.error === "string" ? data.error : "Failed to save");
+      setError(extractErrorMessage(data));
       return;
     }
     onSaved();
@@ -380,7 +381,7 @@ function ItemForm({ item, categories, subcategories, groups, onCancel, onSaved }
     setSubmitting(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setError(typeof data.error === "string" ? data.error : "Failed to save");
+      setError(extractErrorMessage(data));
       return;
     }
     onSaved();

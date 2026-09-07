@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { workshops } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { genId } from "@/lib/helpers";
+import { genId, optionalEmailSchema } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
@@ -20,7 +20,7 @@ const createSchema = z.object({
   lng: z.number().min(-180).max(180).nullable().optional(),
   contactName: z.string().optional(),
   contactPhone: z.string().optional(),
-  contactEmail: z.string().email().optional(),
+  contactEmail: optionalEmailSchema(),
   notes: z.string().optional(),
 });
 

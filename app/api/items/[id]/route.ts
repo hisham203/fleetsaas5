@@ -6,6 +6,7 @@ import { items, itemCategories, itemSubcategories, itemGroups } from "@/lib/db/s
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { optionalUrlSchema } from "@/lib/helpers";
 
 const ITEM_TYPES = ["SPARE_PART", "TIRE", "LUBRICANT", "CONSUMABLE", "TOOL", "SAFETY", "OTHER"] as const;
 const UOMS = ["EA", "PCS", "LITER", "SET", "KG", "METER"] as const;
@@ -25,7 +26,7 @@ const patchSchema = z.object({
   brand: z.string().optional(),
   model: z.string().optional(),
   partNumber: z.string().optional(),
-  imageUrl: z.string().url().optional(),
+  imageUrl: optionalUrlSchema(),
   compatibleVehicleType: z.string().optional(),
   minimumStockLevel: z.number().min(0).nullable().optional(),
   reorderPoint: z.number().min(0).nullable().optional(),
