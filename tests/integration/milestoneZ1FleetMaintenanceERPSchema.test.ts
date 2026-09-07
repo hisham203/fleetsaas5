@@ -36,8 +36,7 @@ describe("Schema tables exist (Milestone Z.1, Part 11)", () => {
     expect(schemaSource).toContain(`"${tableName}"`);
   });
 
-  it("each new table exists as a real, queryable table and is genuinely empty", async () => {
-    const { itemGroups, itemCategories, itemSubcategories, items, workshops, maintenanceWarehouses, maintenanceInventoryBalances, maintenanceInventoryMovements, suppliers, purchaseRequisitions, purchaseRequisitionLines, purchaseOrders, purchaseOrderLines, goodsReceipts, goodsReceiptLines } = await import("@/lib/db/schema");
+  it("each new table is a real, queryable table (Z.2's own CRUD tests legitimately insert real rows into these tables now, so global emptiness is no longer a valid assumption on this shared test database — querying successfully is the actual guarantee this test needs)", async () => {
     const results = await Promise.all([
       db.query.itemGroups.findMany(),
       db.query.itemCategories.findMany(),
@@ -56,7 +55,7 @@ describe("Schema tables exist (Milestone Z.1, Part 11)", () => {
       db.query.goodsReceiptLines.findMany(),
     ]);
     for (const rows of results) {
-      expect(rows.length).toBe(0);
+      expect(Array.isArray(rows)).toBe(true);
     }
   });
 
@@ -90,9 +89,7 @@ describe("Schema tables exist (Milestone Z.1, Part 11)", () => {
     expect(matches.length).toBe(15);
   });
 
-  it("20. no seed data was inserted into any new table", async () => {
-    const rows = await db.query.items.findMany();
-    expect(rows.length).toBe(0);
+  it("20. no seed data was inserted into any new table by scripts/seedData.ts itself (the real guarantee here — not that the table is globally empty across the shared test database, which Z.2's own CRUD tests now legitimately populate)", async () => {
     const seedSource = fs.readFileSync(path.join(process.cwd(), "scripts/seedData.ts"), "utf8");
     expect(seedSource).not.toContain("itemGroups");
     expect(seedSource).not.toContain("purchaseRequisitions");
@@ -135,14 +132,13 @@ describe("Empty-safe read APIs (Milestone Z.1, Part 9)", () => {
     "/api/goods-receipts": "app/api/goods-receipts/route.ts",
   };
 
-  it.each(endpoints)("21-32. %s returns an empty array safely for a real admin session", async (_label, urlPath) => {
+  it.each(endpoints)("21-32. %s returns a well-shaped array response for a real admin session (Z.2's own CRUD tests now legitimately populate some of these tables, so an empty-array assertion is no longer a valid cross-file assumption on this shared test database)", async (_label, urlPath) => {
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const { GET } = await import(`@/${routeFiles[urlPath]}`);
     const res = await GET(makeRequest(urlPath, { cookie: adminCookie }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body)).toBe(true);
-    expect(body.length).toBe(0);
   });
 
   it.each(endpoints)("33. %s requires authentication", async (_label, urlPath) => {
@@ -159,13 +155,16 @@ describe("Empty-safe read APIs (Milestone Z.1, Part 9)", () => {
     }
   });
 
-  it("no route in this milestone exposes a POST, PATCH, or DELETE handler — read-only, exactly as scoped", () => {
+  it("no route ever exposed a DELETE handler — status=INACTIVE is used instead, per Z.2's own explicit preference for soft-deactivation over deletion", () => {
     for (const file of Object.values(routeFiles)) {
       const source = fs.readFileSync(path.join(process.cwd(), file), "utf8");
-      expect(source).not.toContain("export async function POST");
-      expect(source).not.toContain("export async function PATCH");
       expect(source).not.toContain("export async function DELETE");
     }
+  });
+
+  it("Z.1 itself shipped these 12 routes as read-only; Z.2 later added POST/PATCH CRUD on top, exactly as its own recommended next milestone anticipated", () => {
+    const itemGroupsSource = fs.readFileSync(path.join(process.cwd(), "app/api/item-groups/route.ts"), "utf8");
+    expect(itemGroupsSource).toContain("export async function POST");
   });
 
   it("no passwordHash or sensitive field exposure in any new route", () => {
@@ -186,10 +185,10 @@ describe("Placeholder UI wiring (Milestone Z.1, Part 10)", () => {
     expect(componentSource).not.toContain("Math.random()");
   });
 
-  it("each placeholder page is wired to its own module's real endpoints, never another module's", () => {
+  it("each placeholder/real page is wired to its own module's real endpoints, never another module's", () => {
     const inventorySource = fs.readFileSync(path.join(process.cwd(), "app/admin/inventory-planned/page.tsx"), "utf8");
     const procurementSource = fs.readFileSync(path.join(process.cwd(), "app/admin/procurement-planned/page.tsx"), "utf8");
-    const masterItemsSource = fs.readFileSync(path.join(process.cwd(), "app/admin/master-items-planned/page.tsx"), "utf8");
+    const masterItemsSource = fs.readFileSync(path.join(process.cwd(), "app/admin/master-items/page.tsx"), "utf8");
     expect(inventorySource).toContain("/api/maintenance-inventory/balances");
     expect(procurementSource).toContain("/api/purchase-orders");
     expect(masterItemsSource).toContain("/api/items");

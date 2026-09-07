@@ -84,9 +84,10 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
       label: "Platform",
       items: [
         item("Maintenance", "maintenance"),
-        { label: "Inventory (Planned)", href: "/admin/inventory-planned" },
-        { label: "Procurement (Planned)", href: "/admin/procurement-planned" },
-        { label: "Master Items (Planned)", href: "/admin/master-items-planned" },
+        { label: "Inventory", href: "/admin/inventory" },
+        { label: "Procurement", href: "/admin/procurement" },
+        { label: "Master Items", href: "/admin/master-items" },
+        { label: "Workshops", href: "/admin/workshops" },
         item("ERP Sync", "erp"),
         item("Automation", "automation"),
         item("Field Ops", "fieldops"),

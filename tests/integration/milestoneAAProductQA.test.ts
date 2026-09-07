@@ -150,10 +150,10 @@ describe("Inventory retirement (Milestone AA, Part 6)", () => {
     expect(source).toContain("not part of the bulk water tanker business model");
   });
 
-  it("22. Inventory/Procurement/Master Items placeholders are all discoverable in the sidebar, replacing the old Inventory slot (Milestone AB split the one merged placeholder into three separate module links)", () => {
-    expect(shellSource()).toContain("Inventory (Planned)");
-    expect(shellSource()).toContain("Procurement (Planned)");
-    expect(shellSource()).toContain("Master Items (Planned)");
+  it("22. Inventory, Procurement, and Master Items are all real, live pages in the sidebar (Z.2), replacing the old retired Inventory slot", () => {
+    expect(shellSource()).toContain('{ label: "Inventory", href: "/admin/inventory" }');
+    expect(shellSource()).toContain('{ label: "Procurement", href: "/admin/procurement" }');
+    expect(shellSource()).toContain('{ label: "Master Items", href: "/admin/master-items" }');
   });
 
   it("23. no fake maintenance inventory rows appear in the placeholder", () => {

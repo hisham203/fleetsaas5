@@ -100,10 +100,10 @@ describe("Maintenance Inventory & Procurement placeholder (Milestone Z, Part 9/1
     expect(source).toContain("distinct concept from Loading Points");
   });
 
-  it("10. sidebar links to the placeholders are clearly labeled Planned, not presented as a live module (Milestone AB: three separate links now, not one merged link)", () => {
-    expect(shellSource()).toContain("Inventory (Planned)");
-    expect(shellSource()).toContain("Procurement (Planned)");
-    expect(shellSource()).toContain("Master Items (Planned)");
+  it("10. Inventory, Procurement, and Master Items all became real, live pages in Z.2 (no longer placeholders)", () => {
+    expect(shellSource()).toContain('{ label: "Inventory", href: "/admin/inventory" }');
+    expect(shellSource()).toContain('{ label: "Procurement", href: "/admin/procurement" }');
+    expect(shellSource()).toContain('{ label: "Master Items", href: "/admin/master-items" }');
   });
 
   it("11/12. existing Fleet, Finance, Reports, Dispatch navigation remains unchanged", () => {

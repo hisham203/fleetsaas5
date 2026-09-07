@@ -1829,6 +1829,50 @@ only placeholders.
   No seedData, pricing, customer billing, or ERP sync changes —
   confirmed by file-timestamp inspection of every protected file.
 
+- **Z.2 ("Fleet Maintenance ERP Master Data & Foundation UI")** — CRUD
+  built entirely against Z.1's existing schema; no schema change, no
+  migration.
+
+  **APIs**: POST + PATCH added to all 7 master-data entities (Item
+  Groups, Categories, Sub-Categories, Items, Workshops, Maintenance
+  Warehouses, Suppliers) — 14 endpoints total, following the exact
+  established `distance-bands`/`warehouses` convention (ADMIN-only,
+  tenant-scoped app-level uniqueness checks returning clean 409s, no
+  DB-level constraints). Full cross-tenant reference validation:
+  categories validate `itemGroupId`, sub-categories validate
+  `categoryId`, items validate `categoryId`/`itemGroupId`/
+  `subCategoryId` (including the specific rule that a sub-category must
+  belong to the item's own selected category), maintenance warehouses
+  validate `workshopId`. No DELETE anywhere — `status = INACTIVE` is
+  used for deactivation throughout, per this milestone's own
+  preference.
+
+  **Screens**: four real pages replaced their placeholders —
+  `/admin/master-items` (tabbed CRUD: Groups → Categories → Sub-
+  Categories → Items, with cascading selectors and the required "Item
+  Master defines the item. Stock quantity is managed in Inventory, not
+  here." note), `/admin/workshops` (standalone CRUD), `/admin/inventory`
+  (Stock Overview / Warehouses-with-CRUD / Stock Movements / Low-Stock
+  tabs — read-only except Maintenance Warehouse management; no
+  posting/adjustment/issue/transfer logic anywhere), `/admin/procurement`
+  (Suppliers CRUD + read-only PR/PO/Goods-Receipts tabs — no PR
+  approval, PO issuing, or receiving posting). All four sidebar links
+  updated in both sources; the old placeholder URLs redirect rather
+  than 404ing.
+
+  **A real, expected test-isolation issue found and fixed** (same class
+  as an earlier CI-fix task): three of Z.1's own tests had asserted
+  these tables are *globally* empty across the shared test database —
+  an assumption Z.2's own legitimate CRUD tests now violate by creating
+  real rows to test create/edit/deactivate. The application itself was
+  never at fault; fixed by replacing the fragile global-emptiness
+  assertions with checks for the actual guarantee needed (a well-shaped,
+  working, tenant-scoped response) — confirmed stable across 3
+  consecutive full-suite runs after the fix.
+
+  No schema, migration, seedData, pricing, billing, or ERP changes —
+  confirmed by file-timestamp inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

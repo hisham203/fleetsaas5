@@ -8,7 +8,7 @@ const adminPageSource = () => fs.readFileSync(path.join(process.cwd(), "app/admi
 const shellSource = () => fs.readFileSync(path.join(process.cwd(), "components/AdminShell.tsx"), "utf8");
 const inventorySource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/inventory-planned/page.tsx"), "utf8");
 const procurementSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/procurement-planned/page.tsx"), "utf8");
-const masterItemsSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/master-items-planned/page.tsx"), "utf8");
+const masterItemsSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/master-items/page.tsx"), "utf8");
 const placeholderComponentSource = () => fs.readFileSync(path.join(process.cwd(), "components/PlannedModulePlaceholder.tsx"), "utf8");
 
 describe("Dispatch (Live) visibility root-cause fix (Milestone AB, Part 2)", () => {
@@ -75,13 +75,13 @@ describe("Four-module separation (Milestone AB, Part 4)", () => {
     expect(inventorySource()).toContain("does not define the item master hierarchy");
     expect(procurementSource()).toContain("does not consume parts into maintenance");
     expect(procurementSource()).toContain("does not define item categories or create new items");
-    expect(masterItemsSource()).toContain("does not hold stock quantity");
+    expect(masterItemsSource()).toContain("Stock quantity is managed in Inventory, not here");
   });
 
-  it("17. sidebar links for all three planned modules exist in both sidebar sources", () => {
-    for (const label of ["Inventory (Planned)", "Procurement (Planned)", "Master Items (Planned)"]) {
-      expect(shellSource()).toContain(label);
-      expect(adminPageSource()).toContain(label);
+  it("17. sidebar links for Inventory, Procurement, and Master Items (all real pages as of Z.2) exist in both sidebar sources", () => {
+    for (const item of ['{ label: "Inventory", href: "/admin/inventory" }', '{ label: "Procurement", href: "/admin/procurement" }', '{ label: "Master Items", href: "/admin/master-items" }']) {
+      expect(shellSource()).toContain(item);
+      expect(adminPageSource()).toContain(item);
     }
   });
 
@@ -94,7 +94,7 @@ describe("Four-module separation (Milestone AB, Part 4)", () => {
 describe("Relationship documentation (Milestone AB, Part 5)", () => {
   it("22. Master Items -> Inventory relationship is documented", () => {
     expect(inventorySource()).toContain("Master Items defines what can be stocked");
-    expect(masterItemsSource()).toContain("Inventory balances reference an itemId here");
+    expect(masterItemsSource()).toContain("Stock quantity is managed in Inventory, not here");
   });
 
   it("23. Procurement -> Receiving -> Warehouse Stock relationship is documented", () => {
@@ -113,25 +113,30 @@ describe("Relationship documentation (Milestone AB, Part 5)", () => {
     expect(procurementSource()).toContain("never creates or modifies a customer billing invoice at any step");
   });
 
-  it("item creation belongs exclusively to Master Items, not Inventory or Procurement", () => {
-    expect(masterItemsSource()).toContain("Item creation belongs exclusively to Master Items");
+  it("item creation belongs exclusively to Master Items — the real page is the only UI that calls POST /api/items", () => {
+    expect(masterItemsSource()).toContain('fetch("/api/items"');
+    const inventoryHasItemCreation = inventorySource().includes('fetch("/api/items", { method: "POST"');
+    const procurementHasItemCreation = procurementSource().includes('fetch("/api/items", { method: "POST"');
+    expect(inventoryHasItemCreation).toBe(false);
+    expect(procurementHasItemCreation).toBe(false);
   });
 });
 
 describe("Placeholder integrity (Milestone AB, Part 9)", () => {
-  it("20/21. no fake operational data or broken links in any of the three placeholders", () => {
-    for (const source of [inventorySource(), procurementSource(), masterItemsSource()]) {
+  it("20/21. no fake operational data or broken links in the two remaining placeholders (Master Items is now a real page with real fetch/table usage, checked separately)", () => {
+    for (const source of [inventorySource(), procurementSource()]) {
       expect(source).not.toContain("<table");
       expect(source).not.toContain("fetch(");
     }
   });
 
-  it("all three use the shared PlannedModulePlaceholder, which now (Z.1) states schema is implemented and shows genuine live counts, never fake data", () => {
+  it("Inventory and Procurement use the shared PlannedModulePlaceholder, which states schema is implemented and shows genuine live counts, never fake data; Master Items has its own real CRUD page (Z.2)", () => {
     const componentSource = placeholderComponentSource();
     expect(componentSource).toContain("Schema foundation implemented. Operational CRUD will be added in later milestones.");
-    for (const source of [inventorySource(), procurementSource(), masterItemsSource()]) {
+    for (const source of [inventorySource(), procurementSource()]) {
       expect(source).toContain("PlannedModulePlaceholder");
     }
+    expect(masterItemsSource()).toContain('fetch("/api/item-groups")');
   });
 
   it("the old merged route now redirects rather than 404ing, preserving any bookmarked link", () => {
