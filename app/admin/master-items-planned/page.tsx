@@ -22,6 +22,12 @@ export default function MasterItemsPlannedPage() {
         "Item creation belongs exclusively to Master Items — Inventory and Procurement both request/reference existing items rather than defining new ones themselves.",
         "Maintenance work orders will reference items here when recording parts consumed on a vehicle.",
       ]}
+      counts={[
+        { label: "Item Groups", endpoint: "/api/item-groups" },
+        { label: "Item Categories", endpoint: "/api/item-categories" },
+        { label: "Item Sub-Categories", endpoint: "/api/item-subcategories" },
+        { label: "Items", endpoint: "/api/items" },
+      ]}
     />
   );
 }

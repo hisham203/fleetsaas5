@@ -126,10 +126,9 @@ describe("Placeholder integrity (Milestone AB, Part 9)", () => {
     }
   });
 
-  it("all three use the shared PlannedModulePlaceholder, which states 'Planned module — schema/design pending' and shows zero live data", () => {
+  it("all three use the shared PlannedModulePlaceholder, which now (Z.1) states schema is implemented and shows genuine live counts, never fake data", () => {
     const componentSource = placeholderComponentSource();
-    expect(componentSource).toContain("Planned module — schema/design pending");
-    expect(componentSource).toContain("No live data exists yet");
+    expect(componentSource).toContain("Schema foundation implemented. Operational CRUD will be added in later milestones.");
     for (const source of [inventorySource(), procurementSource(), masterItemsSource()]) {
       expect(source).toContain("PlannedModulePlaceholder");
     }
@@ -163,11 +162,14 @@ describe("Regression protection (Milestone AB)", () => {
     expect(fs.existsSync(path.join(process.cwd(), "app/api/procurement"))).toBe(false);
   });
 
-  it("no schema file was modified for this milestone", () => {
+  it("no schema file was modified for THIS milestone (Milestone AB itself — a design/placeholder-only milestone); Z.1, exactly as this milestone recommended, later implemented the approved schema", () => {
     const schemaSource = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
-    expect(schemaSource).not.toContain("item_groups");
-    expect(schemaSource).not.toContain("purchase_requisitions");
-    expect(schemaSource).not.toContain("workshops");
+    // Confirms the schema Z.1 added matches what this milestone
+    // designed, rather than asserting its continued absence.
+    expect(schemaSource).toContain("export const itemGroups = pgTable(");
+    expect(schemaSource).toContain('"item_groups"');
+    expect(schemaSource).toContain("export const workshops = pgTable(");
+    expect(schemaSource).toContain('"workshops"');
   });
 
   it("no passwordHash exposure in any changed file", () => {

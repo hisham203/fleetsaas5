@@ -81,12 +81,11 @@ describe("Inventory business-model clarification (Milestone Z, Part 2/12)", () =
 });
 
 describe("Maintenance Inventory & Procurement placeholder (Milestone Z, Part 9/12)", () => {
-  it("8. the placeholder clearly states design is pending and no live stock data exists (Milestone AB: now via the shared PlannedModulePlaceholder component)", () => {
+  it("8. the placeholder now (Z.1) states schema is implemented, not merely pending, and never fabricates data (Milestone AB: via the shared PlannedModulePlaceholder component)", () => {
     const source = placeholderSource();
     expect(source).toContain("PlannedModulePlaceholder");
     const componentSource = fs.readFileSync(path.join(process.cwd(), "components/PlannedModulePlaceholder.tsx"), "utf8");
-    expect(componentSource).toContain("Planned module — schema/design pending");
-    expect(componentSource).toContain("No live data exists yet");
+    expect(componentSource).toContain("Schema foundation implemented. Operational CRUD will be added in later milestones.");
   });
 
   it("9. no fake inventory/procurement rows appear — the page renders no data table or mock rows at all", () => {
@@ -153,12 +152,9 @@ describe("Regression protection (Milestone Z)", () => {
     expect(scheduleRouteSource).not.toContain("export async function POST");
   });
 
-  it("no schema file was modified for this milestone — inventoryItems and warehouses remain exactly as audited", () => {
+  it("no schema file was modified for THIS milestone (Milestone Z itself) — inventoryItems remains exactly as audited; Z.1 later implemented the schema this milestone proposed", () => {
     const schemaSource = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
     expect(schemaSource).toContain('itemName: text("item_name").notNull(), // e.g. "19L Bottle - Full", "19L Bottle - Empty"');
-    expect(schemaSource).not.toContain("workshops");
-    expect(schemaSource).not.toContain("purchase_requisitions");
-    expect(schemaSource).not.toContain("maintenance_inventory_balances");
   });
 
   it("a real end-to-end ONE_TIME_TRIP_COUNT delivery still prices correctly", async () => {

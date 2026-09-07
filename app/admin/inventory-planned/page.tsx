@@ -24,6 +24,11 @@ export default function InventoryPlannedPage() {
         "Maintenance issues items from here, posting an ISSUE_TO_MAINTENANCE movement and decreasing the balance.",
         "Warehouses (physical stock locations) may optionally link to a Workshop, but are a distinct concept from Loading Points (customer delivery dispatch).",
       ]}
+      counts={[
+        { label: "Maintenance Warehouses", endpoint: "/api/maintenance-warehouses" },
+        { label: "Stock Balances", endpoint: "/api/maintenance-inventory/balances" },
+        { label: "Stock Movements", endpoint: "/api/maintenance-inventory/movements" },
+      ]}
     />
   );
 }

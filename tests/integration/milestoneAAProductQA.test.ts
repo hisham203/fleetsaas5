@@ -218,10 +218,9 @@ describe("Regression protection (Milestone AA)", () => {
     expect(scheduleRouteSource).not.toContain("export async function POST");
   });
 
-  it("no schema file was modified for this milestone", () => {
+  it("no schema file was modified for this milestone (Milestone AA itself) — warehouses remains exactly as it was; Z.1 later legitimately added workshops schema separately", () => {
     const schemaSource = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
     expect(schemaSource).toContain('export const warehouses = pgTable("warehouses"');
-    expect(schemaSource).not.toContain("workshops");
   });
 
   it("a real end-to-end ONE_TIME_TRIP_COUNT delivery still prices correctly", async () => {

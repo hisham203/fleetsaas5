@@ -1789,6 +1789,46 @@ only placeholders.
   No schema, migration, or seedData changes — confirmed by
   file-timestamp inspection of every protected file.
 
+- **Z.1 ("Fleet Maintenance ERP Schema Foundation")** — schema +
+  empty-safe read APIs only, exactly as scoped. No CRUD, no PR/PO
+  approval, no receiving/posting logic, no seed data.
+
+  **Schema**: 15 new tables added to `lib/db/schema.ts`, matching this
+  project's established conventions exactly (verified before writing a
+  line: zero DB-level foreign keys anywhere in this file) — `item_groups`
+  → `item_categories` → `item_subcategories` → `items` (Master Items);
+  `workshops` and `maintenance_warehouses` (deliberately separate from
+  the existing `warehouses` table, which remains dispatch loading
+  points, completely untouched — confirmed by direct inspection both
+  before and after migrating); `maintenance_inventory_balances` (unique
+  per tenant+warehouse+item) and `maintenance_inventory_movements`;
+  `suppliers`, `purchase_requisitions`(+lines), `purchase_orders`
+  (+lines), `goods_receipts`(+lines) for the full procurement chain.
+  All Drizzle relations added to match.
+
+  **Migration**: generated via `npm run db:generate` (not hand-written)
+  as `drizzle/0017_bored_black_panther.sql` — confirmed 15
+  `CREATE TABLE` statements, zero `ALTER`/`DROP`/`TRUNCATE`. Applied
+  locally; all 15 tables verified to exist and be genuinely empty via
+  direct query, both immediately after migrating and again after the
+  full test suite ran.
+
+  **APIs**: 12 empty-safe `GET` routes (item-groups, item-categories,
+  item-subcategories, items, workshops, maintenance-warehouses,
+  maintenance-inventory/balances, maintenance-inventory/movements,
+  suppliers, purchase-requisitions, purchase-orders, goods-receipts) —
+  ADMIN-only, tenant-isolated, plain-array response matching V.1's own
+  established convention. No POST/PATCH/DELETE exists for any of them.
+
+  **Placeholder wiring**: the three Milestone AB placeholder pages
+  (Inventory, Procurement, Master Items) now show genuine, live-fetched
+  counts from these new APIs (currently all zero) and the updated
+  message "Schema foundation implemented. Operational CRUD will be
+  added in later milestones." — never fabricated data.
+
+  No seedData, pricing, customer billing, or ERP sync changes —
+  confirmed by file-timestamp inspection of every protected file.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

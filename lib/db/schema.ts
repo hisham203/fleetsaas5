@@ -714,6 +714,433 @@ export const plannedContractDemands = pgTable(
   })
 );
 
+// ========== Milestone Z.1: Fleet Maintenance ERP Schema Foundation ==========
+// Schema-only foundation, matching this schema's own established
+// conventions exactly (confirmed by direct audit before writing a
+// single line): zero DB-level foreign key constraints anywhere in this
+// file — every relationship below is a plain text() app-level
+// reference, exactly like V.1's contractDeliverySchedules/
+// plannedContractDemands tables; text status/type fields, never a pg
+// enum type; real() for quantities matching contractPricingRules'
+// pricePerLiter precedent. Every table starts and remains empty — this
+// milestone adds no create/update/delete route, no stock-posting logic,
+// no PR/PO approval workflow, no fake data of any kind. These are
+// genuinely NEW tables, deliberately never reusing the existing
+// `warehouses` table (dispatch loading points) or `inventoryItems`
+// table (legacy bottle-delivery stock) — both remain completely
+// untouched, exactly as Milestone Z/AA's own audits concluded they
+// must.
+
+// ---------- Master Items ----------
+// Owns item definitions only — never a stock quantity (that's
+// maintenanceInventoryBalances' job), never a procurement action.
+export const itemGroups = pgTable(
+  "item_groups",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: text("status").notNull().default("ACTIVE"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("item_groups_tenant_idx").on(table.tenantId),
+    codeUnique: uniqueIndex("item_groups_tenant_code_unique").on(table.tenantId, table.code),
+    statusIdx: index("item_groups_tenant_status_idx").on(table.tenantId, table.status),
+  })
+);
+
+export const itemCategories = pgTable(
+  "item_categories",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    itemGroupId: text("item_group_id"), // nullable — a category need not belong to a group
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: text("status").notNull().default("ACTIVE"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("item_categories_tenant_idx").on(table.tenantId),
+    codeUnique: uniqueIndex("item_categories_tenant_code_unique").on(table.tenantId, table.code),
+    groupIdx: index("item_categories_tenant_group_idx").on(table.tenantId, table.itemGroupId),
+    statusIdx: index("item_categories_tenant_status_idx").on(table.tenantId, table.status),
+  })
+);
+
+export const itemSubcategories = pgTable(
+  "item_subcategories",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    categoryId: text("category_id").notNull(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: text("status").notNull().default("ACTIVE"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("item_subcategories_tenant_idx").on(table.tenantId),
+    categoryIdx: index("item_subcategories_tenant_category_idx").on(table.tenantId, table.categoryId),
+    codeUnique: uniqueIndex("item_subcategories_tenant_code_unique").on(table.tenantId, table.code),
+    statusIdx: index("item_subcategories_tenant_status_idx").on(table.tenantId, table.status),
+  })
+);
+
+// itemType: SPARE_PART | TIRE | LUBRICANT | CONSUMABLE | TOOL | SAFETY | OTHER
+// unitOfMeasure: EA | PCS | LITER | SET | KG | METER
+export const items = pgTable(
+  "items",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    itemCode: text("item_code").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    itemGroupId: text("item_group_id"),
+    categoryId: text("category_id").notNull(),
+    subCategoryId: text("sub_category_id"),
+    itemType: text("item_type").notNull(),
+    unitOfMeasure: text("unit_of_measure").notNull(),
+    isStocked: boolean("is_stocked").notNull().default(true),
+    isSerialized: boolean("is_serialized").notNull().default(false),
+    isTire: boolean("is_tire").notNull().default(false),
+    brand: text("brand"),
+    model: text("model"),
+    partNumber: text("part_number"),
+    imageUrl: text("image_url"),
+    compatibleVehicleType: text("compatible_vehicle_type"),
+    minimumStockLevel: real("minimum_stock_level"),
+    reorderPoint: real("reorder_point"),
+    status: text("status").notNull().default("ACTIVE"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("items_tenant_idx").on(table.tenantId),
+    itemCodeUnique: uniqueIndex("items_tenant_item_code_unique").on(table.tenantId, table.itemCode),
+    categoryIdx: index("items_tenant_category_idx").on(table.tenantId, table.categoryId),
+    subCategoryIdx: index("items_tenant_subcategory_idx").on(table.tenantId, table.subCategoryId),
+    typeIdx: index("items_tenant_type_idx").on(table.tenantId, table.itemType),
+    statusIdx: index("items_tenant_status_idx").on(table.tenantId, table.status),
+  })
+);
+
+// ---------- Workshops & Maintenance Warehouses ----------
+// workshopType: INTERNAL | EXTERNAL | MOBILE_SERVICE
+export const workshops = pgTable(
+  "workshops",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    workshopCode: text("workshop_code").notNull(),
+    name: text("name").notNull(),
+    workshopType: text("workshop_type").notNull().default("INTERNAL"),
+    status: text("status").notNull().default("ACTIVE"),
+    address: text("address"),
+    city: text("city"),
+    district: text("district"),
+    lat: real("lat"),
+    lng: real("lng"),
+    contactName: text("contact_name"),
+    contactPhone: text("contact_phone"),
+    contactEmail: text("contact_email"),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("workshops_tenant_idx").on(table.tenantId),
+    codeUnique: uniqueIndex("workshops_tenant_code_unique").on(table.tenantId, table.workshopCode),
+    statusIdx: index("workshops_tenant_status_idx").on(table.tenantId, table.status),
+    cityIdx: index("workshops_tenant_city_idx").on(table.tenantId, table.city),
+  })
+);
+
+// Deliberately NOT the existing `warehouses` table (dispatch loading
+// points) — a genuinely separate physical-location concept, per
+// Milestone Z/AA/AB's own repeated, explicit conclusion.
+// warehouseType: WORKSHOP_STORE | CENTRAL_SPARES | TYRE_STORE | MOBILE_VAN | OTHER
+export const maintenanceWarehouses = pgTable(
+  "maintenance_warehouses",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    warehouseCode: text("warehouse_code").notNull(),
+    name: text("name").notNull(),
+    warehouseType: text("warehouse_type").notNull().default("WORKSHOP_STORE"),
+    workshopId: text("workshop_id"), // nullable — a central warehouse may have no workshop
+    status: text("status").notNull().default("ACTIVE"),
+    address: text("address"),
+    city: text("city"),
+    district: text("district"),
+    lat: real("lat"),
+    lng: real("lng"),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("maintenance_warehouses_tenant_idx").on(table.tenantId),
+    codeUnique: uniqueIndex("maintenance_warehouses_tenant_code_unique").on(table.tenantId, table.warehouseCode),
+    workshopIdx: index("maintenance_warehouses_tenant_workshop_idx").on(table.tenantId, table.workshopId),
+    statusIdx: index("maintenance_warehouses_tenant_status_idx").on(table.tenantId, table.status),
+    cityIdx: index("maintenance_warehouses_tenant_city_idx").on(table.tenantId, table.city),
+  })
+);
+
+// ---------- Maintenance Inventory ----------
+export const maintenanceInventoryBalances = pgTable(
+  "maintenance_inventory_balances",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    warehouseId: text("warehouse_id").notNull(),
+    itemId: text("item_id").notNull(),
+    quantityOnHand: real("quantity_on_hand").notNull().default(0),
+    quantityReserved: real("quantity_reserved").notNull().default(0),
+    quantityAvailable: real("quantity_available").notNull().default(0),
+    lastMovementAt: timestamp("last_movement_at", { mode: "date" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("maintenance_inventory_balances_tenant_idx").on(table.tenantId),
+    warehouseIdx: index("maintenance_inventory_balances_tenant_warehouse_idx").on(table.tenantId, table.warehouseId),
+    itemIdx: index("maintenance_inventory_balances_tenant_item_idx").on(table.tenantId, table.itemId),
+    // The actual "one balance row per item per warehouse" guarantee —
+    // future receipt/issue logic will upsert against this, never insert
+    // a duplicate.
+    warehouseItemUnique: uniqueIndex("maintenance_inventory_balances_warehouse_item_unique").on(table.tenantId, table.warehouseId, table.itemId),
+  })
+);
+
+// movementType: RECEIPT | ISSUE_TO_MAINTENANCE | ADJUSTMENT_IN | ADJUSTMENT_OUT | TRANSFER_OUT | TRANSFER_IN | RETURN
+// referenceType: PURCHASE_RECEIPT | MAINTENANCE_WORK_ORDER | STOCK_ADJUSTMENT | TRANSFER | RETURN
+export const maintenanceInventoryMovements = pgTable(
+  "maintenance_inventory_movements",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    warehouseId: text("warehouse_id").notNull(),
+    itemId: text("item_id").notNull(),
+    movementType: text("movement_type").notNull(),
+    quantity: real("quantity").notNull(),
+    unitOfMeasure: text("unit_of_measure").notNull(),
+    referenceType: text("reference_type"),
+    referenceId: text("reference_id"),
+    vehicleId: text("vehicle_id"),
+    maintenanceRecordId: text("maintenance_record_id"),
+    purchaseOrderId: text("purchase_order_id"),
+    goodsReceiptId: text("goods_receipt_id"),
+    notes: text("notes"),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: createdAt(),
+  },
+  (table) => ({
+    tenantIdx: index("maintenance_inventory_movements_tenant_idx").on(table.tenantId),
+    warehouseIdx: index("maintenance_inventory_movements_tenant_warehouse_idx").on(table.tenantId, table.warehouseId),
+    itemIdx: index("maintenance_inventory_movements_tenant_item_idx").on(table.tenantId, table.itemId),
+    typeIdx: index("maintenance_inventory_movements_tenant_type_idx").on(table.tenantId, table.movementType),
+    createdAtIdx: index("maintenance_inventory_movements_tenant_created_idx").on(table.tenantId, table.createdAt),
+    vehicleIdx: index("maintenance_inventory_movements_tenant_vehicle_idx").on(table.tenantId, table.vehicleId),
+    referenceIdx: index("maintenance_inventory_movements_tenant_reference_idx").on(table.tenantId, table.referenceType, table.referenceId),
+  })
+);
+
+// ---------- Procurement ----------
+export const suppliers = pgTable(
+  "suppliers",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    supplierCode: text("supplier_code").notNull(),
+    name: text("name").notNull(),
+    contactName: text("contact_name"),
+    phone: text("phone"),
+    email: text("email"),
+    address: text("address"),
+    taxNumber: text("tax_number"),
+    status: text("status").notNull().default("ACTIVE"),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("suppliers_tenant_idx").on(table.tenantId),
+    codeUnique: uniqueIndex("suppliers_tenant_code_unique").on(table.tenantId, table.supplierCode),
+    statusIdx: index("suppliers_tenant_status_idx").on(table.tenantId, table.status),
+  })
+);
+
+// status: DRAFT | SUBMITTED | APPROVED | REJECTED | CANCELLED | CONVERTED_TO_PO
+// priority: LOW | NORMAL | HIGH | URGENT
+export const purchaseRequisitions = pgTable(
+  "purchase_requisitions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    prNumber: text("pr_number").notNull(),
+    requestedByUserId: text("requested_by_user_id").notNull(),
+    workshopId: text("workshop_id"),
+    warehouseId: text("warehouse_id"),
+    vehicleId: text("vehicle_id"),
+    maintenanceRecordId: text("maintenance_record_id"),
+    status: text("status").notNull().default("DRAFT"),
+    priority: text("priority").notNull().default("NORMAL"),
+    requiredByDate: timestamp("required_by_date", { mode: "date" }),
+    justification: text("justification"),
+    approvedByUserId: text("approved_by_user_id"),
+    approvedAt: timestamp("approved_at", { mode: "date" }),
+    rejectedByUserId: text("rejected_by_user_id"),
+    rejectedAt: timestamp("rejected_at", { mode: "date" }),
+    rejectionReason: text("rejection_reason"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("purchase_requisitions_tenant_idx").on(table.tenantId),
+    prNumberUnique: uniqueIndex("purchase_requisitions_tenant_pr_number_unique").on(table.tenantId, table.prNumber),
+    statusIdx: index("purchase_requisitions_tenant_status_idx").on(table.tenantId, table.status),
+    requestedByIdx: index("purchase_requisitions_tenant_requested_by_idx").on(table.tenantId, table.requestedByUserId),
+    workshopIdx: index("purchase_requisitions_tenant_workshop_idx").on(table.tenantId, table.workshopId),
+    warehouseIdx: index("purchase_requisitions_tenant_warehouse_idx").on(table.tenantId, table.warehouseId),
+    vehicleIdx: index("purchase_requisitions_tenant_vehicle_idx").on(table.tenantId, table.vehicleId),
+  })
+);
+
+export const purchaseRequisitionLines = pgTable(
+  "purchase_requisition_lines",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    purchaseRequisitionId: text("purchase_requisition_id").notNull(),
+    itemId: text("item_id").notNull(),
+    description: text("description"),
+    quantity: real("quantity").notNull(),
+    unitOfMeasure: text("unit_of_measure").notNull(),
+    estimatedUnitCost: real("estimated_unit_cost"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("purchase_requisition_lines_tenant_idx").on(table.tenantId),
+    prIdx: index("purchase_requisition_lines_tenant_pr_idx").on(table.tenantId, table.purchaseRequisitionId),
+    itemIdx: index("purchase_requisition_lines_tenant_item_idx").on(table.tenantId, table.itemId),
+  })
+);
+
+// status: DRAFT | ISSUED | PARTIALLY_RECEIVED | RECEIVED | CANCELLED | CLOSED
+export const purchaseOrders = pgTable(
+  "purchase_orders",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    poNumber: text("po_number").notNull(),
+    supplierId: text("supplier_id").notNull(),
+    sourcePurchaseRequisitionId: text("source_purchase_requisition_id"),
+    status: text("status").notNull().default("DRAFT"),
+    orderDate: timestamp("order_date", { mode: "date" }).notNull().$defaultFn(() => new Date()),
+    expectedDeliveryDate: timestamp("expected_delivery_date", { mode: "date" }),
+    subtotal: real("subtotal").notNull().default(0),
+    taxAmount: real("tax_amount").notNull().default(0),
+    totalAmount: real("total_amount").notNull().default(0),
+    notes: text("notes"),
+    issuedByUserId: text("issued_by_user_id"),
+    issuedAt: timestamp("issued_at", { mode: "date" }),
+    closedAt: timestamp("closed_at", { mode: "date" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("purchase_orders_tenant_idx").on(table.tenantId),
+    poNumberUnique: uniqueIndex("purchase_orders_tenant_po_number_unique").on(table.tenantId, table.poNumber),
+    supplierIdx: index("purchase_orders_tenant_supplier_idx").on(table.tenantId, table.supplierId),
+    statusIdx: index("purchase_orders_tenant_status_idx").on(table.tenantId, table.status),
+    sourcePrIdx: index("purchase_orders_tenant_source_pr_idx").on(table.tenantId, table.sourcePurchaseRequisitionId),
+  })
+);
+
+export const purchaseOrderLines = pgTable(
+  "purchase_order_lines",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    purchaseOrderId: text("purchase_order_id").notNull(),
+    itemId: text("item_id").notNull(),
+    description: text("description"),
+    orderedQuantity: real("ordered_quantity").notNull(),
+    receivedQuantity: real("received_quantity").notNull().default(0),
+    unitOfMeasure: text("unit_of_measure").notNull(),
+    unitPrice: real("unit_price").notNull().default(0),
+    taxRate: real("tax_rate").notNull().default(0),
+    lineTotal: real("line_total").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("purchase_order_lines_tenant_idx").on(table.tenantId),
+    poIdx: index("purchase_order_lines_tenant_po_idx").on(table.tenantId, table.purchaseOrderId),
+    itemIdx: index("purchase_order_lines_tenant_item_idx").on(table.tenantId, table.itemId),
+  })
+);
+
+// status: DRAFT | POSTED | CANCELLED
+export const goodsReceipts = pgTable(
+  "goods_receipts",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    receiptNumber: text("receipt_number").notNull(),
+    purchaseOrderId: text("purchase_order_id").notNull(),
+    warehouseId: text("warehouse_id").notNull(),
+    receivedByUserId: text("received_by_user_id").notNull(),
+    receivedAt: timestamp("received_at", { mode: "date" }).notNull().$defaultFn(() => new Date()),
+    status: text("status").notNull().default("DRAFT"),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { mode: "date" }),
+  },
+  (table) => ({
+    tenantIdx: index("goods_receipts_tenant_idx").on(table.tenantId),
+    receiptNumberUnique: uniqueIndex("goods_receipts_tenant_receipt_number_unique").on(table.tenantId, table.receiptNumber),
+    poIdx: index("goods_receipts_tenant_po_idx").on(table.tenantId, table.purchaseOrderId),
+    warehouseIdx: index("goods_receipts_tenant_warehouse_idx").on(table.tenantId, table.warehouseId),
+    statusIdx: index("goods_receipts_tenant_status_idx").on(table.tenantId, table.status),
+  })
+);
+
+export const goodsReceiptLines = pgTable(
+  "goods_receipt_lines",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    goodsReceiptId: text("goods_receipt_id").notNull(),
+    purchaseOrderLineId: text("purchase_order_line_id").notNull(),
+    itemId: text("item_id").notNull(),
+    receivedQuantity: real("received_quantity").notNull(),
+    acceptedQuantity: real("accepted_quantity").notNull().default(0),
+    rejectedQuantity: real("rejected_quantity").notNull().default(0),
+    unitOfMeasure: text("unit_of_measure").notNull(),
+    notes: text("notes"),
+    createdAt: createdAt(),
+  },
+  (table) => ({
+    tenantIdx: index("goods_receipt_lines_tenant_idx").on(table.tenantId),
+    receiptIdx: index("goods_receipt_lines_tenant_receipt_idx").on(table.tenantId, table.goodsReceiptId),
+    poLineIdx: index("goods_receipt_lines_tenant_po_line_idx").on(table.tenantId, table.purchaseOrderLineId),
+    itemIdx: index("goods_receipt_lines_tenant_item_idx").on(table.tenantId, table.itemId),
+  })
+);
+
 // Line items on an invoice — replaces A1's `invoice_orders` (see the
 // section-level note above for why: the real relationship is one-to-many,
 // not many-to-many, and a join table had no room for a non-order line).
@@ -1261,6 +1688,88 @@ export const plannedContractDemandsRelations = relations(plannedContractDemands,
   }),
   customer: one(customers, { fields: [plannedContractDemands.customerId], references: [customers.id] }),
   location: one(customerLocations, { fields: [plannedContractDemands.locationId], references: [customerLocations.id] }),
+}));
+
+// ---------- Milestone Z.1 relations ----------
+export const itemGroupsRelations = relations(itemGroups, ({ many }) => ({
+  categories: many(itemCategories),
+}));
+
+export const itemCategoriesRelations = relations(itemCategories, ({ one, many }) => ({
+  itemGroup: one(itemGroups, { fields: [itemCategories.itemGroupId], references: [itemGroups.id] }),
+  subcategories: many(itemSubcategories),
+  items: many(items),
+}));
+
+export const itemSubcategoriesRelations = relations(itemSubcategories, ({ one, many }) => ({
+  category: one(itemCategories, { fields: [itemSubcategories.categoryId], references: [itemCategories.id] }),
+  items: many(items),
+}));
+
+export const itemsRelations = relations(items, ({ one, many }) => ({
+  itemGroup: one(itemGroups, { fields: [items.itemGroupId], references: [itemGroups.id] }),
+  category: one(itemCategories, { fields: [items.categoryId], references: [itemCategories.id] }),
+  subCategory: one(itemSubcategories, { fields: [items.subCategoryId], references: [itemSubcategories.id] }),
+  balances: many(maintenanceInventoryBalances),
+  movements: many(maintenanceInventoryMovements),
+}));
+
+export const workshopsRelations = relations(workshops, ({ many }) => ({
+  maintenanceWarehouses: many(maintenanceWarehouses),
+}));
+
+export const maintenanceWarehousesRelations = relations(maintenanceWarehouses, ({ one, many }) => ({
+  workshop: one(workshops, { fields: [maintenanceWarehouses.workshopId], references: [workshops.id] }),
+  balances: many(maintenanceInventoryBalances),
+  movements: many(maintenanceInventoryMovements),
+}));
+
+export const maintenanceInventoryBalancesRelations = relations(maintenanceInventoryBalances, ({ one }) => ({
+  warehouse: one(maintenanceWarehouses, { fields: [maintenanceInventoryBalances.warehouseId], references: [maintenanceWarehouses.id] }),
+  item: one(items, { fields: [maintenanceInventoryBalances.itemId], references: [items.id] }),
+}));
+
+export const maintenanceInventoryMovementsRelations = relations(maintenanceInventoryMovements, ({ one }) => ({
+  warehouse: one(maintenanceWarehouses, { fields: [maintenanceInventoryMovements.warehouseId], references: [maintenanceWarehouses.id] }),
+  item: one(items, { fields: [maintenanceInventoryMovements.itemId], references: [items.id] }),
+}));
+
+export const suppliersRelations = relations(suppliers, ({ many }) => ({
+  purchaseOrders: many(purchaseOrders),
+}));
+
+export const purchaseRequisitionsRelations = relations(purchaseRequisitions, ({ many }) => ({
+  lines: many(purchaseRequisitionLines),
+  purchaseOrders: many(purchaseOrders),
+}));
+
+export const purchaseRequisitionLinesRelations = relations(purchaseRequisitionLines, ({ one }) => ({
+  requisition: one(purchaseRequisitions, { fields: [purchaseRequisitionLines.purchaseRequisitionId], references: [purchaseRequisitions.id] }),
+  item: one(items, { fields: [purchaseRequisitionLines.itemId], references: [items.id] }),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  supplier: one(suppliers, { fields: [purchaseOrders.supplierId], references: [suppliers.id] }),
+  sourceRequisition: one(purchaseRequisitions, { fields: [purchaseOrders.sourcePurchaseRequisitionId], references: [purchaseRequisitions.id] }),
+  lines: many(purchaseOrderLines),
+  goodsReceipts: many(goodsReceipts),
+}));
+
+export const purchaseOrderLinesRelations = relations(purchaseOrderLines, ({ one }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [purchaseOrderLines.purchaseOrderId], references: [purchaseOrders.id] }),
+  item: one(items, { fields: [purchaseOrderLines.itemId], references: [items.id] }),
+}));
+
+export const goodsReceiptsRelations = relations(goodsReceipts, ({ one, many }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [goodsReceipts.purchaseOrderId], references: [purchaseOrders.id] }),
+  warehouse: one(maintenanceWarehouses, { fields: [goodsReceipts.warehouseId], references: [maintenanceWarehouses.id] }),
+  lines: many(goodsReceiptLines),
+}));
+
+export const goodsReceiptLinesRelations = relations(goodsReceiptLines, ({ one }) => ({
+  goodsReceipt: one(goodsReceipts, { fields: [goodsReceiptLines.goodsReceiptId], references: [goodsReceipts.id] }),
+  purchaseOrderLine: one(purchaseOrderLines, { fields: [goodsReceiptLines.purchaseOrderLineId], references: [purchaseOrderLines.id] }),
+  item: one(items, { fields: [goodsReceiptLines.itemId], references: [items.id] }),
 }));
 
 export const invoiceLineItemsRelations = relations(invoiceLineItems, ({ one }) => ({

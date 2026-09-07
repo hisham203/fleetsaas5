@@ -120,6 +120,13 @@
       "when": 1788675651603,
       "tag": "0016_superb_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788733574024,
+      "tag": "0017_bored_black_panther",
+      "breakpoints": true
     }
   ]
 }

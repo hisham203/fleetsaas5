@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import AdminShell from "@/components/AdminShell";
 import { useRequireSession } from "@/lib/useSession";
 
@@ -8,23 +9,42 @@ import { useRequireSession } from "@/lib/useSession";
 // Inventory, Procurement, and Master Items each get their own
 // dedicated placeholder page using this component) — never merged into
 // one screen, since the user explicitly requires these to remain
-// separate modules with separate future permissions. Every instance
-// shows zero fabricated data and states plainly that schema/design is
-// pending approval.
+// separate modules with separate future permissions.
+//
+// Milestone Z.1, Part 10 — now wired to the real, empty-safe read APIs
+// each module owns: `counts` fetches a genuine (currently zero) row
+// count per endpoint and displays it — never a fabricated number. No
+// create/edit UI is added here; that remains out of scope until a
+// future CRUD milestone.
 export default function PlannedModulePlaceholder({
   title,
   tagline,
   covers,
   boundary,
   relationships,
+  counts,
 }: {
   title: string;
   tagline: string;
   covers: string[];
   boundary: string;
   relationships: string[];
+  counts?: { label: string; endpoint: string }[];
 }) {
   const { session, loading } = useRequireSession(["ADMIN"]);
+  const [liveCounts, setLiveCounts] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    if (!counts || counts.length === 0) return;
+    Promise.all(
+      counts.map(async (c) => {
+        const res = await fetch(c.endpoint);
+        const data = res.ok ? await res.json() : [];
+        return [c.label, Array.isArray(data) ? data.length : 0] as const;
+      })
+    ).then((entries) => setLiveCounts(Object.fromEntries(entries)));
+  }, [counts]);
+
   if (loading || !session) {
     return <div className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</div>;
   }
@@ -39,8 +59,19 @@ export default function PlannedModulePlaceholder({
 
         <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
           <div className="bg-warn/10 text-warn rounded-lg px-4 py-2 text-sm">
-            Planned module — schema/design pending. No live data exists yet — nothing shown here is real or fabricated.
+            Schema foundation implemented. Operational CRUD will be added in later milestones.
           </div>
+
+          {counts && counts.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {counts.map((c) => (
+                <div key={c.label} className="bg-paper rounded-lg px-3 py-2">
+                  <p className="text-steel text-xs">{c.label}</p>
+                  <p className="text-lg font-semibold">{liveCounts ? liveCounts[c.label] ?? 0 : "…"}</p>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div>
             <h3 className="font-medium text-sm mb-1">What this will cover</h3>

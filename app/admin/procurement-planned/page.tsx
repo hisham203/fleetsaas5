@@ -23,6 +23,12 @@ export default function ProcurementPlannedPage() {
         "A PR may optionally link to a Workshop, Warehouse, Vehicle, or Maintenance record that originated the request.",
         "Expense approval (Finance > Expenses) remains completely separate from procurement receiving — an external service expense and a procurement purchase are two different concepts.",
       ]}
+      counts={[
+        { label: "Suppliers", endpoint: "/api/suppliers" },
+        { label: "Purchase Requisitions", endpoint: "/api/purchase-requisitions" },
+        { label: "Purchase Orders", endpoint: "/api/purchase-orders" },
+        { label: "Goods Receipts", endpoint: "/api/goods-receipts" },
+      ]}
     />
   );
 }
