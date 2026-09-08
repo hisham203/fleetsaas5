@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { itemGroups } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { validateBusinessCode } from "@/lib/businessCodes";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -35,6 +36,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const data = parsed.data;
 
   if (data.code && data.code !== row.code) {
+    const v = validateBusinessCode(data.code, "Item group code");
+    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+    data.code = v.value;
     const dup = await db.query.itemGroups.findFirst({ where: and(eq(itemGroups.tenantId, tenantId), eq(itemGroups.code, data.code)) });
     if (dup) {
       return NextResponse.json({ error: `An item group with code "${data.code}" already exists for this tenant` }, { status: 409 });

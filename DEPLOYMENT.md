@@ -2064,6 +2064,62 @@ only placeholders.
   No seedData, pricing, billing, ERP, dispatch-runtime, or
   driver-app-runtime changes — confirmed by file-timestamp inspection.
 
+- **Milestone AF ("Platform-Wide Numbering Conversion for Core Master
+  Data")** — no schema change, no migration. Extends AE's proven Supplier
+  pattern to every entity whose schema already carries a code field.
+
+  **Audit (drove every decision; verified against live Postgres column
+  lists)**: converted now — Suppliers, Item Groups, Item Categories,
+  Item Subcategories, Items, Workshops, Maintenance Warehouses. Schema
+  gap (no code column exists; proposed, NOT implemented) — customers
+  (`customerCode`), customer_locations (`siteCode`), warehouses/loading
+  points (`loadingPointCode`). Legal identifiers kept manual — vehicle
+  `plateNumber` and driver `licenseNumber` are the only identifier
+  fields on those tables and are real registrations, so separate
+  `vehicleCode`/`driverCode` columns are proposed instead. Audit-only,
+  untouched — contracts (`genNumber("CNT")`), expenses (no stored
+  reference; `expenseRef()` is derived), orders/trips/invoices
+  (`genNumber`; dispatch/POD/billing-critical), PR/PO/GRN (no creation
+  workflow yet).
+
+  **Supplier production fix**: a bare "V"/"AB" is now rejected as a
+  prefix-not-a-code; a blank code with no active SUPPLIER series returns
+  exactly "Configure an active Supplier numbering series in Settings,
+  or enter a valid supplier code."; PATCH validates a changed code and
+  never allocates.
+
+  **Shared code handling** (`lib/businessCodes.ts`): `validateBusinessCode`
+  (3–30 chars, letters/digits/hyphen/underscore, leading zeros
+  preserved, no spaces/symbols-only), `resolveEntityCode`
+  (manual→validate+dedupe, blank→allocate, clear 400/409), and
+  `linkLedgerToRecord`. `CODE_FIELD_ENTITY_MAP` records each entity as
+  converted / schema-gap / audit-only and drives the Settings coverage
+  table, so the UI cannot drift from what the routes do. Registry gained
+  `LOADING_POINT` (entry only; no series row).
+
+  **A real bundling bug found and fixed**: importing `lib/numbering.ts`
+  from the client Settings page dragged `pg` into the browser bundle
+  (webpack still bundles the allocator's dynamic `import("./db/client")`).
+  Pure primitives (formatter, period key, registry, coverage map) now
+  live in DB-free `lib/numberingFormat.ts`, re-exported from
+  `numbering.ts` so existing imports are unchanged; `numbering.ts` is
+  now only the server-side allocator.
+
+  **UI**: code fields optional with "Leave blank to auto-generate from
+  Settings numbering series." on Master Items, Workshops, Inventory
+  (warehouse) and Procurement; Save no longer gated on the code; blank
+  normalized to `undefined` (same fix class as AC). Settings shows the
+  full example list and an honest converted / schema-gap / audit-only
+  coverage table.
+
+  **Tests**: 50 new (incl. a 15-way concurrent create yielding 15
+  distinct codes). Two cross-file isolation collisions with AE's tests
+  (shared Riyadh series) were diagnosed and fixed by giving AF's
+  allocation tests their own tenant (Acme); 3 consecutive clean runs.
+  No existing record renumbered; no fake series; no seedData, pricing,
+  billing, ERP, dispatch or driver-app changes (file timestamps).
+  Railway: migrate NO · seed NO · redeploy YES.
+
 - **Reset process**: `npm run db:reset` = migrate + seed, does NOT drop
   existing data first — re-running against an already-seeded database
   fails on unique constraints. No single script does a destructive

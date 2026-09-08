@@ -6,10 +6,11 @@ import { maintenanceWarehouses, workshops } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
+import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 import { z } from "zod";
 
 const createSchema = z.object({
-  warehouseCode: z.string().min(1),
+  warehouseCode: z.string().min(1).optional(), // AF: blank → auto-generate
   name: z.string().min(1),
   warehouseType: z.enum(["WORKSHOP_STORE", "CENTRAL_SPARES", "TYRE_STORE", "MOBILE_VAN", "OTHER"]).optional(),
   workshopId: z.string().nullable().optional(),
@@ -61,15 +62,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const existing = await db.query.maintenanceWarehouses.findFirst({ where: and(eq(maintenanceWarehouses.tenantId, tenantId), eq(maintenanceWarehouses.warehouseCode, data.warehouseCode)) });
-  if (existing) {
-    return NextResponse.json({ error: `A maintenance warehouse with code "${data.warehouseCode}" already exists for this tenant` }, { status: 409 });
-  }
+  // Milestone AF, Part 6 — shared manual-validate / blank-allocate.
+  const resolved = await resolveEntityCode({
+    tenantId,
+    entityType: "MAINTENANCE_WAREHOUSE",
+    entityLabel: "maintenance warehouse",
+    codeLabel: "Warehouse code",
+    provided: data.warehouseCode,
+    isDuplicate: async (code) => !!(await db.query.maintenanceWarehouses.findFirst({ where: and(eq(maintenanceWarehouses.tenantId, tenantId), eq(maintenanceWarehouses.warehouseCode, code)) })),
+  });
+  if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+  const warehouseCodeValue = resolved.code;
 
   const id = genId();
   await db.insert(maintenanceWarehouses).values({
     id, tenantId,
-    warehouseCode: data.warehouseCode,
+    warehouseCode: warehouseCodeValue,
     name: data.name,
     warehouseType: data.warehouseType ?? "WORKSHOP_STORE",
     workshopId: data.workshopId ?? undefined,
@@ -81,6 +89,10 @@ export async function POST(req: NextRequest) {
     lng: data.lng ?? undefined,
     notes: data.notes,
   });
+
+  if (resolved.allocated) {
+    await linkLedgerToRecord({ tenantId, seriesId: resolved.seriesId, generatedNumber: warehouseCodeValue, referenceTable: "maintenance_warehouses", referenceId: id });
+  }
 
   const created = await db.query.maintenanceWarehouses.findFirst({ where: eq(maintenanceWarehouses.id, id) });
   return NextResponse.json(created, { status: 201 });

@@ -134,7 +134,7 @@ function GroupForm({ group, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code" value={code} onChange={(e) => setCode(e.target.value)} />
+      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code (optional)" value={code} onChange={(e) => setCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
         <option value="ACTIVE">ACTIVE</option>
@@ -142,7 +142,7 @@ function GroupForm({ group, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!code || !name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>
@@ -196,7 +196,7 @@ function CategoryForm({ category, groups, onCancel, onSaved }: any) {
   async function save() {
     setSubmitting(true);
     setError("");
-    const body = { code, name, status, itemGroupId: itemGroupId || null };
+    const body = { code: code || undefined, name, status, itemGroupId: itemGroupId || null };
     const res = category
       ? await fetch(`/api/item-categories/${category.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/item-categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -211,7 +211,7 @@ function CategoryForm({ category, groups, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code" value={code} onChange={(e) => setCode(e.target.value)} />
+      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code (optional)" value={code} onChange={(e) => setCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={itemGroupId} onChange={(e) => setItemGroupId(e.target.value)}>
         <option value="">No group</option>
@@ -223,7 +223,7 @@ function CategoryForm({ category, groups, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!code || !name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>
@@ -277,7 +277,7 @@ function SubcategoryForm({ subcategory, categories, onCancel, onSaved }: any) {
   async function save() {
     setSubmitting(true);
     setError("");
-    const body = { code, name, status, categoryId };
+    const body = { code: code || undefined, name, status, categoryId };
     const res = subcategory
       ? await fetch(`/api/item-subcategories/${subcategory.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/item-subcategories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -292,7 +292,7 @@ function SubcategoryForm({ subcategory, categories, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code" value={code} onChange={(e) => setCode(e.target.value)} />
+      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code (optional)" value={code} onChange={(e) => setCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
         <option value="">Select a category</option>
@@ -304,7 +304,7 @@ function SubcategoryForm({ subcategory, categories, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!code || !name || !categoryId || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || !categoryId || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>
@@ -371,7 +371,7 @@ function ItemForm({ item, categories, subcategories, groups, onCancel, onSaved }
     setSubmitting(true);
     setError("");
     const body = {
-      itemCode, name, categoryId, itemType, unitOfMeasure, isStocked, isSerialized, isTire, brand, status,
+      itemCode: itemCode || undefined, name, categoryId, itemType, unitOfMeasure, isStocked, isSerialized, isTire, brand, status,
       subCategoryId: subCategoryId || null,
       itemGroupId: itemGroupId || null,
     };
@@ -389,7 +389,7 @@ function ItemForm({ item, categories, subcategories, groups, onCancel, onSaved }
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-lg">
-      <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Item code" value={itemCode} onChange={(e) => setItemCode(e.target.value)} />
+      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Item code (optional)" value={itemCode} onChange={(e) => setItemCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <div className="grid grid-cols-2 gap-2">
         <select className="border rounded-lg px-2 py-1.5 text-sm" value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubCategoryId(""); }}>
@@ -425,7 +425,7 @@ function ItemForm({ item, categories, subcategories, groups, onCancel, onSaved }
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!itemCode || !name || !categoryId || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || !categoryId || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>

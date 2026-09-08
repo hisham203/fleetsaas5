@@ -114,7 +114,7 @@ describe("Formatter tests (Part 11, items 19-28)", () => {
 
 describe("Entity type registry (Part 5)", () => {
   it("includes all 20 entity types with recommended prefixes, matching this milestone's own list", () => {
-    expect(NUMBERING_ENTITY_TYPES.length).toBe(20);
+    expect(NUMBERING_ENTITY_TYPES.length).toBe(21); // AF added LOADING_POINT
     const byType = Object.fromEntries(NUMBERING_ENTITY_TYPES.map((e) => [e.entityType, e.recommendedPrefix]));
     expect(byType.CUSTOMER).toBe("C");
     expect(byType.SUPPLIER).toBe("V");
@@ -141,7 +141,7 @@ describe("API tests (Part 11, items 29-34)", () => {
     const typesRes = await getEntityTypes(makeRequest("/api/settings/numbering-entity-types", { cookie: adminCookie }));
     expect(typesRes.status).toBe(200);
     const types = await typesRes.json();
-    expect(types.length).toBe(20);
+    expect(types.length).toBe(21); // AF added LOADING_POINT
   });
 
   it("32/33. all three endpoints require auth and ADMIN role", async () => {
@@ -175,7 +175,7 @@ describe("Settings UI tests (Part 11, items 35-40)", () => {
     expect(settingsSource).toContain("Supported entity types");
     expect(settingsSource).toContain("C06001");
     expect(settingsSource).toContain("V06001");
-    expect(settingsSource).toContain("PR06001");
+    expect(settingsSource).toContain("IG06001"); // AF: examples now reflect the converted master-data set (PR is audit-only)
   });
 
   it("38. Settings does not show any fake active series — the empty state is honest", () => {
@@ -188,8 +188,8 @@ describe("Settings UI tests (Part 11, items 35-40)", () => {
   });
 
   it("40. Settings clarifies that automatic assignment is now real for Suppliers specifically (pilot), while other entities remain unconverted", () => {
-    expect(settingsSource).toContain("Only Suppliers currently use automatic numbering (pilot)");
-    expect(settingsSource).toContain("Other entities remain unchanged");
+    expect(settingsSource).toContain("Auto-numbering is live for Suppliers, Item Groups, Categories, Sub-Categories, Items, Workshops, and Maintenance Warehouses"); // AF: coverage broadened from the AE pilot
+    expect(settingsSource).toContain("Other entities are listed below as future/audit-only — none are faked."); // AF wording
   });
 });
 

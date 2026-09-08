@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { workshops } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { validateBusinessCode } from "@/lib/businessCodes";
 import { z } from "zod";
 import { optionalEmailSchema } from "@/lib/helpers";
 
@@ -45,6 +46,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const data = parsed.data;
 
   if (data.workshopCode && data.workshopCode !== row.workshopCode) {
+    const v = validateBusinessCode(data.workshopCode, "Workshop code");
+    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+    data.workshopCode = v.value;
     const dup = await db.query.workshops.findFirst({ where: and(eq(workshops.tenantId, tenantId), eq(workshops.workshopCode, data.workshopCode)) });
     if (dup) {
       return NextResponse.json({ error: `A workshop with code "${data.workshopCode}" already exists for this tenant` }, { status: 409 });

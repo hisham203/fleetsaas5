@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import { useRequireSession } from "@/lib/useSession";
 import { extractErrorMessage } from "@/lib/helpers";
+import { CODE_FIELD_ENTITY_MAP } from "@/lib/numberingFormat";
 
 // Milestone AC, Part 4 — Settings foundation.
 // Milestone AD, Part 9 — Numbering & Sequences upgraded to read-only.
@@ -55,7 +56,30 @@ export default function SettingsPage() {
             <h3 className="font-medium text-sm">Numbering & Sequences</h3>
             <button onClick={() => setShowNew((v) => !v)} className="bg-ink text-white rounded-lg px-3 py-1 text-xs font-medium">{showNew ? "Cancel" : "+ New Series"}</button>
           </div>
-          <p className="text-steel text-xs bg-warn/10 rounded-lg px-2 py-1.5">Only Suppliers currently use automatic numbering (pilot). Other entities remain unchanged.</p>
+          <p className="text-steel text-xs bg-warn/10 rounded-lg px-2 py-1.5">Auto-numbering is live for Suppliers, Item Groups, Categories, Sub-Categories, Items, Workshops, and Maintenance Warehouses. Other entities are listed below as future/audit-only — none are faked.</p>
+
+          {/* Milestone AF, Part 9 — honest coverage table driven by the
+              same CODE_FIELD_ENTITY_MAP the APIs use, so this view can't
+              drift from what the routes actually do. */}
+          <div>
+            <p className="text-steel text-xs uppercase tracking-wide mb-1">Numbering coverage</p>
+            <table className="w-full text-xs">
+              <thead className="text-steel uppercase"><tr><th className="text-left py-1">Entity</th><th className="text-left py-1">Field</th><th className="text-left py-1">Status</th></tr></thead>
+              <tbody>
+                {CODE_FIELD_ENTITY_MAP.map((m) => (
+                  <tr key={m.entityType} className="border-t border-slate-50">
+                    <td className="py-1 font-mono">{m.entityType}</td>
+                    <td className="py-1 text-steel">{m.field}</td>
+                    <td className="py-1">
+                      <span className={m.status === "converted" ? "text-ok" : "text-steel"}>
+                        {m.status === "converted" ? "Converted" : m.status === "schema-gap" ? "Schema gap (proposed)" : "Audit-only / future"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {showNew && <SeriesForm entityTypes={entityTypes} onCancel={() => setShowNew(false)} onSaved={() => { setShowNew(false); load(); }} />}
 
@@ -102,7 +126,7 @@ export default function SettingsPage() {
           <div>
             <p className="text-steel text-xs uppercase tracking-wide mb-1">Format examples</p>
             <div className="flex flex-wrap gap-1.5 font-mono text-xs">
-              {["C06001", "V06001", "PR06001", "PO06001", "GR06001"].map((ex) => (
+              {["C06001", "S06001", "V06001", "VH06001", "D06001", "CN06001", "EX06001", "LP06001", "IG06001", "IC06001", "ISC06001", "I06001", "W06001", "WH06001"].map((ex) => (
                 <span key={ex} className="bg-paper rounded px-2 py-0.5">{ex}</span>
               ))}
             </div>

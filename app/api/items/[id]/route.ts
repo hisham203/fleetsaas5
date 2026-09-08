@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { items, itemCategories, itemSubcategories, itemGroups } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { validateBusinessCode } from "@/lib/businessCodes";
 import { z } from "zod";
 import { optionalUrlSchema } from "@/lib/helpers";
 
@@ -78,6 +79,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (data.itemCode && data.itemCode !== row.itemCode) {
+    const v = validateBusinessCode(data.itemCode, "Item code");
+    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+    data.itemCode = v.value;
     const dup = await db.query.items.findFirst({ where: and(eq(items.tenantId, tenantId), eq(items.itemCode, data.itemCode)) });
     if (dup) {
       return NextResponse.json({ error: `An item with code "${data.itemCode}" already exists for this tenant` }, { status: 409 });

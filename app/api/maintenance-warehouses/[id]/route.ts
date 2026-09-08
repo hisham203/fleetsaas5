@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { maintenanceWarehouses, workshops } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { validateBusinessCode } from "@/lib/businessCodes";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -49,6 +50,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (data.warehouseCode && data.warehouseCode !== row.warehouseCode) {
+    const v = validateBusinessCode(data.warehouseCode, "Warehouse code");
+    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+    data.warehouseCode = v.value;
     const dup = await db.query.maintenanceWarehouses.findFirst({ where: and(eq(maintenanceWarehouses.tenantId, tenantId), eq(maintenanceWarehouses.warehouseCode, data.warehouseCode)) });
     if (dup) {
       return NextResponse.json({ error: `A maintenance warehouse with code "${data.warehouseCode}" already exists for this tenant` }, { status: 409 });

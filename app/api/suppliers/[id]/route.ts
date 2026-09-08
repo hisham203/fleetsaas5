@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { suppliers } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { optionalEmailSchema } from "@/lib/helpers";
+import { validateBusinessCode } from "@/lib/businessCodes";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
@@ -41,6 +42,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const data = parsed.data;
 
   if (data.supplierCode && data.supplierCode !== row.supplierCode) {
+    // Milestone AF — a changed manual code must pass the same rules as
+    // on create; PATCH never allocates a number.
+    const v = validateBusinessCode(data.supplierCode, "Supplier code");
+    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+    data.supplierCode = v.value;
     const dup = await db.query.suppliers.findFirst({ where: and(eq(suppliers.tenantId, tenantId), eq(suppliers.supplierCode, data.supplierCode)) });
     if (dup) {
       return NextResponse.json({ error: `A supplier with code "${data.supplierCode}" already exists for this tenant` }, { status: 409 });

@@ -6,10 +6,11 @@ import { workshops } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId, optionalEmailSchema } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
+import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 import { z } from "zod";
 
 const createSchema = z.object({
-  workshopCode: z.string().min(1),
+  workshopCode: z.string().min(1).optional(), // AF: blank → auto-generate
   name: z.string().min(1),
   workshopType: z.enum(["INTERNAL", "EXTERNAL", "MOBILE_SERVICE"]).optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
@@ -51,15 +52,22 @@ export async function POST(req: NextRequest) {
   }
   const data = parsed.data;
 
-  const existing = await db.query.workshops.findFirst({ where: and(eq(workshops.tenantId, tenantId), eq(workshops.workshopCode, data.workshopCode)) });
-  if (existing) {
-    return NextResponse.json({ error: `A workshop with code "${data.workshopCode}" already exists for this tenant` }, { status: 409 });
-  }
+  // Milestone AF, Part 6 — shared manual-validate / blank-allocate.
+  const resolved = await resolveEntityCode({
+    tenantId,
+    entityType: "WORKSHOP",
+    entityLabel: "workshop",
+    codeLabel: "Workshop code",
+    provided: data.workshopCode,
+    isDuplicate: async (code) => !!(await db.query.workshops.findFirst({ where: and(eq(workshops.tenantId, tenantId), eq(workshops.workshopCode, code)) })),
+  });
+  if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+  const workshopCodeValue = resolved.code;
 
   const id = genId();
   await db.insert(workshops).values({
     id, tenantId,
-    workshopCode: data.workshopCode,
+    workshopCode: workshopCodeValue,
     name: data.name,
     workshopType: data.workshopType ?? "INTERNAL",
     status: data.status ?? "ACTIVE",
@@ -73,6 +81,10 @@ export async function POST(req: NextRequest) {
     contactEmail: data.contactEmail,
     notes: data.notes,
   });
+
+  if (resolved.allocated) {
+    await linkLedgerToRecord({ tenantId, seriesId: resolved.seriesId, generatedNumber: workshopCodeValue, referenceTable: "workshops", referenceId: id });
+  }
 
   const created = await db.query.workshops.findFirst({ where: eq(workshops.id, id) });
   return NextResponse.json(created, { status: 201 });

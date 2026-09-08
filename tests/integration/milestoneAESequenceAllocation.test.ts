@@ -220,7 +220,7 @@ describe("Supplier pilot tests (Part 7, items 33-45)", () => {
     const res = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: demoAdminCookie, body: { name: "No Series Supplier" } }));
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("No active numbering series configured for supplier.");
+    expect(body.error).toBe("Configure an active Supplier numbering series in Settings, or enter a valid supplier code."); // AF Part 5 wording
   });
 
   it("39/40. duplicate manual supplierCode returns 409; the same manual code is allowed in a different tenant", async () => {
@@ -279,7 +279,7 @@ describe("Regression protection (Milestone AE)", () => {
     const { GET } = await import("@/app/api/settings/numbering-entity-types/route");
     const res = await GET(makeRequest("/api/settings/numbering-entity-types", { cookie: adminCookie }));
     expect(res.status).toBe(200);
-    expect((await res.json()).length).toBe(20);
+    expect((await res.json()).length).toBe(21); // AF added LOADING_POINT
   });
 
   it("48. Z.2 master data CRUD still works", async () => {

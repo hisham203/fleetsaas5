@@ -6,13 +6,14 @@ import { items, itemCategories, itemSubcategories, itemGroups } from "@/lib/db/s
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId, optionalUrlSchema } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
+import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 import { z } from "zod";
 
 const ITEM_TYPES = ["SPARE_PART", "TIRE", "LUBRICANT", "CONSUMABLE", "TOOL", "SAFETY", "OTHER"] as const;
 const UOMS = ["EA", "PCS", "LITER", "SET", "KG", "METER"] as const;
 
 const createSchema = z.object({
-  itemCode: z.string().min(1),
+  itemCode: z.string().min(1).optional(), // AF: blank → auto-generate
   name: z.string().min(1),
   description: z.string().optional(),
   itemGroupId: z.string().nullable().optional(),
@@ -88,16 +89,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const existing = await db.query.items.findFirst({ where: and(eq(items.tenantId, tenantId), eq(items.itemCode, data.itemCode)) });
-  if (existing) {
-    return NextResponse.json({ error: `An item with code "${data.itemCode}" already exists for this tenant` }, { status: 409 });
-  }
+  // Milestone AF, Part 6 — shared manual-validate / blank-allocate.
+  const resolved = await resolveEntityCode({
+    tenantId,
+    entityType: "ITEM",
+    entityLabel: "item",
+    codeLabel: "Item code",
+    provided: data.itemCode,
+    isDuplicate: async (code) => !!(await db.query.items.findFirst({ where: and(eq(items.tenantId, tenantId), eq(items.itemCode, code)) })),
+  });
+  if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+  const itemCodeValue = resolved.code;
 
   const id = genId();
   await db.insert(items).values({
     id,
     tenantId,
-    itemCode: data.itemCode,
+    itemCode: itemCodeValue,
     name: data.name,
     description: data.description,
     itemGroupId: data.itemGroupId ?? undefined,
@@ -117,6 +125,10 @@ export async function POST(req: NextRequest) {
     reorderPoint: data.reorderPoint ?? undefined,
     status: data.status ?? "ACTIVE",
   });
+
+  if (resolved.allocated) {
+    await linkLedgerToRecord({ tenantId, seriesId: resolved.seriesId, generatedNumber: itemCodeValue, referenceTable: "items", referenceId: id });
+  }
 
   const created = await db.query.items.findFirst({ where: eq(items.id, id) });
   return NextResponse.json(created, { status: 201 });

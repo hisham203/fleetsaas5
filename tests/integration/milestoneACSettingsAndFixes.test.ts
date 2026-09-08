@@ -142,7 +142,7 @@ describe("Settings module (Milestone AC, Part 4)", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
     const matches = source.match(/Design pending \/ schema required/g) ?? [];
     expect(matches.length).toBe(3);
-    expect(source).toContain("Only Suppliers currently use automatic numbering (pilot)");
+    expect(source).toContain("Auto-numbering is live for Suppliers, Item Groups, Categories, Sub-Categories, Items, Workshops, and Maintenance Warehouses"); // AF: coverage broadened from the AE pilot
   });
 });
 
