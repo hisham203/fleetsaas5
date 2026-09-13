@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { maintenanceWarehouses, workshops } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "maintenance"); if (_deny) return _deny;
   const workshopId = req.nextUrl.searchParams.get("workshopId");
   const status = req.nextUrl.searchParams.get("status");
 

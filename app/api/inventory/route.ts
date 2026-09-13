@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { inventoryItems, warehouses } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "inventory"); if (_deny) return _deny;
 
   const warehouseId = req.nextUrl.searchParams.get("warehouseId");
   const conditions = [eq(inventoryItems.tenantId, tenantId), warehouseId ? eq(inventoryItems.warehouseId, warehouseId) : undefined].filter(

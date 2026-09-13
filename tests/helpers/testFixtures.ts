@@ -1,5 +1,5 @@
 import { db } from "@/lib/db/client";
-import { users, drivers, vehicles } from "@/lib/db/schema";
+import { users, drivers, vehicles, contracts, numberingSeries } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
 import { hashPassword } from "@/lib/auth";
 import { loginAs } from "./request";
@@ -61,4 +61,60 @@ export async function createIsolatedDriverAndVehicle(tenantId: string, label: st
   const driverCookie = await loginAs(email, password);
 
   return { driverId, vehicleId, driverCookie, driverEmail: email };
+}
+
+// Milestone AF.1 — converted entities are system-numbered only, so any
+// test that creates one needs an active series. Find-or-create is
+// idempotent per tenant+entityType (the schema's own unique rule), so
+// files sharing a tenant never collide on series creation.
+export async function ensureNumberingSeries(tenantId: string, entityType: string, prefix: string) {
+  const { db } = await import("@/lib/db/client");
+  const { numberingSeries } = await import("@/lib/db/schema");
+  const { eq, and } = await import("drizzle-orm");
+  const { genId } = await import("@/lib/helpers");
+  const existing = await db.query.numberingSeries.findFirst({ where: and(eq(numberingSeries.tenantId, tenantId), eq(numberingSeries.entityType, entityType)) });
+  if (existing) {
+    if (existing.status !== "ACTIVE") await db.update(numberingSeries).set({ status: "ACTIVE" }).where(eq(numberingSeries.id, existing.id));
+    return existing.id;
+  }
+  const id = genId();
+  await db.insert(numberingSeries).values({ id, tenantId, entityType, seriesCode: `${entityType}-${genId().slice(0, 6)}`, displayName: `${entityType} series`, prefix, seriesSegment: "06", paddingLength: 3, nextNumber: 1, status: "ACTIVE" });
+  return id;
+}
+
+export const SERIES_PREFIX: Record<string, string> = {
+  SUPPLIER: "V", ITEM_GROUP: "IG", ITEM_CATEGORY: "IC", ITEM_SUBCATEGORY: "ISC", ITEM: "I", WORKSHOP: "W", MAINTENANCE_WAREHOUSE: "WH",
+  CUSTOMER: "C", CUSTOMER_SITE: "S", VEHICLE: "VH", DRIVER: "D", LOADING_POINT: "LP",
+  CONTRACT: "CNT", EXPENSE: "EXP", PURCHASE_REQUISITION: "PR", PURCHASE_ORDER: "PO", GOODS_RECEIPT: "GRN",
+};
+
+// Milestone AG — ensures all converted entity types have an active series
+// for the given tenant. Idempotent per tenant+entityType.
+export async function ensureAllSeries(tenantId: string) {
+  for (const [et, prefix] of Object.entries(SERIES_PREFIX)) {
+    await ensureNumberingSeries(tenantId, et, prefix);
+  }
+}
+
+// RC1 — cleans up allocator-numbered contracts for a tenant.
+// The contracts table has a GLOBAL unique constraint on contract_number,
+// so sequential allocations (CNT06001…) persist across test runs and collide.
+// Call this in beforeAll of any test suite that creates contracts.
+// RC1: global contract cleanup — the contracts table has a GLOBAL unique
+// constraint on contract_number. Each call purges ALL allocator-generated
+// contract numbers so sequential allocations from different test files don't
+// collide within a single run. The tenantId argument is kept for API
+// compatibility but cleanup is always global.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function cleanupAllocatedContracts(_tenantId?: string) {
+  const { like } = await import("drizzle-orm");
+  const { numberingSequenceLedger } = await import("@/lib/db/schema");
+  // Clear all ledger rows for allocator-generated contract numbers
+  await db.delete(numberingSequenceLedger).where(like(numberingSequenceLedger.generatedNumber, "%06%"));
+  // Clear all contracts with allocator-style numbers
+  await db.delete(contracts).where(like(contracts.contractNumber, "%06%"));
+  // Reset ALL CONTRACT series nextNumbers to 1 (all tenants)
+  await db.update(numberingSeries).set({ nextNumber: 1 }).where(
+    (await import("drizzle-orm")).eq(numberingSeries.entityType, "CONTRACT")
+  );
 }

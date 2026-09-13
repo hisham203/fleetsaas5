@@ -4,8 +4,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { tripStops, epods, orders, invoices, inventoryItems, drivers, trips, exceptions, contracts, vehicles } from "@/lib/db/schema";
 import { genId, genNumber, calcInvoiceTotals, VAT_RATE } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { runAutomationRules } from "@/lib/automation";
+import { recordUnloadingComplete } from "@/lib/lifecycleHelper";
 import { calculateContractPrice, PricingEngineError } from "@/lib/contractPricing";
 import { determineRateType } from "@/lib/contractEligibility";
 import { eq, and } from "drizzle-orm";
@@ -74,6 +76,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  // DRIVER role has restricted dispatch access — only their own trips/stops.
+  // They bypass module-level enforcement here; the ownership check below gates their access.
+  if (session?.type !== "USER" || (session.user as any).role !== "DRIVER") {
+    const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
+  }
 
   // Task P.2: trip.vehicle is now embedded — a ONE_TIME_TRIP_COUNT contract
   // invoice needs the assigned vehicle's real capacityLiters as a pricing
@@ -399,6 +406,18 @@ export async function PATCH(
   });
 
   await autoCloseTripIfAllStopsResolved(id);
+
+  // RC1 BLOCKER 2 — UNLOADING_COMPLETE is a mandatory operational event.
+  // Persisted reliably here (not fire-and-forget). Idempotent on retry.
+  // CLOSED lifecycle event is also written when the trip reaches COMPLETED.
+  await recordUnloadingComplete({
+    tenantId,
+    tripId: id,
+    actorUserId: session!.type === "USER" ? session!.user.id : undefined,
+    stopId: stop.id,
+    deliveredLiters: data.deliveredQty ?? undefined,
+  });
+
   const updatedStop = await db.query.tripStops.findFirst({ where: eq(tripStops.id, stop.id), with: { epod: true } });
   const updatedOrder = await db.query.orders.findFirst({ where: eq(orders.id, stop.orderId) });
   const invoice = shouldCreateInvoice ? await db.query.invoices.findFirst({ where: eq(invoices.id, invoiceId) }) : null;

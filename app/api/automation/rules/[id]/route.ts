@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { automationRules } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
@@ -19,6 +20,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "settings"); if (_deny) return _deny;
 
   const rule = await db.query.automationRules.findFirst({ where: and(eq(automationRules.id, id), eq(automationRules.tenantId, tenantId)) });
   if (!rule) return NextResponse.json({ error: "Rule not found" }, { status: 404 });

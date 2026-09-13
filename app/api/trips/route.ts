@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { trips, tripStops, orders, vehicles, drivers, warehouses } from "@/lib/db/schema";
 import { genId, genNumber } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { optimizeRoute } from "@/lib/googleMaps";
 import { eq, and, inArray, desc } from "drizzle-orm";
@@ -24,6 +25,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  // DRIVER role has restricted dispatch access — only their own trips/stops.
+  // They bypass module-level enforcement here; the ownership check below gates their access.
+  if (session?.type !== "USER" || (session.user as any).role !== "DRIVER") {
+    const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
+  }
 
   const rows = await db.query.trips.findMany({
     where: eq(trips.tenantId, tenantId),

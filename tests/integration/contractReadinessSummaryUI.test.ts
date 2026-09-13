@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
+import { ensureAllSeries, cleanupAllocatedContracts } from "../helpers/testFixtures";
 import { db } from "@/lib/db/client";
 import { tenants, customers, contracts, invoices, invoiceLineItems, contractPeriods, orders } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -11,6 +12,8 @@ import { genId } from "@/lib/helpers";
 // wires to the extracted, already-unit-tested computeReadinessItems
 // function, and re-confirms no write action exists anywhere in the
 // module (the module's own strict no-financial-write requirement).
+beforeAll(async () => { await cleanupAllocatedContracts(); });
+
 describe("Contract Readiness Summary UI (Task J)", () => {
   const moduleSource = fs.readFileSync(path.join(process.cwd(), "app/admin/contracts/page.tsx"), "utf8");
 
@@ -61,6 +64,12 @@ describe("Existing behavior re-confirmed unaffected (Task J)", () => {
     await db.insert(customers).values({ id: customerId, tenantId: tenant!.id, name: "TaskJ Regression Customer", type: "B2B", address: "Test", lat: 24.7, lng: 46.7 });
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
 
+  // RC1: ensure CONTRACT series for no-fallback numbering
+  const _t = await db.query.tenants.findFirst({ where: (t, {eq}) => eq(t.name, "Riyadh Bulk Water Logistics") });
+    await cleanupAllocatedContracts(_t.id);
+  if (_t) await ensureAllSeries(_t.id);
+  const _ta = await db.query.tenants.findFirst({ where: (t, {eq}) => eq(t.name, "Acme Fuel Delivery Co.") });
+  if (_ta) await ensureAllSeries(_ta.id);
     const { POST: createContract } = await import("@/app/api/contracts/route");
     const contract = await (await createContract(makeRequest("/api/contracts", {
       method: "POST", cookie: adminCookie,

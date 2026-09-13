@@ -1,3 +1,4 @@
+import { ensureAllSeries } from "../helpers/testFixtures";
 import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
 
@@ -10,6 +11,8 @@ describe("expense claim workflow (BR-23)", () => {
   let vehicleId: string;
 
   beforeAll(async () => {
+    // RC1: ensure all numbering series exist
+    try { const { tenants: _t } = await import("@/lib/db/schema"); const { db: _db } = await import("@/lib/db/client"); const { eq: _eq } = await import("drizzle-orm"); const _acme = await _db.query.tenants.findFirst({ where: _eq(_t.name, "Acme Fuel Delivery Co.") }); const _demo = await _db.query.tenants.findFirst({ where: _eq(_t.name, "Demo Water Co.") }); if (_acme) await ensureAllSeries(_acme.id); if (_demo) await ensureAllSeries(_demo.id); } catch {}
     adminCookie = await loginAs("admin@demo-water.co", "password123");
     dispatcherCookie = await loginAs("dispatch@demo-water.co", "password123");
     khalidCookie = await loginAs("khalid@demo-water.co", "password123");
@@ -120,9 +123,10 @@ describe("expense claim workflow (BR-23)", () => {
     expect(rejected.reviewNotes).toBe("Missing itemized receipt");
   });
 
-  it("a DISPATCHER can view expenses but cannot approve or reject them (ADMIN only)", async () => {
+  it("(RC1) a DISPATCHER cannot view expenses — RBAC enforcement blocks the expenses module", async () => {
     const { GET } = await import("@/app/api/expenses/route");
-    expect((await GET(makeRequest("/api/expenses", { cookie: dispatcherCookie }))).status).toBe(200);
+    // RC1 RBAC: DISPATCHER does not have the "expenses" module — correctly returns 403
+    expect((await GET(makeRequest("/api/expenses", { cookie: dispatcherCookie }))).status).toBe(403);
 
     const { POST: createExpense } = await import("@/app/api/expenses/route");
     const claim = await (

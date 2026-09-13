@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
 import { contractPricingRules } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
-import { createIsolatedDriverAndVehicle } from "../helpers/testFixtures";
+import { createIsolatedDriverAndVehicle, ensureAllSeries, cleanupAllocatedContracts } from "../helpers/testFixtures";
 
 // S1 hotfix: GET /api/invoices was returning a bare 500 with no body
 // (client-side "Unexpected end of JSON input"), which froze the Admin
@@ -15,6 +15,9 @@ import { createIsolatedDriverAndVehicle } from "../helpers/testFixtures";
 // (4) a fully realistic contract-linked, delivered order (the newest,
 // least-exercised data shape, from Task C/D/D.5) doesn't break the deep
 // embed chain.
+
+beforeAll(async () => { await cleanupAllocatedContracts(); });
+
 describe("GET /api/invoices — S1 hotfix", () => {
   afterEach(() => {
     vi.restoreAllMocks();

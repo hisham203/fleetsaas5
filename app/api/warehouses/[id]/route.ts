@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { warehouses } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { rejectCodeChange } from "@/lib/businessCodes";
 
 // Task L, Part 4 — the smallest safe PATCH route the existing schema
 // supports: name, address, and coordinates. All operational metadata,
@@ -37,6 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
 
   const warehouse = await db.query.warehouses.findFirst({ where: and(eq(warehouses.id, id), eq(warehouses.tenantId, tenantId)) });
   if (!warehouse) {
@@ -44,6 +47,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json();
+  // Milestone AG — the internal code is immutable after creation.
+  const immutableCode = rejectCodeChange(body as any, "loadingPointCode", (warehouse as any).loadingPointCode ?? "");
+  if (immutableCode) return NextResponse.json({ error: immutableCode }, { status: 400 });
+  delete (body as any).loadingPointCode;
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

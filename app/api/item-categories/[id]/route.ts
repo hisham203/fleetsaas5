@@ -3,9 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { itemCategories, itemGroups } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
-import { validateBusinessCode } from "@/lib/businessCodes";
+import { rejectCodeChange } from "@/lib/businessCodes";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -23,6 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "master_items"); if (_deny) return _deny;
 
   const row = await db.query.itemCategories.findFirst({ where: and(eq(itemCategories.id, id), eq(itemCategories.tenantId, tenantId)) });
   if (!row) {
@@ -30,6 +32,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json();
+  // Milestone AF.1 — code is immutable after creation.
+  const immutable = rejectCodeChange(body, "code", row.code);
+  if (immutable) return NextResponse.json({ error: immutable }, { status: 400 });
+  delete body.code;
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -44,9 +50,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (data.code && data.code !== row.code) {
-    const v = validateBusinessCode(data.code, "Category code");
-    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
-    data.code = v.value;
     const dup = await db.query.itemCategories.findFirst({ where: and(eq(itemCategories.tenantId, tenantId), eq(itemCategories.code, data.code)) });
     if (dup) {
       return NextResponse.json({ error: `An item category with code "${data.code}" already exists for this tenant` }, { status: 409 });

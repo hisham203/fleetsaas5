@@ -6,6 +6,7 @@ import AdminShell, { AdminNavSection } from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
 import { expenseRef } from "@/lib/helpers";
+import NextCodePreview from "@/components/NextCodePreview";
 
 type Tenant = { id: string; name: string; sector: string; users: any[] };
 type TabKey = "overview" | "fleet" | "drivers" | "customers" | "billing" | "maintenance" | "inventory" | "reports" | "scorecards" | "erp" | "automation" | "fieldops" | "executive";
@@ -466,8 +467,8 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
 function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
   const [detailVehicleId, setDetailVehicleId] = useState<string | null>(null);
   const [plateNumber, setPlate] = useState("");
-  const [vehicleType, setType] = useState("Delivery Vehicle");
-  const [capacityUnits, setCapacity] = useState(100);
+  const [vehicleType, setType] = useState("Water Tanker");
+  const [vCodeReady, setVCodeReady] = useState(false);
   // G.3: capacityLiters is genuinely optional and left blank by default —
   // unlike capacityUnits (which every legacy vehicle needs and always
   // sends), a bottle van has no meaningful liters figure, so this is
@@ -487,7 +488,8 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
       body: JSON.stringify({
         plateNumber,
         vehicleType,
-        capacityUnits,
+        // Milestone AF.1 — Bulk Water: tanker capacity (liters) is the only
+        // operational capacity. Legacy capacityUnits is never sent from this UI.
         capacityLiters: capacityLiters !== "" ? Number(capacityLiters) : undefined,
         homeWarehouseId: homeWarehouseId || undefined,
       }),
@@ -521,14 +523,12 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
   // contract rate), rather than introducing a new interaction style.
   const [editingCapacityId, setEditingCapacityId] = useState<string | null>(null);
   const [editCapacityLiters, setEditCapacityLiters] = useState("");
-  const [editCapacityUnits, setEditCapacityUnits] = useState("");
   const [capacityUpdating, setCapacityUpdating] = useState(false);
   const [capacityError, setCapacityError] = useState("");
 
   function startEditCapacity(v: any) {
     setEditingCapacityId(v.id);
     setEditCapacityLiters(v.capacityLiters != null ? String(v.capacityLiters) : "");
-    setEditCapacityUnits(v.capacityUnits != null ? String(v.capacityUnits) : "");
     setCapacityError("");
   }
 
@@ -540,7 +540,6 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         capacityLiters: editCapacityLiters !== "" ? Number(editCapacityLiters) : null,
-        capacityUnits: editCapacityUnits !== "" ? Number(editCapacityUnits) : null,
       }),
     });
     const data = await res.json();
@@ -572,6 +571,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
             {vehicles.map((v: any) => (
               <tr key={v.id} className="border-b border-slate-50">
                 <td className="py-2 font-mono text-xs">{v.plateNumber}</td>
+                <td className="py-2 text-steel text-xs">{(v as any).vehicleCode ?? "—"}</td>
                 <td className="py-2">{v.vehicleType}</td>
                 <td className="py-2">
                   {editingCapacityId === v.id ? (
@@ -585,14 +585,6 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
                           onChange={(e) => setEditCapacityLiters(e.target.value)}
                         />
                         <span className="text-steel text-xs">L</span>
-                        <input
-                          type="number"
-                          className="w-16 border rounded px-1 py-0.5 text-xs"
-                          placeholder="Units"
-                          value={editCapacityUnits}
-                          onChange={(e) => setEditCapacityUnits(e.target.value)}
-                        />
-                        <span className="text-steel text-xs">units</span>
                       </div>
                       {capacityError && <p className="text-danger text-xs">{capacityError}</p>}
                       <div className="flex gap-2">
@@ -604,7 +596,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
                     </div>
                   ) : (
                     <button onClick={() => startEditCapacity(v)} className="text-left hover:text-aquaDark">
-                      {v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : v.capacityUnits ? `${v.capacityUnits} units` : "Set capacity…"}
+                      {v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : "Set tanker capacity…"}
                     </button>
                   )}
                 </td>
@@ -635,14 +627,15 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
       <div className="bg-white rounded-xl border border-slate-200 p-4 h-fit">
         <h3 className="font-medium mb-3">Add vehicle</h3>
         <div className="space-y-2">
-          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Plate number" value={plateNumber} onChange={(e) => setPlate(e.target.value)} />
+          {/* Milestone AG.1 — vehicle internal code (VH06NNN), separate from the plate */}
+          <NextCodePreview entityType="VEHICLE" label="Vehicle internal code (Generated by Smarty1)" onReady={setVCodeReady} />
+          <div>
+            <label className="text-xs text-steel block mb-1">Plate number — legal/physical identifier</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. ABC 1234" value={plateNumber} onChange={(e) => setPlate(e.target.value)} />
+          </div>
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Vehicle type" value={vehicleType} onChange={(e) => setType(e.target.value)} />
           <div>
-            <label className="text-xs text-steel">General capacity units</label>
-            <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="Capacity units" value={capacityUnits} onChange={(e) => setCapacity(Number(e.target.value))} />
-          </div>
-          <div>
-            <label className="text-xs text-steel">Tanker capacity (liters) — optional, e.g. 18000 / 21000 / 28000</label>
+            <label className="text-xs text-steel">Tanker capacity (liters) — e.g. 18000 / 21000 / 28000</label>
             <input
               type="number"
               className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
@@ -659,7 +652,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
           </select>
           {addError && <p className="text-danger text-xs">{addError}</p>}
           <button
-            disabled={!plateNumber || submitting}
+            disabled={!plateNumber || !vCodeReady || submitting}
             onClick={addVehicle}
             className="w-full bg-ink text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
           >
@@ -794,6 +787,7 @@ function DriversTab({ tenant, drivers, onChange }: any) {
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [dCodeReady, setDCodeReady] = useState(false);
 
   async function addDriver() {
     setError("");
@@ -841,6 +835,8 @@ function DriversTab({ tenant, drivers, onChange }: any) {
               <tr key={d.id} className="border-b border-slate-50">
                 <td className="py-2">{d.user.name}</td>
                 <td className="py-2 font-mono text-xs">{d.licenseNumber}</td>
+                {/* Milestone AG.1 — internal driver code */}
+                <td className="py-2 text-steel text-xs font-mono">{(d as any).driverCode ?? "—"}</td>
                 <td className="py-2">{d.phone}</td>
                 <td className="py-2"><StatusBadge status={d.status} /></td>
               </tr>
@@ -851,14 +847,19 @@ function DriversTab({ tenant, drivers, onChange }: any) {
       <div className="bg-white rounded-xl border border-slate-200 p-4 h-fit">
         <h3 className="font-medium mb-3">Add driver</h3>
         <div className="space-y-2">
+          {/* Milestone AG.1 — driver internal code (D06NNN), separate from the legal license number */}
+          <NextCodePreview entityType="DRIVER" label="Driver internal code (Generated by Smarty1)" onReady={setDCodeReady} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
           <input type="password" className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Login password (min 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="License number" value={licenseNumber} onChange={(e) => setLicense(e.target.value)} />
+          <div>
+            <label className="text-xs text-steel block mb-1">License number — legal identifier</label>
+            <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. SA-1234567" value={licenseNumber} onChange={(e) => setLicense(e.target.value)} />
+          </div>
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
           {error && <p className="text-danger text-xs">{error}</p>}
           <button
-            disabled={!name || !email || password.length < 6 || !licenseNumber || submitting}
+            disabled={!name || !email || password.length < 6 || !licenseNumber || !dCodeReady || submitting}
             onClick={addDriver}
             className="w-full bg-ink text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
           >

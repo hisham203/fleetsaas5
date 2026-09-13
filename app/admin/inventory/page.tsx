@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import NextCodePreview from "@/components/NextCodePreview";
 import { extractErrorMessage } from "@/lib/helpers";
 
 // Milestone Z.2, Part 7 — Inventory foundation screen. Stock control
@@ -21,6 +22,7 @@ export default function InventoryPage() {
   const [movements, setMovements] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [showAdjust, setShowAdjust] = useState(false);
 
   const load = useCallback(async () => {
     setDataLoading(true);
@@ -57,7 +59,8 @@ export default function InventoryPage() {
           <h1 className="text-lg font-semibold">Inventory</h1>
           <p className="text-steel text-sm mt-0.5">Stock control for spare parts, tires, and maintenance consumables.</p>
         </div>
-        <p className="text-steel text-xs bg-warn/10 rounded-lg px-3 py-2">Stock changes will be added in later milestones through receiving, adjustments, transfers, and maintenance issue.</p>
+        {/* RC1 — Inventory actions now live */}
+        {showAdjust && <AdjustmentForm warehouses={warehouses} items={items} onCancel={() => setShowAdjust(false)} onSaved={load} />}
 
         <div className="flex gap-2">
           {(["overview", "warehouses", "movements", "lowstock"] as const).map((t) => (
@@ -189,7 +192,7 @@ function WarehousesTab({ warehouses, onChange }: any) {
 }
 
 function WarehouseForm({ warehouse, workshops, onCancel, onSaved }: any) {
-  const [warehouseCode, setWarehouseCode] = useState(warehouse?.warehouseCode ?? "");
+  const [codeReady, setCodeReady] = useState(false);
   const [name, setName] = useState(warehouse?.name ?? "");
   const [warehouseType, setWarehouseType] = useState(warehouse?.warehouseType ?? "WORKSHOP_STORE");
   const [workshopId, setWorkshopId] = useState(warehouse?.workshopId ?? "");
@@ -200,7 +203,7 @@ function WarehouseForm({ warehouse, workshops, onCancel, onSaved }: any) {
   async function save() {
     setSubmitting(true);
     setError("");
-    const body = { warehouseCode: warehouseCode || undefined, name, warehouseType, status, workshopId: workshopId || null };
+    const body = { name, warehouseType, status, workshopId: workshopId || null };
     const res = warehouse
       ? await fetch(`/api/maintenance-warehouses/${warehouse.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/maintenance-warehouses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -215,7 +218,11 @@ function WarehouseForm({ warehouse, workshops, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Warehouse code (optional)" value={warehouseCode} onChange={(e) => setWarehouseCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
+      {warehouse ? (
+        <div className="bg-paper rounded-lg px-3 py-2"><p className="text-steel text-xs">Warehouse code</p><p className="font-mono text-sm">{warehouse.warehouseCode}</p><p className="text-steel text-[11px]">Code cannot be changed after creation.</p></div>
+      ) : (
+        <NextCodePreview entityType="MAINTENANCE_WAREHOUSE" label="Next warehouse code" onReady={setCodeReady} />
+      )}
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={warehouseType} onChange={(e) => setWarehouseType(e.target.value)}>
         <option value="WORKSHOP_STORE">WORKSHOP_STORE</option>
@@ -234,7 +241,68 @@ function WarehouseForm({ warehouse, workshops, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || submitting || (!warehouse && !codeReady)} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// RC1 — Inventory Adjustment / Maintenance Issue form.
+function AdjustmentForm({ warehouses, items, onCancel, onSaved }: any) {
+  const [warehouseId, setWarehouseId] = useState("");
+  const [itemId, setItemId] = useState("");
+  const [quantity, setQuantity] = useState<number>(0);
+  const [unitOfMeasure, setUOM] = useState("EA");
+  const [movementType, setMovementType] = useState("ADJUSTMENT");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function save() {
+    setSubmitting(true); setError("");
+    const res = await fetch("/api/maintenance-inventory/adjust", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ warehouseId, itemId, quantity: Number(quantity), unitOfMeasure, movementType, notes: notes || undefined }),
+    });
+    setSubmitting(false);
+    if (!res.ok) { const d = await res.json(); setError(d.error ?? "Failed"); return; }
+    onSaved();
+    onCancel();
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
+      <p className="font-medium text-sm">Inventory Adjustment / Issue</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div><label className="text-xs text-steel">Warehouse</label>
+          <select className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
+            <option value="">Select…</option>{warehouses.map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select></div>
+        <div><label className="text-xs text-steel">Item</label>
+          <select className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={itemId} onChange={e => setItemId(e.target.value)}>
+            <option value="">Select…</option>{items.map((it: any) => <option key={it.id} value={it.id}>{it.name}</option>)}
+          </select></div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div><label className="text-xs text-steel">Qty (negative = out)</label>
+          <input type="number" className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={quantity} onChange={e => setQuantity(Number(e.target.value))} /></div>
+        <div><label className="text-xs text-steel">UoM</label>
+          <input className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={unitOfMeasure} onChange={e => setUOM(e.target.value)} /></div>
+        <div><label className="text-xs text-steel">Type</label>
+          <select className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={movementType} onChange={e => setMovementType(e.target.value)}>
+            <option value="ADJUSTMENT">Adjustment</option>
+            <option value="MAINTENANCE_ISSUE">Issue to Maintenance</option>
+            <option value="RETURN">Return</option>
+            <option value="TRANSFER_OUT">Transfer Out</option>
+            <option value="TRANSFER_IN">Transfer In</option>
+          </select></div>
+      </div>
+      <textarea className="w-full border rounded-lg px-2 py-1.5 text-sm" rows={2} placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} />
+      {error && <p className="text-danger text-xs">{error}</p>}
+      <div className="flex gap-2">
+        <button disabled={!warehouseId || !itemId || quantity === 0 || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Post Movement</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>

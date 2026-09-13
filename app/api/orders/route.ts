@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { orders, customers, customerLocations } from "@/lib/db/schema";
 import { genId, genNumber } from "@/lib/helpers";
 import { getCreditExposure } from "@/lib/creditCheck";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { runAutomationRules } from "@/lib/automation";
 import { eq, and, desc } from "drizzle-orm";
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "orders"); if (_deny) return _deny;
 
   const body = await req.json();
   const parsed = createSchema.safeParse(body);

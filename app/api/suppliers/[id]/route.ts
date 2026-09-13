@@ -3,9 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { suppliers } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { optionalEmailSchema } from "@/lib/helpers";
-import { validateBusinessCode } from "@/lib/businessCodes";
+import { rejectCodeChange } from "@/lib/businessCodes";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
@@ -28,6 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "master_items"); if (_deny) return _deny;
 
   const row = await db.query.suppliers.findFirst({ where: and(eq(suppliers.id, id), eq(suppliers.tenantId, tenantId)) });
   if (!row) {
@@ -35,6 +37,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json();
+  // Milestone AF.1 — code is immutable after creation.
+  const immutable = rejectCodeChange(body, "supplierCode", row.supplierCode);
+  if (immutable) return NextResponse.json({ error: immutable }, { status: 400 });
+  delete body.supplierCode;
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -44,9 +50,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (data.supplierCode && data.supplierCode !== row.supplierCode) {
     // Milestone AF — a changed manual code must pass the same rules as
     // on create; PATCH never allocates a number.
-    const v = validateBusinessCode(data.supplierCode, "Supplier code");
-    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
-    data.supplierCode = v.value;
     const dup = await db.query.suppliers.findFirst({ where: and(eq(suppliers.tenantId, tenantId), eq(suppliers.supplierCode, data.supplierCode)) });
     if (dup) {
       return NextResponse.json({ error: `A supplier with code "${data.supplierCode}" already exists for this tenant` }, { status: 409 });

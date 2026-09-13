@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { cleanupAllocatedContracts } from "../helpers/testFixtures";
+import { describe, it, expect, beforeAll } from "vitest";
 import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
@@ -20,6 +21,9 @@ async function setupSite(overrides: Partial<typeof customerLocations.$inferInser
   const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
   return { tenantId: tenant!.id, customerId, locationId, adminCookie };
 }
+
+
+beforeAll(async () => { await cleanupAllocatedContracts(); });
 
 describe("PATCH /api/customers/[id]/locations/[locationId] (Task K.2)", () => {
   it("1/2/3. an admin can update address and coordinates", async () => {

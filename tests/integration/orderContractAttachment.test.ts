@@ -1,3 +1,4 @@
+import { ensureAllSeries, cleanupAllocatedContracts } from "../helpers/testFixtures";
 import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
@@ -20,6 +21,18 @@ describe("Order/Contract Attachment (Task D)", () => {
   let acmeContractId: string;
 
   beforeAll(async () => {
+    // RC1: ensure CONTRACT/EXPENSE series exist so allocator doesn't return 422
+    const { tenants: tenantsT } = await import("@/lib/db/schema");
+    const { db: dbT } = await import("@/lib/db/client");
+    const { eq: eqT } = await import("drizzle-orm");
+    const waterTenant = await dbT.query.tenants.findFirst({ where: eqT(tenantsT.name, "Demo Water Co.") });
+    const acmeTenant = await dbT.query.tenants.findFirst({ where: eqT(tenantsT.name, "Acme Fuel Delivery Co.") });
+    if (waterTenant) await cleanupAllocatedContracts(waterTenant.id);
+    if (waterTenant) await ensureAllSeries(waterTenant.id);
+    if (acmeTenant) await cleanupAllocatedContracts(acmeTenant.id);
+    if (acmeTenant) await ensureAllSeries(acmeTenant.id);
+    const riyadhTenant2 = await dbT.query.tenants.findFirst({ where: eqT(tenantsT.name, "Riyadh Bulk Water Logistics") });
+    if (riyadhTenant2) await ensureAllSeries(riyadhTenant2.id);
     waterAdminCookie = await loginAs("admin@demo-water.co", "password123");
     acmeAdminCookie = await loginAs("admin@acme-fuel-demo.co", "password123");
 
@@ -45,7 +58,7 @@ describe("Order/Contract Attachment (Task D)", () => {
       ...m,
       PATCH: (await import("@/app/api/contracts/[id]/route")).PATCH,
     }));
-    const contract = await (await createContract(makeRequest("/api/contracts", {
+    const contractRes = await createContract(makeRequest("/api/contracts", {
       method: "POST", cookie: waterAdminCookie,
       body: {
         customerId: jarirId,
@@ -56,7 +69,9 @@ describe("Order/Contract Attachment (Task D)", () => {
         startDate: overrides.startDate ?? "2020-01-01",
         endDate: overrides.endDate,
       },
-    }))).json();
+    }));
+    if (!contractRes.ok) throw new Error(`createActiveContract failed: ${contractRes.status} — ${await contractRes.text()}`);
+    const contract = await contractRes.json();
     await PATCH(makeRequest(`/api/contracts/${contract.id}`, { method: "PATCH", cookie: waterAdminCookie, body: { status: "ACTIVE" } }), { params: { id: contract.id } });
     return contract.id;
   }

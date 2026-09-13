@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { runReport, toCsv } from "@/lib/reportQuery";
 import { z } from "zod";
 
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "reports"); if (_deny) return _deny;
 
   const body = await req.json();
   const parsed = runSchema.safeParse(body);

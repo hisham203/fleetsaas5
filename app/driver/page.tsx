@@ -99,8 +99,28 @@ export default function DriverPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "arrive" }),
     });
+    logLifecycleEvent(tripId, "ARRIVED_SITE", { stopId });
     load();
   }
+  // RC1 — lifecycle events alongside dispatch/POD actions (additive, non-blocking).
+  async function logLifecycleEvent(tripId: string, eventType: string, options: { stopId?: string; notes?: string; loadedLiters?: number; deliveredLiters?: number } = {}) {
+    fetch(`/api/trips/${tripId}/lifecycle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventType, ...options }),
+    }).catch(() => {}); // intentional fire-and-forget; never blocks primary action
+  }
+
+  async function logAndRefresh(tripId: string, eventType: string, options = {}) {
+    await fetch(`/api/trips/${tripId}/lifecycle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventType, ...options }),
+    }).catch(() => {});
+    load();
+  }
+
+
 
   async function markFailed(tripId: string, stopId: string, reason: string) {
     const res = await fetch(`/api/trips/${tripId}/stops/${stopId}`, {
@@ -152,6 +172,9 @@ export default function DriverPage() {
               <StatusBadge status={myTrip.status} />
             </div>
             <p className="text-steel text-xs mb-4">Vehicle {myTrip.vehicle.plateNumber} · {myTrip.stops.length} stop(s)</p>
+            {/* RC1 — ordered lifecycle. Only the next valid stage is shown.
+                 Does not replace existing POD/billing/delivery logic below. */}
+            <TripStageControl tripId={myTrip.id} onStageLogged={load} />
 
             <div className="space-y-3">
               {myTrip.stops
@@ -188,6 +211,8 @@ export default function DriverPage() {
               setActionMessage({ text: typeof data.error === "string" ? data.error : "Could not record this delivery.", tone: "danger" });
             } else {
               setActionMessage({ text: "Delivery confirmed.", tone: "ok" });
+              // RC1: log UNLOADING_COMPLETE lifecycle event after successful POD (fire-and-forget)
+              logLifecycleEvent(epodStop.tripId, "UNLOADING_COMPLETE", { stopId: epodStop.id });
             }
             setEpodStop(null);
             load();
@@ -497,6 +522,90 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
           {expenses.length === 0 && <p className="text-steel text-xs">No expenses submitted yet.</p>}
         </div>
       </div>
+    </div>
+  );
+}
+
+// RC1 — Ordered trip lifecycle control.
+// Derives the current stage from persisted events and shows only the
+// next valid action. Never touches billing/POD (that's in StopCard below).
+const STAGE_SEQUENCE = ["STARTED","ARRIVED_LOADING","LOADING_COMPLETE","ARRIVED_SITE","UNLOADING_COMPLETE","CLOSED"] as const;
+type LifecycleStage = typeof STAGE_SEQUENCE[number];
+const STAGE_LABELS: Record<LifecycleStage, string> = {
+  STARTED: "Start Trip",
+  ARRIVED_LOADING: "Arrived at Loading Point",
+  LOADING_COMPLETE: "Loading Complete",
+  ARRIVED_SITE: "Arrived at Customer Site",
+  UNLOADING_COMPLETE: "Unloading Complete",
+  CLOSED: "Close Trip",
+};
+
+function TripStageControl({ tripId, onStageLogged }: { tripId: string; onStageLogged: () => void }) {
+  const [events, setEvents] = useState<{ eventType: string; createdAt: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    const res = await fetch(`/api/trips/${tripId}/lifecycle`);
+    if (res.ok) {
+      const data = await res.json();
+      setEvents(Array.isArray(data) ? data : []);
+    }
+  };
+
+  // Load once on mount
+  const [loaded, setLoaded] = useState(false);
+  if (!loaded) { setLoaded(true); load(); }
+
+  // Derive current stage (latest non-NOTE event)
+  const stageEvents = events.filter(e => e.eventType !== "NOTE");
+  const latestStage = stageEvents.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]?.eventType as LifecycleStage | undefined;
+  const latestIdx = latestStage !== undefined ? STAGE_SEQUENCE.indexOf(latestStage) : -1;
+  const nextStage = latestIdx < STAGE_SEQUENCE.length - 1 ? STAGE_SEQUENCE[latestIdx + 1] : null;
+
+  async function logNext() {
+    if (!nextStage) return;
+    setBusy(true); setError("");
+    const res = await fetch(`/api/trips/${tripId}/lifecycle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventType: nextStage }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      const d = await res.json();
+      setError(d.error ?? "Failed");
+      return;
+    }
+    await load();
+    onStageLogged();
+  }
+
+  const isClosed = latestStage === "CLOSED";
+
+  return (
+    <div className="mb-3 bg-paper rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-steel text-xs font-medium uppercase tracking-wide">Trip Progress</p>
+        {latestStage && <span className="text-xs bg-ink text-white rounded px-2 py-0.5">{latestStage.replace(/_/g," ")}</span>}
+      </div>
+      <div className="flex gap-1 flex-wrap">
+        {STAGE_SEQUENCE.map((s, i) => (
+          <div key={s} className={`h-1.5 flex-1 rounded-full ${i <= latestIdx ? "bg-ok" : "bg-slate-200"}`} title={s} />
+        ))}
+      </div>
+      {isClosed ? (
+        <p className="text-ok text-xs font-medium">✓ Trip closed</p>
+      ) : nextStage ? (
+        <>
+          <button disabled={busy} onClick={logNext} className="w-full bg-ok text-white rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-40">
+            {busy ? "Logging…" : `→ ${STAGE_LABELS[nextStage]}`}
+          </button>
+          {error && <p className="text-danger text-xs">{error}</p>}
+        </>
+      ) : (
+        <p className="text-steel text-xs">No active stages.</p>
+      )}
     </div>
   );
 }

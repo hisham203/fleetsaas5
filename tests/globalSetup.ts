@@ -39,7 +39,15 @@ export default async function setup() {
   const { seedDemoData } = await import("../scripts/seedData");
   await seedDemoData();
 
+  // RC1: Clear allocator-style contract numbers so sequential allocations
+  // (CNT06001, CNT06002…) don't collide across test files within a single run.
+  // The contracts table has a GLOBAL unique constraint on contract_number, and
+  // the allocator restarts at 1 for each series. Without this cleanup, the
+  // second test file to allocate "CNT06001" gets a 23505 DB error.
   const { pool } = await import("../lib/db/client");
+  await pool.query("DELETE FROM numbering_sequence_ledger WHERE generated_number LIKE 'CNT%'");
+  await pool.query("DELETE FROM contracts WHERE contract_number LIKE 'CNT%'");
+  await pool.query("UPDATE numbering_series SET next_number=1 WHERE entity_type='CONTRACT'");
   await pool.end();
   // globalSetup runs in its own separate process from the actual test
   // files, so closing this pool doesn't affect their connection — it just

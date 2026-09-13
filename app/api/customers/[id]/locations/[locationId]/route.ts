@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { customerLocations, customers, distanceBands, orders, invoices, invoiceLineItems } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -43,7 +44,7 @@ const patchSchema = z.object({
 async function canAccessCustomer(session: any, customerId: string) {
   if (!session) return false;
   if (session.type === "CUSTOMER") return session.customer.id === customerId;
-  if (!["ADMIN", "DISPATCHER"].includes(session.user.role)) return false;
+  if (!["ADMIN", "DISPATCHER"].includes(session.user?.role ?? "")) return false;
   const customer = await db.query.customers.findFirst({ where: eq(customers.id, customerId) });
   return !!customer && customer.tenantId === getSessionTenantId(session);
 }

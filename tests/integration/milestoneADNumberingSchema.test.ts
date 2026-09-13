@@ -199,7 +199,7 @@ describe("Regression protection (Milestone AD)", () => {
     const { POST: createSupplier } = await import("@/app/api/suppliers/route");
     const { genId } = await import("@/lib/helpers");
     const res = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: adminCookie, body: { supplierCode: `AD-${genId().slice(0, 6)}`, name: "AD Regression Supplier", email: "" } }));
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400); // AF.1: client-supplied codes are rejected for converted entities
 
     const shellSource = fs.readFileSync(path.join(process.cwd(), "components/AdminShell.tsx"), "utf8");
     const adminPageSource = fs.readFileSync(path.join(process.cwd(), "app/admin/page.tsx"), "utf8");

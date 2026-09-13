@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { cleanupAllocatedContracts } from "../helpers/testFixtures";
+import { describe, it, expect, beforeAll } from "vitest";
 import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
@@ -19,6 +20,8 @@ async function setupTenantAndCustomer(tenantName: string) {
   await db.insert(customers).values({ id: customerId, tenantId: tenant!.id, name: `I2 Test Customer ${genId().slice(0, 6)}`, type: "B2B", address: "Test", lat: 24.7, lng: 46.7 });
   return { tenantId: tenant!.id, customerId };
 }
+
+beforeAll(async () => { await cleanupAllocatedContracts(); });
 
 describe("Contract Site Scope UI (I.2)", () => {
   const moduleSource = fs.readFileSync(path.join(process.cwd(), "app/admin/contracts/page.tsx"), "utf8");

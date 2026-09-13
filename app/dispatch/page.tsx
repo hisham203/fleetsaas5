@@ -222,7 +222,6 @@ function DispatchPageInner() {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   }
 
-  const selectedLoad = orders.filter((o) => selected.includes(o.id)).reduce((sum, o) => sum + o.qtyOrdered, 0);
   const slaByOrderId = new Map((sla?.orders ?? []).map((o: any) => [o.id, o]));
 
   async function createTrip() {
@@ -535,7 +534,7 @@ function DispatchPageInner() {
         {/* Trip planner */}
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <h3 className="font-medium mb-3">Plan trip</h3>
-          <p className="text-steel text-xs mb-2">{selected.length} order(s) selected · {selectedLoad} load(s) total</p>
+          <p className="text-steel text-xs mb-2">{selected.length} order(s) selected</p>
           {selected.length > 0 && (
             <div className="mb-3 space-y-1.5 max-h-32 overflow-auto">
               {orders.filter((o) => selected.includes(o.id)).map((o) => (
@@ -571,7 +570,7 @@ function DispatchPageInner() {
               <option value="">Select vehicle…</option>
               {availableVehicles.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.plateNumber} ({v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : v.capacityUnits ? `${v.capacityUnits} units` : "capacity unknown"})
+                  {v.plateNumber} ({v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : "capacity not set"})
                 </option>
               ))}
             </select>
@@ -792,13 +791,13 @@ function DispatchPageInner() {
   );
 }
 
-// Milestone W, Part 6 — reconstructs a trip's lifecycle from existing
+// RC1 update: trip lifecycle events are now real (trip_lifecycle_events table).
 // persisted timestamps only. Every entry here corresponds to a real,
 // stored timestamp on order/trip/stop/epod/invoice — this function
 // never invents a time for an event that wasn't actually recorded.
 // Events with no real timestamp today (loading confirmed at the exact
 // moment, invoice/billing-deferred distinction) are covered by the
-// closest real field available, noted inline. A true trip_lifecycle_events
+
 // table (this milestone's own schema proposal) would let a future
 // version show driver-app-open/POD-capture-attempt-level granularity
 // this reconstruction cannot.

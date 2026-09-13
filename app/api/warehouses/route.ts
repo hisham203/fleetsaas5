@@ -4,9 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { warehouses, inventoryItems } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -21,6 +23,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
 
   const rows = await db.query.warehouses.findMany({ where: eq(warehouses.tenantId, tenantId) });
   return NextResponse.json(rows);
@@ -59,9 +62,18 @@ export async function POST(req: NextRequest) {
   });
   const tenantTracksInventory = await db.query.inventoryItems.findFirst({ where: eq(inventoryItems.tenantId, tenantId) });
 
+  // Milestone AG — internal loading point code: system-generated and
+  // immutable. Allocated before the transaction so a missing series
+  // fails cleanly without a half-created warehouse.
+  const resolvedCode = await resolveEntityCode({
+    tenantId, entityType: "LOADING_POINT", entityLabel: "loading point", codeLabel: "Loading point code",
+    provided: (body as any)?.loadingPointCode,
+  });
+  if (!resolvedCode.ok) return NextResponse.json({ error: resolvedCode.error }, { status: resolvedCode.status });
+
   const id = genId();
   await db.transaction(async (tx) => {
-    await tx.insert(warehouses).values({ id, tenantId, ...parsed.data, isDefault: !existingDefault });
+    await tx.insert(warehouses).values({ id, tenantId, loadingPointCode: resolvedCode.code, ...parsed.data, isDefault: !existingDefault });
     if (tenantTracksInventory) {
       await tx.insert(inventoryItems).values([
         { id: genId(), tenantId, warehouseId: id, itemName: "19L Bottle - Full", quantity: 0, unit: "bottle" },
@@ -69,6 +81,8 @@ export async function POST(req: NextRequest) {
       ]);
     }
   });
+
+  await linkLedgerToRecord({ tenantId, seriesId: resolvedCode.seriesId, generatedNumber: resolvedCode.code, referenceTable: "warehouses", referenceId: id });
 
   const created = await db.query.warehouses.findFirst({ where: eq(warehouses.id, id) });
   return NextResponse.json(created, { status: 201 });

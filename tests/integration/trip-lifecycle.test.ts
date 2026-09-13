@@ -117,7 +117,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     const { PATCH: tripAction } = await import("@/app/api/trips/[id]/route");
     const blockedRes = await tripAction(
       makeRequest(`/api/trips/${trip.id}`, { method: "PATCH", cookie: dispatcherCookie, body: { action: "dispatch" } }),
-      { params: { id: trip.id } }
+      { params: Promise.resolve({ id: trip.id }) } as any
     );
     expect(blockedRes.status).toBe(422);
     expect((await blockedRes.json()).error).toMatch(/loading/i);
@@ -126,7 +126,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     const { PATCH: confirmLoading } = await import("@/app/api/trips/[id]/loading/route");
     const loadingRes = await confirmLoading(
       makeRequest(`/api/trips/${trip.id}/loading`, { method: "PATCH", cookie: dispatcherCookie }),
-      { params: { id: trip.id } }
+      { params: Promise.resolve({ id: trip.id }) } as any
     );
     expect(loadingRes.status).toBe(200);
     expect((await loadingRes.json()).loadingConfirmed).toBe(true);
@@ -134,7 +134,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     // Now dispatch should succeed.
     const dispatchRes = await tripAction(
       makeRequest(`/api/trips/${trip.id}`, { method: "PATCH", cookie: dispatcherCookie, body: { action: "dispatch" } }),
-      { params: { id: trip.id } }
+      { params: Promise.resolve({ id: trip.id }) } as any
     );
     expect(dispatchRes.status).toBe(200);
     expect((await dispatchRes.json()).status).toBe("DISPATCHED");
@@ -149,7 +149,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     const { PATCH: stopAction } = await import("@/app/api/trips/[id]/stops/[stopId]/route");
     const arriveRes = await stopAction(
       makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: driverACookie, body: { action: "arrive" } }),
-      { params: { id: trip.id, stopId } }
+      { params: Promise.resolve({ id: trip.id, stopId }) } as any
     );
     expect(arriveRes.status).toBe(200);
 
@@ -159,7 +159,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
         cookie: driverACookie,
         body: { action: "deliver", deliveredQty: 3, emptiesCollected: 3, recipientName: "Test Recipient" },
       }),
-      { params: { id: trip.id, stopId } }
+      { params: Promise.resolve({ id: trip.id, stopId }) } as any
     );
     expect(deliverRes.status).toBe(200);
     const deliverBody = await deliverRes.json();
@@ -176,7 +176,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     // verifying, not because anything else depends on it.
     const completeRes = await tripAction(
       makeRequest(`/api/trips/${trip.id}`, { method: "PATCH", cookie: dispatcherCookie, body: { action: "complete" } }),
-      { params: { id: trip.id } }
+      { params: Promise.resolve({ id: trip.id }) } as any
     );
     expect(completeRes.status).toBe(200);
     expect((await completeRes.json()).status).toBe("COMPLETED");
@@ -204,7 +204,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     const { PATCH: stopAction } = await import("@/app/api/trips/[id]/stops/[stopId]/route");
     const res = await stopAction(
       makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: driverACookie, body: { action: "arrive" } }),
-      { params: { id: trip.id, stopId } }
+      { params: Promise.resolve({ id: trip.id, stopId }) } as any
     );
     expect(res.status).toBe(403);
 
@@ -212,7 +212,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     const { PATCH: gpsPing } = await import("@/app/api/trips/[id]/gps/route");
     const gpsRes = await gpsPing(
       makeRequest(`/api/trips/${trip.id}/gps`, { method: "PATCH", cookie: driverACookie, body: { lat: 24.7, lng: 46.6 } }),
-      { params: { id: trip.id } }
+      { params: Promise.resolve({ id: trip.id }) } as any
     );
     expect(gpsRes.status).toBe(403);
 
@@ -221,7 +221,7 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
     // dedicated and unused elsewhere), but good hygiene regardless.
     await stopAction(
       makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, { method: "PATCH", cookie: driverBCookie, body: { action: "arrive" } }),
-      { params: { id: trip.id, stopId } }
+      { params: Promise.resolve({ id: trip.id, stopId }) } as any
     );
     await stopAction(
       makeRequest(`/api/trips/${trip.id}/stops/${stopId}`, {
@@ -229,12 +229,12 @@ describe("trip lifecycle (BR-06/07/08/09/10/18)", () => {
         cookie: driverBCookie,
         body: { action: "deliver", deliveredQty: 2, emptiesCollected: 2, recipientName: "Cleanup" },
       }),
-      { params: { id: trip.id, stopId } }
+      { params: Promise.resolve({ id: trip.id, stopId }) } as any
     );
     const { PATCH: tripAction } = await import("@/app/api/trips/[id]/route");
     await tripAction(
       makeRequest(`/api/trips/${trip.id}`, { method: "PATCH", cookie: dispatcherCookie, body: { action: "complete" } }),
-      { params: { id: trip.id } }
+      { params: Promise.resolve({ id: trip.id }) } as any
     );
   });
 });

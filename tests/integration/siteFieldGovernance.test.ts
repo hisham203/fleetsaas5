@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
+import { ensureAllSeries } from "../helpers/testFixtures";
 import { db } from "@/lib/db/client";
 import { tenants, customers, customerLocations, orders } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -18,6 +19,19 @@ async function setupSite() {
   const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
   return { tenantId: tenant!.id, customerId, locationId, adminCookie };
 }
+
+import { beforeAll } from "vitest";
+
+beforeAll(async () => {
+  // Milestone AG — ensure numbering series exist for all converted entities
+  const { db } = await import("@/lib/db/client");
+  const { tenants } = await import("@/lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  for (const name of ["Demo Water Co.", "Riyadh Bulk Water Logistics", "Acme Fuel Delivery Co."]) {
+    const t = await db.query.tenants.findFirst({ where: eq(tenants.name, name) });
+    if (t) await ensureAllSeries(t.id);
+  }
+});
 
 describe("Field-level authorization on customer location creation (Task K.3)", () => {
   it("1. ADMIN can create a site with cityCode/zoneCode/distanceBandCode", async () => {

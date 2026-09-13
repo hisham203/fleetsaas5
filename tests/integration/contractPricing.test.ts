@@ -1,3 +1,4 @@
+import { ensureAllSeries } from "../helpers/testFixtures";
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db/client";
 import { contracts, contractPricingRules, distanceBands, orders } from "@/lib/db/schema";
@@ -15,6 +16,8 @@ describe("contractPricing engine (Task C)", () => {
   let contractId: string;
 
   beforeAll(async () => {
+    // RC1: ensure all numbering series exist
+    try { const { tenants: _t } = await import("@/lib/db/schema"); const { db: _db } = await import("@/lib/db/client"); const { eq: _eq } = await import("drizzle-orm"); const _acme = await _db.query.tenants.findFirst({ where: _eq(_t.name, "Acme Fuel Delivery Co.") }); const _demo = await _db.query.tenants.findFirst({ where: _eq(_t.name, "Demo Water Co.") }); if (_acme) await ensureAllSeries(_acme.id); if (_demo) await ensureAllSeries(_demo.id); } catch {}
     const waterAdminCookie = await loginAs("admin@demo-water.co", "password123");
     const { GET: tenantGet } = await import("@/app/api/tenant/route");
     tenantId = (await (await tenantGet(makeRequest("/api/tenant", { cookie: waterAdminCookie }))).json()).id;

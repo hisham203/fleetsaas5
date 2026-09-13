@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { automationRules } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { getEventType, isValidEventField } from "@/lib/automation";
 import { eq, desc } from "drizzle-orm";
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "settings"); if (_deny) return _deny;
 
   const rows = await db.query.automationRules.findMany({
     where: eq(automationRules.tenantId, tenantId),

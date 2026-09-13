@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { trips, orders, vehicles, drivers } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { runAutomationRules } from "@/lib/automation";
 import { eq, and, inArray } from "drizzle-orm";
@@ -21,6 +22,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  // DRIVER role has restricted dispatch access — only their own trips/stops.
+  // They bypass module-level enforcement here; the ownership check below gates their access.
+  if (session?.type !== "USER" || (session.user as any).role !== "DRIVER") {
+    const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
+  }
 
   const body = await req.json();
   const parsed = actionSchema.safeParse(body);

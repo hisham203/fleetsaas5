@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { orders } from "@/lib/db/schema";
 import { computeSlaStatus } from "@/lib/sla";
 import { checkAndCreateEscalations } from "@/lib/escalations";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, notInArray, and } from "drizzle-orm";
 import { SAFE_CUSTOMER_COLUMNS } from "@/lib/contractHelpers";
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "control_tower"); if (_deny) return _deny;
 
   await checkAndCreateEscalations(tenantId);
 

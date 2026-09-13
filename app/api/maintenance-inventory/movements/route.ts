@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { maintenanceInventoryMovements } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { eq, and } from "drizzle-orm";
 
 // Milestone Z.1 — schema-only foundation. Read-only. No movement can be
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "inventory"); if (_deny) return _deny;
   const warehouseId = req.nextUrl.searchParams.get("warehouseId");
   const itemId = req.nextUrl.searchParams.get("itemId");
 

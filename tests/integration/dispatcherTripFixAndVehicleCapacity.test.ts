@@ -5,11 +5,24 @@ import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
 import { tenants, warehouses, vehicles, customers, orders } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-import { createIsolatedDriverAndVehicle } from "../helpers/testFixtures";
+import { createIsolatedDriverAndVehicle, ensureAllSeries } from "../helpers/testFixtures";
 import { genId } from "@/lib/helpers";
 
 // Task G.2/G.3 — Dispatcher Trip Assignment Fix + Vehicle Capacity Liters
 // UI Support.
+import { beforeAll } from "vitest";
+
+beforeAll(async () => {
+  // Milestone AG — ensure numbering series exist for all converted entities
+  const { db } = await import("@/lib/db/client");
+  const { tenants } = await import("@/lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  for (const name of ["Demo Water Co.", "Riyadh Bulk Water Logistics", "Acme Fuel Delivery Co."]) {
+    const t = await db.query.tenants.findFirst({ where: eq(tenants.name, name) });
+    if (t) await ensureAllSeries(t.id);
+  }
+});
+
 describe("Dispatcher trip assignment fix (G.3)", () => {
   describe("1/2. Root cause: the seed's ad-hoc order was left PENDING while already attached to a real trip", () => {
     it("the seeded ad-hoc order is now correctly ASSIGNED, not PENDING — it must not appear in the dispatcher's assignable queue", async () => {
@@ -120,9 +133,10 @@ describe("Dispatcher trip assignment fix (G.3)", () => {
       expect(dispatchSource).toContain("unit(s)");
     });
 
-    it("uses neutral 'load(s) total' wording instead of 'units total'", () => {
-      expect(dispatchSource).toContain("load(s) total");
+    it("no legacy 'load(s) total' / 'units total' suffix — qtyOrdered is a unit count, not liters, so Milestone AF.1 removed the misleading total rather than fake liters", () => {
+      expect(dispatchSource).not.toContain("load(s) total");
       expect(dispatchSource).not.toContain("units total");
+      expect(dispatchSource).toContain("order(s) selected");
     });
 
     it("createTrip always resets the busy state, even if the response is unreadable", () => {

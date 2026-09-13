@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { savedReports } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { getDataset, isValidColumn } from "@/lib/reportDatasets";
 import { eq, desc } from "drizzle-orm";
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "reports"); if (_deny) return _deny;
 
   const rows = await db.query.savedReports.findMany({
     where: eq(savedReports.tenantId, tenantId),

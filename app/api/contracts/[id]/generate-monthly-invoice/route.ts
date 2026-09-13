@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { contracts, contractPeriods, invoices, invoiceLineItems, customerLocations } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId, genNumber, VAT_RATE } from "@/lib/helpers";
 import { calculateContractPrice, PricingEngineError } from "@/lib/contractPricing";
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "contracts"); if (_deny) return _deny;
   const userId = session!.type === "USER" ? session!.user.id : null;
 
   const body = await req.json();

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { scorecardConfigs } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { getScorecardWeights, DEFAULT_SCORECARD_WEIGHTS } from "@/lib/scorecards";
 import { eq } from "drizzle-orm";
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "reports"); if (_deny) return _deny;
 
   const weights = await getScorecardWeights(tenantId);
   return NextResponse.json({ ...weights, isDefault: weights === DEFAULT_SCORECARD_WEIGHTS });

@@ -134,6 +134,27 @@
       "when": 1788785798043,
       "tag": "0018_clear_sinister_six",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789113976219,
+      "tag": "0019_loud_taskmaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789259910643,
+      "tag": "0020_fat_dorian_gray",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789284626861,
+      "tag": "0021_regular_praxagora",
+      "breakpoints": true
     }
   ]
 }

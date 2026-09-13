@@ -4,9 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { customerLocations, customers, distanceBands } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
+import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 import { isAdminSession, pricingFieldsTouchedBy } from "@/lib/siteFieldGovernance";
 
 // Task K audit finding: cityCode/zoneCode/distanceBandCode have existed
@@ -35,7 +37,7 @@ const createSchema = z.object({
 async function canAccessCustomer(session: any, customerId: string) {
   if (!session) return false;
   if (session.type === "CUSTOMER") return session.customer.id === customerId;
-  if (!["ADMIN", "DISPATCHER"].includes(session.user.role)) return false;
+  if (!["ADMIN", "DISPATCHER"].includes(session.user?.role ?? "")) return false;
   const customer = await db.query.customers.findFirst({ where: eq(customers.id, customerId) });
   return !!customer && customer.tenantId === getSessionTenantId(session);
 }
@@ -101,7 +103,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const id = genId();
-  await db.insert(customerLocations).values({ id, customerId, ...parsed.data });
+  // Milestone AG — internal site code. customer_locations has no
+  // tenantId of its own; the tenant is the parent customer's, which the
+  // route has already verified above.
+  const parentCustomer = await db.query.customers.findFirst({ where: eq(customers.id, customerId) });
+  if (!parentCustomer) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+  const siteTenantId = parentCustomer.tenantId;
+  const resolvedCode = await resolveEntityCode({
+    tenantId: siteTenantId, entityType: "CUSTOMER_SITE", entityLabel: "customer site", codeLabel: "Site code",
+    provided: (body as any)?.siteCode,
+  });
+  if (!resolvedCode.ok) return NextResponse.json({ error: resolvedCode.error }, { status: resolvedCode.status });
+
+  await db.insert(customerLocations).values({ id, customerId, siteCode: resolvedCode.code, ...parsed.data });
+  await linkLedgerToRecord({ tenantId: siteTenantId, seriesId: resolvedCode.seriesId, generatedNumber: resolvedCode.code, referenceTable: "customer_locations", referenceId: id });
   const created = await db.query.customerLocations.findFirst({ where: eq(customerLocations.id, id) });
   return NextResponse.json(created, { status: 201 });
 }

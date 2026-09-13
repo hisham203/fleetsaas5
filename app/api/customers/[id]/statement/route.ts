@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { customers, invoices, orders } from "@/lib/db/schema";
 import { getCreditExposure } from "@/lib/creditCheck";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { eq, desc, sql } from "drizzle-orm";
 
@@ -38,7 +39,7 @@ const STATEMENT_SAFE_CUSTOMER_COLUMNS = {
 async function canAccessCustomer(session: any, customer: any) {
   if (!session || !customer) return false;
   if (session.type === "CUSTOMER") return session.customer.id === customer.id;
-  if (!["ADMIN", "DISPATCHER"].includes(session.user.role)) return false;
+  if (!["ADMIN", "DISPATCHER"].includes(session.user?.role ?? "")) return false;
   return customer.tenantId === getSessionTenantId(session);
 }
 

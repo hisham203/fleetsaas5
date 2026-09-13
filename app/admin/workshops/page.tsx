@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import NextCodePreview from "@/components/NextCodePreview";
 import { extractErrorMessage } from "@/lib/helpers";
 
 // Milestone Z.2, Part 4 — Workshops CRUD. Service locations for
@@ -79,7 +80,7 @@ export default function WorkshopsPage() {
 }
 
 function WorkshopForm({ workshop, onCancel, onSaved }: any) {
-  const [workshopCode, setWorkshopCode] = useState(workshop?.workshopCode ?? "");
+  const [codeReady, setCodeReady] = useState(false);
   const [name, setName] = useState(workshop?.name ?? "");
   const [workshopType, setWorkshopType] = useState(workshop?.workshopType ?? "INTERNAL");
   const [city, setCity] = useState(workshop?.city ?? "");
@@ -93,7 +94,7 @@ function WorkshopForm({ workshop, onCancel, onSaved }: any) {
   async function save() {
     setSubmitting(true);
     setError("");
-    const body = { workshopCode: workshopCode || undefined, name, workshopType, city, district, address, contactPhone, status };
+    const body = { name, workshopType, city, district, address, contactPhone, status };
     const res = workshop
       ? await fetch(`/api/workshops/${workshop.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/workshops", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -108,7 +109,11 @@ function WorkshopForm({ workshop, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Workshop code (optional)" value={workshopCode} onChange={(e) => setWorkshopCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
+      {workshop ? (
+        <div className="bg-paper rounded-lg px-3 py-2"><p className="text-steel text-xs">Workshop code</p><p className="font-mono text-sm">{workshop.workshopCode}</p><p className="text-steel text-[11px]">Code cannot be changed after creation.</p></div>
+      ) : (
+        <NextCodePreview entityType="WORKSHOP" label="Next workshop code" onReady={setCodeReady} />
+      )}
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={workshopType} onChange={(e) => setWorkshopType(e.target.value)}>
         <option value="INTERNAL">INTERNAL</option>
@@ -127,7 +132,7 @@ function WorkshopForm({ workshop, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || submitting || (!workshop && !codeReady)} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>

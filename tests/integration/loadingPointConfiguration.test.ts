@@ -2,11 +2,25 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
+import { ensureAllSeries } from "../helpers/testFixtures";
 import { db } from "@/lib/db/client";
 import { tenants, warehouses, inventoryItems } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
 // Task L — Loading Point / Warehouse Operational Configuration.
+import { beforeAll } from "vitest";
+
+beforeAll(async () => {
+  // Milestone AG — ensure numbering series exist for all converted entities
+  const { db } = await import("@/lib/db/client");
+  const { tenants } = await import("@/lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  for (const name of ["Demo Water Co.", "Riyadh Bulk Water Logistics", "Acme Fuel Delivery Co."]) {
+    const t = await db.query.tenants.findFirst({ where: eq(tenants.name, name) });
+    if (t) await ensureAllSeries(t.id);
+  }
+});
+
 describe("POST /api/warehouses — conditional inventory auto-creation (Task L)", () => {
   it("2. a new loading point for a tenant with zero existing inventory tracking (Riyadh Bulk Water) gets no bottle inventory forced onto it", async () => {
     const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });

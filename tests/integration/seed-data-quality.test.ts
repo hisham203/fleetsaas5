@@ -1,3 +1,4 @@
+import { ensureAllSeries } from "../helpers/testFixtures";
 import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
 
@@ -12,6 +13,14 @@ describe("seed data quality — credible demo dataset (not a regression test for
   let acmeAdminCookie: string;
 
   beforeAll(async () => {
+    // RC1: ensure CONTRACT/EXPENSE series exist so allocator doesn't return 422
+    const { tenants: tenantsT } = await import("@/lib/db/schema");
+    const { db: dbT } = await import("@/lib/db/client");
+    const { eq: eqT } = await import("drizzle-orm");
+    const waterTenant = await dbT.query.tenants.findFirst({ where: eqT(tenantsT.name, "Demo Water Co.") });
+    const acmeTenant = await dbT.query.tenants.findFirst({ where: eqT(tenantsT.name, "Acme Fuel Delivery Co.") });
+    if (waterTenant) await ensureAllSeries(waterTenant.id);
+    if (acmeTenant) await ensureAllSeries(acmeTenant.id);
     waterAdminCookie = await loginAs("admin@demo-water.co", "password123");
     acmeAdminCookie = await loginAs("admin@acme-fuel-demo.co", "password123");
   });

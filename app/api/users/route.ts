@@ -7,6 +7,7 @@ import { genId } from "@/lib/helpers";
 import { hashPassword, getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
+import { enforceRbac } from "@/lib/enforceRbac";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "users"); if (_deny) return _deny;
 
   const role = req.nextUrl.searchParams.get("role");
   const conditions = [eq(users.tenantId, tenantId), role ? eq(users.role, role) : undefined].filter(Boolean) as any[];

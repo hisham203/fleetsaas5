@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
+import { ensureAllSeries } from "../helpers/testFixtures";
 
 describe("CRUD happy paths", () => {
   let adminCookie: string;
@@ -7,6 +8,14 @@ describe("CRUD happy paths", () => {
   let tenantId: string;
 
   beforeAll(async () => {
+    // Milestone AG — ensure numbering series exist for all converted entities
+    const { db } = await import("@/lib/db/client");
+    const { tenants } = await import("@/lib/db/schema");
+    const { eq } = await import("drizzle-orm");
+    for (const name of ["Demo Water Co.", "Riyadh Bulk Water Logistics", "Acme Fuel Delivery Co."]) {
+      const t = await db.query.tenants.findFirst({ where: eq(tenants.name, name) });
+      if (t) await ensureAllSeries(t.id);
+    }
     adminCookie = await loginAs("admin@demo-water.co", "password123");
     dispatcherCookie = await loginAs("dispatch@demo-water.co", "password123");
 

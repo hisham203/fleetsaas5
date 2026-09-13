@@ -38,9 +38,10 @@ export default function SettingsPage() {
   }
 
   const otherCards = [
-    { title: "Users & Access", description: "Manage who can log in and which tenant(s) they belong to.", status: "Design pending / schema required" },
-    { title: "Roles & Permissions", description: "Dispatch Supervisor, Maintenance Team, Workshop Manager, Procurement, Inventory, and other role-based access.", status: "Design pending / schema required" },
-    { title: "Operational Settings", description: "Tenant-level configuration for dispatch, maintenance, and procurement workflows.", status: "Design pending / schema required" },
+    // Users & Access is now implemented via the separate UsersRolesSection below
+    { title: "Users & Access", description: "Manage who can log in — real implementation in this section.", status: "Active — see Roles section above" },
+    { title: "Roles & Permissions", description: "12 system roles with module-level permissions. Assign roles to users in the section above.", status: "Live — RBAC Phase 1" },
+    { title: "Operational Settings", description: "Tenant-level configuration for dispatch, maintenance, and procurement workflows.", status: "Planned — Phase 2" },
   ];
 
   return (
@@ -80,6 +81,10 @@ export default function SettingsPage() {
               </tbody>
             </table>
           </div>
+
+
+          {/* RC1 — Apply Recommended Numbering feature */}
+          <ApplyRecommendedNumbering onApplied={() => load()} />
 
           {showNew && <SeriesForm entityTypes={entityTypes} onCancel={() => setShowNew(false)} onSaved={() => { setShowNew(false); load(); }} />}
 
@@ -133,6 +138,8 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        <UsersRolesSection />
+
         <div className="grid sm:grid-cols-2 gap-4">
           {otherCards.map((c) => (
             <div key={c.title} className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
@@ -147,7 +154,116 @@ export default function SettingsPage() {
   );
 }
 
-// Milestone AE, Part 3 — a single form for both create (no series
+
+// RC1 — Users & Roles Section.
+function UsersRolesSection() {
+  const [data, setData] = useState<{ users: any[]; userRoles: any[] } | null>(null);
+  const [allRoles, setAllRoles] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    fetch("/api/user-roles").then(r => r.ok ? r.json() : null).then(d => d && setData(d)).catch(() => {});
+    fetch("/api/roles").then(r => r.ok ? r.json() : {}).then(d => setAllRoles((d as any).roles ?? [])).catch(() => {});
+  }, []);
+  async function assign(userId: string, roleId: string) {
+    setBusy(true);
+    await fetch("/api/user-roles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, roleId }) });
+    const d = await fetch("/api/user-roles").then(r => r.json());
+    setData(d); setBusy(false);
+  }
+  async function revoke(userId: string, roleId: string) {
+    setBusy(true);
+    await fetch("/api/user-roles", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, roleId }) });
+    const d = await fetch("/api/user-roles").then(r => r.json());
+    setData(d); setBusy(false);
+  }
+  if (!data) return <div className="bg-white rounded-xl border border-slate-200 p-4"><p className="text-steel text-sm">Loading users…</p></div>;
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium text-sm">Users &amp; Roles</h3>
+        <span className="text-xs text-ok bg-ok/10 rounded px-2 py-0.5">RC1 Live</span>
+      </div>
+      <p className="text-steel text-xs">Assign module-level roles to tenant users. The legacy system role (ADMIN/DISPATCHER/DRIVER) still grants full access unless you add explicit role assignments.</p>
+      <div className="space-y-2">
+        {data.users.map((u: any) => {
+          const assigned = data.userRoles.filter((ur: any) => ur.userId === u.id);
+          return (
+            <div key={u.id} className="border border-slate-100 rounded-lg p-2">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-medium">{u.name} <span className="text-steel text-xs font-normal">{u.email}</span></p>
+                <span className="text-xs text-steel bg-paper rounded px-1.5 py-0.5">{u.role}</span>
+              </div>
+              <div className="flex flex-wrap gap-1 mb-1">
+                {assigned.map((ur: any) => (
+                  <span key={ur.id} className="inline-flex items-center gap-1 text-xs bg-ink/10 rounded px-2 py-0.5">
+                    {ur.role?.label ?? ur.roleId}
+                    <button onClick={() => revoke(u.id, ur.roleId)} className="text-danger font-bold leading-none" title="Revoke">×</button>
+                  </span>
+                ))}
+                {!assigned.length && <span className="text-steel text-xs italic">No explicit roles assigned</span>}
+              </div>
+              <select disabled={busy} onChange={e => { if (e.target.value) { assign(u.id, e.target.value); (e.target as HTMLSelectElement).value = ""; } }} className="text-xs border rounded px-2 py-1 text-steel bg-white">
+                <option value="">+ Assign role…</option>
+                {allRoles.filter((r: any) => !assigned.find((ur: any) => ur.roleId === r.id)).map((r: any) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              </select>
+            </div>
+          );
+        })}
+        {!data.users.length && <p className="text-steel text-sm">No users in this tenant.</p>}
+      </div>
+    </div>
+  );
+}
+
+// RC1 — Apply Recommended Numbering: previews then creates missing standard series.
+function ApplyRecommendedNumbering({ onApplied }: { onApplied: () => void }) {
+  const [preview, setPreview] = useState<{ toCreate: any[]; alreadyConfigured: any[] } | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [done, setDone] = useState<number | null>(null);
+
+  async function load() {
+    const r = await fetch("/api/settings/numbering-apply-recommended");
+    if (r.ok) setPreview(await r.json());
+  }
+
+  async function apply() {
+    setApplying(true);
+    const r = await fetch("/api/settings/numbering-apply-recommended", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }) });
+    setApplying(false);
+    if (r.ok) { const d = await r.json(); setDone(d.created); setPreview(null); onApplied(); }
+  }
+
+  return (
+    <div className="border border-slate-100 rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-steel text-xs font-medium">Apply Recommended Smarty1 Numbering</p>
+        <button onClick={preview ? () => setPreview(null) : load} className="text-aquaDark text-xs font-medium hover:underline">
+          {preview ? "Cancel" : "Preview"}
+        </button>
+      </div>
+      {done !== null && <p className="text-ok text-xs">✓ Created {done} numbering series.</p>}
+      {preview && (
+        <div className="space-y-2">
+          {preview.toCreate.length === 0 ? (
+            <p className="text-ok text-xs">All recommended series are already configured.</p>
+          ) : (
+            <>
+              <p className="text-steel text-xs">Will create {preview.toCreate.length} missing series:</p>
+              <div className="flex flex-wrap gap-1">{preview.toCreate.map((s: any) => <span key={s.entityType} className="text-xs bg-ok/10 text-ok rounded px-2 py-0.5">{s.prefix}{s.seriesSegment}001</span>)}</div>
+              {preview.alreadyConfigured.length > 0 && <p className="text-steel text-[11px]">Already configured: {preview.alreadyConfigured.map((s: any) => s.entityType).join(", ")}</p>}
+              <button onClick={apply} disabled={applying} className="bg-ok text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
+                {applying ? "Applying…" : `Create ${preview.toCreate.length} series`}
+              </button>
+              <p className="text-steel text-[11px]">This only creates series that don&apos;t already exist. No existing series are changed.</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Milestone AE, Part 3 — a single form for both create (no series// Milestone AE, Part 3 — a single form for both create (no series
 // prop) and edit (series prop provided). entityType/seriesCode/
 // nextNumber are locked once a series exists — the edit view shows
 // them read-only rather than as editable inputs, matching the PATCH

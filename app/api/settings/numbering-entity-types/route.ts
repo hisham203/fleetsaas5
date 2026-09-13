@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionFromRequest, hasRole } from "@/lib/auth";
+import { enforceRbac } from "@/lib/enforceRbac";
+import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { NUMBERING_ENTITY_TYPES } from "@/lib/numbering";
 
 // Milestone AD — returns the static entity-type/recommended-prefix
@@ -14,5 +15,7 @@ export async function GET(req: NextRequest) {
   if (!hasRole(session, ["ADMIN"])) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "settings"); if (_deny) return _deny;
   return NextResponse.json(NUMBERING_ENTITY_TYPES);
 }

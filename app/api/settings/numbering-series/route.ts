@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { numberingSeries } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { genId } from "@/lib/helpers";
 import { NUMBERING_ENTITY_TYPES } from "@/lib/numbering";
 import { eq, and } from "drizzle-orm";
@@ -14,15 +15,23 @@ const VALID_ENTITY_TYPES = NUMBERING_ENTITY_TYPES.map((e) => e.entityType) as [s
 // Milestone AE, Part 2 — numbering series configuration. Creating a
 // series here never allocates a number itself — it only defines the
 // rules a future allocateNextNumber() call will use.
+// Milestone AF.1, Part 5 — ERP-grade series validation. entityType comes
+// only from the registry (no free text, uppercase constants), prefix is
+// 1–5 uppercase letters, segment is uppercase/digits ≤10, separator is
+// one of "", "-", "/", padding 3–10, nextNumber ≥ 1 (creation only).
+const PREFIX_RE = /^[A-Z]{1,5}$/;
+const SEGMENT_RE = /^[A-Z0-9]{1,10}$/;
+const SEPARATORS = ["", "-", "/"] as const;
+
 const createSchema = z.object({
   entityType: z.enum(VALID_ENTITY_TYPES as any),
-  seriesCode: z.string().min(1),
-  displayName: z.string().min(1),
-  prefix: z.string().min(1),
-  seriesSegment: z.string().optional(),
+  seriesCode: z.string().trim().min(1),
+  displayName: z.string().trim().min(1),
+  prefix: z.string().regex(PREFIX_RE, "Prefix must be 1–5 uppercase letters"),
+  seriesSegment: z.string().regex(SEGMENT_RE, "Segment must be uppercase letters/digits, max 10").optional().or(z.literal("").transform(() => undefined)),
   suffix: z.string().optional(),
-  separator: z.string().optional(),
-  paddingLength: z.number().int().min(1).max(10).optional(),
+  separator: z.enum(SEPARATORS).optional(),
+  paddingLength: z.number().int().min(3).max(10).optional(),
   nextNumber: z.number().int().min(1).optional(),
   resetPolicy: z.enum(["NEVER", "YEARLY", "MONTHLY"]).optional(),
   includeYear: z.boolean().optional(),
@@ -37,6 +46,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "settings"); if (_deny) return _deny;
   const status = req.nextUrl.searchParams.get("status");
 
   const conditions = [eq(numberingSeries.tenantId, tenantId), status ? eq(numberingSeries.status, status) : undefined].filter(Boolean) as any[];
@@ -69,6 +79,16 @@ export async function POST(req: NextRequest) {
   const existingSeriesCode = await db.query.numberingSeries.findFirst({ where: and(eq(numberingSeries.tenantId, tenantId), eq(numberingSeries.seriesCode, data.seriesCode)) });
   if (existingSeriesCode) {
     return NextResponse.json({ error: `A numbering series with code "${data.seriesCode}" already exists for this tenant` }, { status: 409 });
+  }
+
+  // Part 5.14 — the same effective format (prefix + segment + separator +
+  // padding) for another entity in this tenant would let two entities
+  // mint visually identical codes (the reported Workshop/Warehouse case).
+  const all = await db.query.numberingSeries.findMany({ where: eq(numberingSeries.tenantId, tenantId) });
+  const sep = data.separator ?? ""; const pad = data.paddingLength ?? 3; const seg = data.seriesSegment ?? null;
+  const clash = all.find((r) => r.prefix === data.prefix && (r.seriesSegment ?? null) === seg && r.separator === sep && r.paddingLength === pad);
+  if (clash) {
+    return NextResponse.json({ error: `This format (${data.prefix}${sep}${seg ?? ""}${sep}${"0".repeat(pad)}) is already used by the ${clash.entityType} series "${clash.displayName}"` }, { status: 409 });
   }
 
   const id = genId();

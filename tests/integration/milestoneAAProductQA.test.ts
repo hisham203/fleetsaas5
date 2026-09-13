@@ -6,6 +6,7 @@ import { db } from "@/lib/db/client";
 import { tenants, warehouses } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { genId } from "@/lib/helpers";
+import { ensureAllSeries } from "../helpers/testFixtures";
 
 // Milestone AA — Product QA, Bulk Water Corrections & Layout Consistency.
 const customersPageSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/customers/page.tsx"), "utf8");
@@ -14,6 +15,19 @@ const shellSource = () => fs.readFileSync(path.join(process.cwd(), "components/A
 const dispatchSource = () => fs.readFileSync(path.join(process.cwd(), "app/dispatch/page.tsx"), "utf8");
 const loadingPointsSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/loading-points/page.tsx"), "utf8");
 
+import { beforeAll } from "vitest";
+
+beforeAll(async () => {
+  // Milestone AG — ensure numbering series exist for all converted entities
+  const { db } = await import("@/lib/db/client");
+  const { tenants } = await import("@/lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  for (const name of ["Demo Water Co.", "Riyadh Bulk Water Logistics", "Acme Fuel Delivery Co."]) {
+    const t = await db.query.tenants.findFirst({ where: eq(tenants.name, name) });
+    if (t) await ensureAllSeries(t.id);
+  }
+});
+
 describe("Bottle terminology cleanup (Milestone AA, Parts 2/3)", () => {
   it("1. no visible customer screen label says 'Default bottle price' — relabeled as legacy fallback pricing", () => {
     expect(customersPageSource()).not.toContain("Default bottle price");
@@ -21,9 +35,10 @@ describe("Bottle terminology cleanup (Milestone AA, Parts 2/3)", () => {
     expect(customersPageSource()).toContain("Bulk water contracts should use contract pricing rules");
   });
 
-  it("2/3. Fleet add vehicle form does not say 'bottle vans'", () => {
+  it("2/3. Fleet add vehicle form does not say 'bottle vans' — and since Milestone AF.1 no longer shows 'General capacity units' either (tanker liters is the only visible capacity)", () => {
     expect(adminPageSource()).not.toContain("bottle vans");
-    expect(adminPageSource()).toContain("General capacity units");
+    expect(adminPageSource()).not.toContain("General capacity units");
+    expect(adminPageSource()).toContain("Tanker capacity (liters)");
   });
 
   it("the legacy field is now presented as a collapsible, de-emphasized section, not a primary form field", () => {
@@ -91,7 +106,7 @@ describe("Loading Points create/edit (Milestone AA, Part 5)", () => {
 
   it("16. loading point create validates required fields client-side (disabled until all are filled)", () => {
     const source = loadingPointsSource();
-    expect(source).toContain("disabled={!name || !address || !lat || !lng || submitting}");
+    expect(source).toContain("!name || !address || !lat || !lng"); // RC1: guard also includes codeReady; base conditions still present
   });
 
   it("a real loading point can be created via the existing, unmodified POST /api/warehouses", async () => {

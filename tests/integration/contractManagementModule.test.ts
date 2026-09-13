@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
+import { ensureAllSeries, cleanupAllocatedContracts } from "../helpers/testFixtures";
 import { db } from "@/lib/db/client";
 import { tenants, customers, contracts, contractPricingRules, contractSiteScope, customerLocations, distanceBands } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -85,7 +86,13 @@ describe("Contract Management module (Task I)", () => {
       const locId = genId();
       await db.insert(customerLocations).values({ id: locId, customerId: testCustomerId, label: "Test Site", address: "Test", cityCode: "RUH", zoneCode: "NORTH", distanceBandCode: "RIYADH_NEAR_15_30" });
 
-      const { POST: createContract } = await import("@/app/api/contracts/route");
+    // RC1: ensure CONTRACT series for no-fallback numbering
+  const _t = await db.query.tenants.findFirst({ where: (t, {eq}) => eq(t.name, "Riyadh Bulk Water Logistics") });
+    await cleanupAllocatedContracts(_t.id);
+  if (_t) await ensureAllSeries(_t.id);
+  const _ta = await db.query.tenants.findFirst({ where: (t, {eq}) => eq(t.name, "Acme Fuel Delivery Co.") });
+  if (_ta) await ensureAllSeries(_ta.id);
+    const { POST: createContract } = await import("@/app/api/contracts/route");
       const contract = await (await createContract(makeRequest("/api/contracts", {
         method: "POST", cookie: adminCookie,
         body: { customerId: testCustomerId, type: "ONE_TIME_TRIP_COUNT", totalTripsPurchased: 5, appliesToAllSites: false, startDate: "2026-01-01" },

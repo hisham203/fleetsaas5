@@ -77,6 +77,9 @@ export const vehicles = pgTable("vehicles", {
   tenantId: text("tenant_id").notNull(),
   plateNumber: text("plate_number").notNull(),
   vehicleType: text("vehicle_type").notNull(),
+  // Milestone AG — internal fleet code, SEPARATE from plateNumber which
+  // remains the manual legal/physical identifier.
+  vehicleCode: text("vehicle_code"),
   capacityLiters: integer("capacity_liters"),
   capacityUnits: integer("capacity_units"),
   status: text("status").notNull().default("AVAILABLE"),
@@ -84,7 +87,10 @@ export const vehicles = pgTable("vehicles", {
   licenseExpiry: timestamp("license_expiry", { mode: "date" }),
   insuranceExpiry: timestamp("insurance_expiry", { mode: "date" }),
   createdAt: createdAt(),
-});
+}, (table) => ({
+  // Milestone AG — internal fleet code, unique per tenant (NULLs allowed).
+  vehicleCodeUnique: uniqueIndex("vehicles_tenant_vehicle_code_unique").on(table.tenantId, table.vehicleCode),
+}));
 
 // ---------- BR-03: Driver Management ----------
 // status: AVAILABLE | ON_TRIP | OFF_DUTY
@@ -92,12 +98,18 @@ export const drivers = pgTable("drivers", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
   userId: text("user_id").notNull().unique(),
+  // Milestone AG — internal driver code, SEPARATE from licenseNumber
+  // which remains the manual legal identifier.
+  driverCode: text("driver_code"),
   licenseNumber: text("license_number").notNull(),
   licenseExpiry: timestamp("license_expiry", { mode: "date" }),
   phone: text("phone"),
   status: text("status").notNull().default("AVAILABLE"),
   createdAt: createdAt(),
-});
+}, (table) => ({
+  // Milestone AG — internal driver code, unique per tenant (NULLs allowed).
+  driverCodeUnique: uniqueIndex("drivers_tenant_driver_code_unique").on(table.tenantId, table.driverCode),
+}));
 
 // ---------- BR-04: Customer Management ----------
 // type: B2C | B2B
@@ -120,9 +132,17 @@ export const customers = pgTable("customers", {
   contractPricePerBottle: real("contract_price_per_bottle"),
   loginEmail: text("login_email").unique(), // APP-06: B2B portal login (nullable — B2C customers don't log in)
   passwordHash: text("password_hash"),
+  // Milestone AG — internal ERP code (system-generated, immutable).
+  // Nullable: legacy rows keep NULL and are never backfilled.
+  customerCode: text("customer_code"),
   erpExternalId: text("erp_external_id"), // BR-19: Odoo res.partner id, once synced
   createdAt: createdAt(),
-});
+}, (table) => ({
+  // Milestone AG — one internal code per tenant. Postgres permits many
+  // NULLs in a unique index, so every legacy row (code NULL) coexists
+  // freely; no partial index needed and no backfill implied.
+  customerCodeUnique: uniqueIndex("customers_tenant_customer_code_unique").on(table.tenantId, table.customerCode),
+}));
 
 export const subscriptions = pgTable("subscriptions", {
   id: text("id").primaryKey(),
@@ -154,11 +174,24 @@ export const customerLocations = pgTable("customer_locations", {
   // free text and not computed live from lat/lng — see the Contract
   // Management Schema Design docs for why. All nullable: assigning these is
   // out of scope for A1, and every existing site has none of them today.
+  // Milestone AG — internal site code. NOTE: customer_locations has no
+  // tenantId column (it is scoped through customerId), so a tenant-scoped
+  // unique index is not expressible here; uniqueness per tenant is
+  // guaranteed upstream by numbering_sequence_ledger's own
+  // unique(tenantId, entityType, generatedNumber).
+  siteCode: text("site_code"),
   cityCode: text("city_code"),
   zoneCode: text("zone_code"),
   distanceBandCode: text("distance_band_code"),
   createdAt: createdAt(),
-});
+}, (table) => ({
+  // Milestone AG — plain index only: this table has no tenantId, so a
+  // tenant-scoped unique index cannot be expressed. Per-tenant uniqueness
+  // is already guaranteed by numbering_sequence_ledger's
+  // unique(tenantId, entityType, generatedNumber) — the allocator can
+  // never hand the same S-code to one tenant twice.
+  siteCodeIdx: index("customer_locations_site_code_idx").on(table.siteCode),
+}));
 
 // ---------- BR-05: Order Management ----------
 // type: ONE_TIME | SUBSCRIPTION
@@ -1279,9 +1312,15 @@ export const warehouses = pgTable("warehouses", {
   address: text("address").notNull(),
   lat: real("lat").notNull(),
   lng: real("lng").notNull(),
+  // Milestone AG — internal loading point code (warehouses IS the
+  // loading-point table; maintenance stock lives in maintenanceWarehouses).
+  loadingPointCode: text("loading_point_code"),
   isDefault: boolean("is_default").notNull().default(false),
   createdAt: createdAt(),
-});
+}, (table) => ({
+  // Milestone AG — internal loading point code, unique per tenant (NULLs allowed).
+  loadingPointCodeUnique: uniqueIndex("warehouses_tenant_loading_point_code_unique").on(table.tenantId, table.loadingPointCode),
+}));
 
 // ---------- BR-09: Warehouse & Loading / Inventory ----------
 export const inventoryItems = pgTable("inventory_items", {
@@ -1491,6 +1530,7 @@ export const tasks = pgTable("tasks", {
 export const expenseClaims = pgTable("expense_claims", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
+  expenseRef: text("expense_ref"), // RC1: ERP-style stored number (system-generated)
   driverId: text("driver_id").notNull(),
   vehicleId: text("vehicle_id").notNull(),
   tripId: text("trip_id"),
@@ -1594,6 +1634,68 @@ export const platformAdminTenantGrantsRelations = relations(platformAdminTenantG
   tenant: one(tenants, { fields: [platformAdminTenantGrants.tenantId], references: [tenants.id] }),
 }));
 
+
+// RC1 — Phase 1 RBAC foundation. Simple module-level roles and permissions.
+// No field-level ACL — module boundaries are sufficient for Phase 1 ops.
+export const roles = pgTable("roles", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id"), // null = platform-wide role; non-null = tenant-specific
+  name: text("name").notNull(), // e.g. "TENANT_ADMIN", "DISPATCHER", "DRIVER"
+  label: text("label").notNull(),
+  description: text("description"),
+  isSystemRole: boolean("is_system_role").default(false).notNull(),
+  createdAt: createdAt(),
+}, (table) => ({
+  tenantIdx: index("roles_tenant_idx").on(table.tenantId),
+  nameIdx: index("roles_name_idx").on(table.name),
+}));
+
+export const permissions = pgTable("permissions", {
+  id: text("id").primaryKey(),
+  module: text("module").notNull(),    // e.g. "dispatch", "procurement", "maintenance"
+  action: text("action").notNull(),    // e.g. "read", "write", "admin"
+  description: text("description"),
+}, (table) => ({
+  moduleActionIdx: uniqueIndex("permissions_module_action_unique").on(table.module, table.action),
+}));
+
+export const rolePermissions = pgTable("role_permissions", {
+  id: text("id").primaryKey(),
+  roleId: text("role_id").notNull(),
+  permissionId: text("permission_id").notNull(),
+}, (table) => ({
+  uniqueIdx: uniqueIndex("role_permissions_unique").on(table.roleId, table.permissionId),
+}));
+
+export const userRoles = pgTable("user_roles", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  roleId: text("role_id").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  grantedAt: createdAt(),
+}, (table) => ({
+  userTenantIdx: index("user_roles_user_tenant_idx").on(table.userId, table.tenantId),
+  uniqueIdx: uniqueIndex("user_roles_unique").on(table.userId, table.roleId, table.tenantId),
+}));
+
+export const rolesRelations = relations(roles, ({ many }) => ({
+  rolePermissions: many(rolePermissions),
+  userRoles: many(userRoles),
+}));
+
+export const permissionsRelations = relations(permissions, ({ many }) => ({
+  rolePermissions: many(rolePermissions),
+}));
+
+export const rolePermissionsRelations = relations(rolePermissions, ({ one }) => ({
+  role: one(roles, { fields: [rolePermissions.roleId], references: [roles.id] }),
+  permission: one(permissions, { fields: [rolePermissions.permissionId], references: [permissions.id] }),
+}));
+
+export const userRolesRelations = relations(userRoles, ({ one }) => ({
+  user: one(users, { fields: [userRoles.userId], references: [users.id] }),
+  role: one(roles, { fields: [userRoles.roleId], references: [roles.id] }),
+}));
 export const customersRelations = relations(customers, ({ one, many }) => ({
   tenant: one(tenants, { fields: [customers.tenantId], references: [tenants.id] }),
   subscriptions: many(subscriptions),
@@ -1661,6 +1763,39 @@ export const tripStopsRelations = relations(tripStops, ({ one }) => ({
   order: one(orders, { fields: [tripStops.orderId], references: [orders.id] }),
   epod: one(epods, { fields: [tripStops.id], references: [epods.tripStopId] }),
 }));
+
+// RC1 — Trip Lifecycle Events: persisted operational event log for the
+// six-stage driver flow. Added around (not replacing) existing W/P.2
+// protected billing/POD logic.
+export const tripLifecycleEvents = pgTable(
+  "trip_lifecycle_events",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    tripId: text("trip_id").notNull(),
+    eventType: text("event_type").notNull(),
+    actorUserId: text("actor_user_id"),
+    driverId: text("driver_id"),
+    lat: real("lat"),
+    lng: real("lng"),
+    notes: text("notes"),
+    loadedLiters: real("loaded_liters"),
+    deliveredLiters: real("delivered_liters"),
+    stopId: text("stop_id"),
+    createdAt: createdAt(),
+  },
+  (table) => ({
+    tenantIdx: index("trip_lifecycle_events_tenant_idx").on(table.tenantId),
+    tripIdx: index("trip_lifecycle_events_trip_idx").on(table.tenantId, table.tripId),
+    typeIdx: index("trip_lifecycle_events_type_idx").on(table.tenantId, table.eventType),
+  })
+);
+
+export const tripLifecycleEventsRelations = relations(tripLifecycleEvents, ({ one }) => ({
+  trip: one(trips, { fields: [tripLifecycleEvents.tripId], references: [trips.id] }),
+  tenant: one(tenants, { fields: [tripLifecycleEvents.tenantId], references: [tenants.id] }),
+}));
+
 
 // BR-11: lets the Exception Center pull the order/customer and
 // trip/driver/vehicle context in one query rather than the API route

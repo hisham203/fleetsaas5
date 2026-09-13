@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import NextCodePreview from "@/components/NextCodePreview";
 import { computeSiteReadinessItems, type SiteReadinessState } from "@/lib/siteReadiness";
 
 // Task K — Customer & Site Configuration, its own standalone module
@@ -222,6 +223,7 @@ function NewCustomerButton({ onCreated }: { onCreated: (id: string) => void }) {
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [codeReady, setCodeReady] = useState(false);
 
   async function submit() {
     setBusy(true);
@@ -255,6 +257,7 @@ function NewCustomerButton({ onCreated }: { onCreated: (id: string) => void }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 w-72 shrink-0">
       <p className="font-medium text-sm">New customer</p>
+      <NextCodePreview entityType="CUSTOMER" label="Customer internal code" onReady={setCodeReady} />
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={type} onChange={(e) => setType(e.target.value as "B2C" | "B2B")}>
         <option value="B2B">B2B</option>
@@ -264,7 +267,7 @@ function NewCustomerButton({ onCreated }: { onCreated: (id: string) => void }) {
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!name || !address || busy} onClick={submit} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
+        <button disabled={!name || !address || !codeReady || busy} onClick={submit} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
           Create
         </button>
         <button onClick={() => setOpen(false)} className="text-steel text-xs">Cancel</button>
@@ -333,6 +336,14 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
           <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" />
+          {/* Milestone AG.1 — customerCode is system-generated and immutable */}
+          <div className="bg-paper rounded-lg px-3 py-2">
+            <p className="text-steel text-xs">Customer internal code</p>
+            {customer.customerCode
+              ? <p className="font-mono font-medium text-sm">{customer.customerCode}</p>
+              : <p className="text-steel text-xs italic">Legacy — no internal code</p>}
+            {customer.customerCode && <p className="text-steel text-[11px] mt-0.5">Code cannot be changed after creation.</p>}
+          </div>
           <details className="border border-slate-100 rounded-lg px-2 py-1.5">
             <summary className="text-steel text-xs cursor-pointer">Legacy fallback pricing</summary>
             <div className="mt-2">
@@ -457,6 +468,7 @@ function CustomerSitesPanel({ customer, contracts, distanceBands, isAdmin }: { c
   const [lng, setLng] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [siteCodeReady, setSiteCodeReady] = useState(false);
 
   const activeBands = distanceBands.filter((b) => b.isActive);
 
@@ -599,6 +611,10 @@ function CustomerSitesPanel({ customer, contracts, distanceBands, isAdmin }: { c
       <div>
         <p className="font-medium">{customer.name}</p>
         <p className="text-steel text-xs">{customer.type} · {customer.phone ?? customer.loginEmail ?? "no contact on file"}</p>
+        {/* Milestone AG.1 — show internal code; legacy records show a soft indicator */}
+        {customer.customerCode
+          ? <p className="text-steel text-[11px] font-mono">{customer.customerCode}</p>
+          : <p className="text-steel text-[11px] italic">Legacy — no internal code</p>}
       </div>
 
       <div>
@@ -613,6 +629,10 @@ function CustomerSitesPanel({ customer, contracts, distanceBands, isAdmin }: { c
               <div key={s.id} className="border border-slate-100 rounded-lg p-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{s.label}</span>
+                  {/* Milestone AG.1 — internal site code display */}
+                  {s.siteCode
+                    ? <span className="text-steel text-[11px] font-mono ml-1">· {s.siteCode}</span>
+                    : <span className="text-steel text-[11px] italic ml-1">· Legacy</span>}
                   <div className="flex items-center gap-2">
                     <SiteReadinessBadges site={s} />
                     {editingSiteId !== s.id && (
@@ -699,6 +719,9 @@ function CustomerSitesPanel({ customer, contracts, distanceBands, isAdmin }: { c
 
       {showForm && (
         <div className="space-y-2 border border-slate-100 rounded-lg p-3">
+          {/* Milestone AG.1 — site code preview; note: cityCode/zoneCode are
+              classifiers, NOT the site's internal ERP code */}
+          <NextCodePreview entityType="CUSTOMER_SITE" label="Site internal code" onReady={setSiteCodeReady} />
           <input className="w-full border rounded-lg px-2 py-1 text-xs" placeholder="Site name" value={label} onChange={(e) => setLabel(e.target.value)} />
           <input className="w-full border rounded-lg px-2 py-1 text-xs" placeholder="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
           {isAdmin ? (
@@ -727,7 +750,7 @@ function CustomerSitesPanel({ customer, contracts, distanceBands, isAdmin }: { c
             <input type="number" step="0.0001" className="w-1/2 border rounded-lg px-2 py-1 text-xs" placeholder="Longitude (optional)" value={lng} onChange={(e) => setLng(e.target.value)} />
           </div>
           {error && <p className="text-danger text-xs">{error}</p>}
-          <button disabled={!label || !address || busy} onClick={addSite} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
+          <button disabled={!label || !address || !siteCodeReady || busy} onClick={addSite} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
             Create site
           </button>
         </div>

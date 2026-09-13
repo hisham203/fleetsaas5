@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
+import { ensureAllSeries } from "../helpers/testFixtures";
 import { db } from "@/lib/db/client";
 import { tenants, customers, contracts, contractPricingRules } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -10,6 +11,19 @@ import { genId } from "@/lib/helpers";
 // Milestone U — Contract Lifecycle & Demand Generation (no-schema work).
 const customersSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/customers/page.tsx"), "utf8");
 const contractsSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/contracts/page.tsx"), "utf8");
+
+import { beforeAll } from "vitest";
+
+beforeAll(async () => {
+  // Milestone AG — ensure numbering series exist for all converted entities
+  const { db } = await import("@/lib/db/client");
+  const { tenants } = await import("@/lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  for (const name of ["Demo Water Co.", "Riyadh Bulk Water Logistics", "Acme Fuel Delivery Co."]) {
+    const t = await db.query.tenants.findFirst({ where: eq(tenants.name, name) });
+    if (t) await ensureAllSeries(t.id);
+  }
+});
 
 describe("Customer creation and editing (Milestone U, Part 3)", () => {
   it("1/2/3. POST /api/customers creates a real, tenant-scoped customer with required-field validation", async () => {

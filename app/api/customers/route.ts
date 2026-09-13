@@ -4,9 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { customers } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
+import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -49,6 +51,7 @@ const SAFE_CUSTOMER_LIST_COLUMNS = {
   contractPricePerBottle: true,
   loginEmail: true,
   createdAt: true,
+  customerCode: true, // Milestone AG — internal code, safe to expose
 } as const;
 
 // Tenant scope always comes from the session, never a client-supplied
@@ -59,6 +62,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "customers"); if (_deny) return _deny;
 
   const rows = await db.query.customers.findMany({
     where: eq(customers.tenantId, tenantId),
@@ -82,7 +86,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   const id = genId();
-  await db.insert(customers).values({ id, tenantId, ...parsed.data });
+  // Milestone AG — internal code: system-generated, immutable, and
+  // entirely separate from any legal identifier on this record.
+  const resolvedCode = await resolveEntityCode({
+    tenantId, entityType: "CUSTOMER", entityLabel: "customer", codeLabel: "customer code",
+    provided: (body as any)?.customerCode,
+  });
+  if (!resolvedCode.ok) return NextResponse.json({ error: resolvedCode.error }, { status: resolvedCode.status });
+
+  await db.insert(customers).values({ customerCode: resolvedCode.code, id, tenantId, ...parsed.data });
+  await linkLedgerToRecord({ tenantId, seriesId: resolvedCode.seriesId, generatedNumber: resolvedCode.code, referenceTable: "customers", referenceId: id });
+
   const created = await db.query.customers.findFirst({ where: eq(customers.id, id), columns: SAFE_CUSTOMER_LIST_COLUMNS });
   return NextResponse.json(created, { status: 201 });
 }

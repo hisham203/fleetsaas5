@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
 import { contracts, contractPricingRules, customerLocations, customers, invoices } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
 import { eq } from "drizzle-orm";
-import { createIsolatedDriverAndVehicle } from "../helpers/testFixtures";
+import { createIsolatedDriverAndVehicle, ensureAllSeries, cleanupAllocatedContracts } from "../helpers/testFixtures";
 
 // Task E.1 — Billing Reporting & Invoice Path Reconciliation Audit. Tests
 // only the real bug found (a passwordHash exposure the S1/S2 sweep
@@ -13,6 +13,8 @@ import { createIsolatedDriverAndVehicle } from "../helpers/testFixtures";
 // invoice paths correctly" guarantees: no double-counting in scorecards
 // or the Executive Dashboard when both invoice types genuinely coexist
 // for the same tenant/driver.
+beforeAll(async () => { await cleanupAllocatedContracts(); });
+
 describe("Billing reconciliation audit (Task E.1)", () => {
   it("1. customer statement never exposes passwordHash, even though it fetches the customer directly (not via an embed)", async () => {
     const jarirPortalCookie = await loginAs("portal@jarir-demo.co", "password123");

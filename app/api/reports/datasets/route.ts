@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionFromRequest, hasRole } from "@/lib/auth";
+import { enforceRbac } from "@/lib/enforceRbac";
+import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { DATASETS } from "@/lib/reportDatasets";
 
 export async function GET(req: NextRequest) {
@@ -9,5 +10,7 @@ export async function GET(req: NextRequest) {
   if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "reports"); if (_deny) return _deny;
   return NextResponse.json(Object.values(DATASETS));
 }

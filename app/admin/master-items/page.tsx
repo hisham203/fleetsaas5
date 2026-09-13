@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
 import { useRequireSession } from "@/lib/useSession";
+import NextCodePreview from "@/components/NextCodePreview";
 import { extractErrorMessage } from "@/lib/helpers";
 
 const ITEM_TYPES = ["SPARE_PART", "TIRE", "LUBRICANT", "CONSUMABLE", "TOOL", "SAFETY", "OTHER"];
@@ -111,7 +112,7 @@ function GroupsTab({ groups, onChange }: any) {
 }
 
 function GroupForm({ group, onCancel, onSaved }: any) {
-  const [code, setCode] = useState(group?.code ?? "");
+  const [codeReady, setCodeReady] = useState(false);
   const [name, setName] = useState(group?.name ?? "");
   const [status, setStatus] = useState(group?.status ?? "ACTIVE");
   const [error, setError] = useState("");
@@ -121,8 +122,8 @@ function GroupForm({ group, onCancel, onSaved }: any) {
     setSubmitting(true);
     setError("");
     const res = group
-      ? await fetch(`/api/item-groups/${group.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, name, status }) })
-      : await fetch("/api/item-groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, name, status }) });
+      ? await fetch(`/api/item-groups/${group.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, status }) })
+      : await fetch("/api/item-groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, status }) });
     setSubmitting(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -134,7 +135,11 @@ function GroupForm({ group, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code (optional)" value={code} onChange={(e) => setCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
+      {group ? (
+        <div className="bg-paper rounded-lg px-3 py-2"><p className="text-steel text-xs">Code</p><p className="font-mono text-sm">{group.code}</p><p className="text-steel text-[11px]">Code cannot be changed after creation.</p></div>
+      ) : (
+        <NextCodePreview entityType="ITEM_GROUP" label="Next item group code" onReady={setCodeReady} />
+      )}
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
         <option value="ACTIVE">ACTIVE</option>
@@ -142,7 +147,7 @@ function GroupForm({ group, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || submitting || (!group && !codeReady)} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>
@@ -186,7 +191,7 @@ function CategoriesTab({ categories, groups, onChange }: any) {
 }
 
 function CategoryForm({ category, groups, onCancel, onSaved }: any) {
-  const [code, setCode] = useState(category?.code ?? "");
+  const [codeReady, setCodeReady] = useState(false);
   const [name, setName] = useState(category?.name ?? "");
   const [itemGroupId, setItemGroupId] = useState(category?.itemGroupId ?? "");
   const [status, setStatus] = useState(category?.status ?? "ACTIVE");
@@ -196,7 +201,7 @@ function CategoryForm({ category, groups, onCancel, onSaved }: any) {
   async function save() {
     setSubmitting(true);
     setError("");
-    const body = { code: code || undefined, name, status, itemGroupId: itemGroupId || null };
+    const body = { name, status, itemGroupId: itemGroupId || null };
     const res = category
       ? await fetch(`/api/item-categories/${category.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/item-categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -211,7 +216,11 @@ function CategoryForm({ category, groups, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code (optional)" value={code} onChange={(e) => setCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
+      {category ? (
+        <div className="bg-paper rounded-lg px-3 py-2"><p className="text-steel text-xs">Code</p><p className="font-mono text-sm">{category.code}</p><p className="text-steel text-[11px]">Code cannot be changed after creation.</p></div>
+      ) : (
+        <NextCodePreview entityType="ITEM_CATEGORY" label="Next category code" onReady={setCodeReady} />
+      )}
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={itemGroupId} onChange={(e) => setItemGroupId(e.target.value)}>
         <option value="">No group</option>
@@ -223,7 +232,7 @@ function CategoryForm({ category, groups, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!name || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || submitting || (!category && !codeReady)} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>
@@ -267,7 +276,7 @@ function SubcategoriesTab({ subcategories, categories, onChange }: any) {
 }
 
 function SubcategoryForm({ subcategory, categories, onCancel, onSaved }: any) {
-  const [code, setCode] = useState(subcategory?.code ?? "");
+  const [codeReady, setCodeReady] = useState(false);
   const [name, setName] = useState(subcategory?.name ?? "");
   const [categoryId, setCategoryId] = useState(subcategory?.categoryId ?? "");
   const [status, setStatus] = useState(subcategory?.status ?? "ACTIVE");
@@ -277,7 +286,7 @@ function SubcategoryForm({ subcategory, categories, onCancel, onSaved }: any) {
   async function save() {
     setSubmitting(true);
     setError("");
-    const body = { code: code || undefined, name, status, categoryId };
+    const body = { name, status, categoryId };
     const res = subcategory
       ? await fetch(`/api/item-subcategories/${subcategory.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       : await fetch("/api/item-subcategories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -292,7 +301,11 @@ function SubcategoryForm({ subcategory, categories, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Code (optional)" value={code} onChange={(e) => setCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
+      {subcategory ? (
+        <div className="bg-paper rounded-lg px-3 py-2"><p className="text-steel text-xs">Code</p><p className="font-mono text-sm">{subcategory.code}</p><p className="text-steel text-[11px]">Code cannot be changed after creation.</p></div>
+      ) : (
+        <NextCodePreview entityType="ITEM_SUBCATEGORY" label="Next sub-category code" onReady={setCodeReady} />
+      )}
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
         <option value="">Select a category</option>
@@ -304,7 +317,7 @@ function SubcategoryForm({ subcategory, categories, onCancel, onSaved }: any) {
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!name || !categoryId || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || !categoryId || submitting || (!subcategory && !codeReady)} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>
@@ -350,7 +363,7 @@ function ItemsTab({ items, categories, subcategories, groups, onChange }: any) {
 }
 
 function ItemForm({ item, categories, subcategories, groups, onCancel, onSaved }: any) {
-  const [itemCode, setItemCode] = useState(item?.itemCode ?? "");
+  const [codeReady, setCodeReady] = useState(false);
   const [name, setName] = useState(item?.name ?? "");
   const [categoryId, setCategoryId] = useState(item?.categoryId ?? "");
   const [subCategoryId, setSubCategoryId] = useState(item?.subCategoryId ?? "");
@@ -371,7 +384,7 @@ function ItemForm({ item, categories, subcategories, groups, onCancel, onSaved }
     setSubmitting(true);
     setError("");
     const body = {
-      itemCode: itemCode || undefined, name, categoryId, itemType, unitOfMeasure, isStocked, isSerialized, isTire, brand, status,
+      name, categoryId, itemType, unitOfMeasure, isStocked, isSerialized, isTire, brand, status,
       subCategoryId: subCategoryId || null,
       itemGroupId: itemGroupId || null,
     };
@@ -389,7 +402,11 @@ function ItemForm({ item, categories, subcategories, groups, onCancel, onSaved }
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-lg">
-      <div><input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Item code (optional)" value={itemCode} onChange={(e) => setItemCode(e.target.value)} /><p className="text-steel text-xs mt-0.5">Leave blank to auto-generate from Settings numbering series.</p></div>
+      {item ? (
+        <div className="bg-paper rounded-lg px-3 py-2"><p className="text-steel text-xs">Item code</p><p className="font-mono text-sm">{item.itemCode}</p><p className="text-steel text-[11px]">Code cannot be changed after creation.</p></div>
+      ) : (
+        <NextCodePreview entityType="ITEM" label="Next item code" onReady={setCodeReady} />
+      )}
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <div className="grid grid-cols-2 gap-2">
         <select className="border rounded-lg px-2 py-1.5 text-sm" value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubCategoryId(""); }}>
@@ -425,7 +442,7 @@ function ItemForm({ item, categories, subcategories, groups, onCancel, onSaved }
       </select>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!name || !categoryId || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
+        <button disabled={!name || !categoryId || submitting || (!item && !codeReady)} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Save</button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>
       </div>
     </div>

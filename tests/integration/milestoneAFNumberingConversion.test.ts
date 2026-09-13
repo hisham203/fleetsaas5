@@ -6,7 +6,7 @@ import { db } from "@/lib/db/client";
 import { tenants, numberingSeries, numberingSequenceLedger, itemCategories, itemSubcategories } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { genId } from "@/lib/helpers";
-import { validateBusinessCode } from "@/lib/businessCodes";
+import { validateBusinessCode, MANUAL_CODE_REJECTED, CODE_IMMUTABLE, NO_ACTIVE_SERIES } from "@/lib/businessCodes";
 import { NUMBERING_ENTITY_TYPES, CODE_FIELD_ENTITY_MAP } from "@/lib/numberingFormat";
 
 // Milestone AF — Platform-Wide Numbering Conversion for Core Master Data.
@@ -32,24 +32,22 @@ async function ledgerCount(tenantId: string, entityType: string) {
 }
 
 describe("Supplier production bug (Part 10, items 1-7)", () => {
-  it("4/5. manual supplierCode 'V' and 'AB' are rejected as prefix-not-a-code", async () => {
+  it("4/5 (AF.1). any manual supplierCode — 'V', 'AB' or a well-formed one — is rejected: codes are system-generated", async () => {
     const cookie = await acmeAdmin();
     const { POST } = await import("@/app/api/suppliers/route");
-    for (const bad of ["V", "AB"]) {
+    for (const bad of ["V", "AB", "SUP-001"]) {
       const res = await POST(makeRequest("/api/suppliers", { method: "POST", cookie, body: { supplierCode: bad, name: "Bad Code Co" } }));
       expect(res.status).toBe(400);
-      expect((await res.json()).error).toContain("at least 3 characters");
+      expect((await res.json()).error).toBe(MANUAL_CODE_REJECTED);
     }
   });
 
-  it("6/7. manual supplierCode '015' accepted, leading zero preserved, no ledger row written", async () => {
+  it("6/7 (AF.1). manual '015' is rejected for suppliers and never writes a ledger row (legacy '015' rows stay readable but immutable)", async () => {
     const t = await acme(); const cookie = await acmeAdmin();
     const before = await ledgerCount(t.id, "SUPPLIER");
     const { POST } = await import("@/app/api/suppliers/route");
-    const code = `015${genId().slice(0, 3)}`; // unique but leading-zero bearing
-    const res = await POST(makeRequest("/api/suppliers", { method: "POST", cookie, body: { supplierCode: code, name: "Manual Co" } }));
-    expect(res.status).toBe(201);
-    expect((await res.json()).supplierCode).toBe(code);
+    const res = await POST(makeRequest("/api/suppliers", { method: "POST", cookie, body: { supplierCode: "015", name: "Manual Co" } }));
+    expect(res.status).toBe(400);
     expect(await ledgerCount(t.id, "SUPPLIER")).toBe(before);
   });
 
@@ -70,12 +68,13 @@ describe("Supplier production bug (Part 10, items 1-7)", () => {
   it("3. blank supplierCode with no active SUPPLIER series returns the clear, actionable 400 (Demo tenant: no SUPPLIER series is ever created for it by any test)", async () => {
     const d = await demo();
     const existing = await db.query.numberingSeries.findFirst({ where: and(eq(numberingSeries.tenantId, d.id), eq(numberingSeries.entityType, "SUPPLIER")) });
-    expect(existing).toBeFalsy(); // guards the assumption instead of mutating shared state
+    if (existing) await db.update(numberingSeries).set({ status: "INACTIVE" }).where(eq(numberingSeries.id, existing.id));
     const cookie = await loginAs("admin@demo-water.co", "password123");
     const { POST } = await import("@/app/api/suppliers/route");
     const res = await POST(makeRequest("/api/suppliers", { method: "POST", cookie, body: { name: "No Series Co" } }));
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("Configure an active Supplier numbering series in Settings, or enter a valid supplier code.");
+    expect((await res.json()).error).toBe(NO_ACTIVE_SERIES); // AF.1 wording
+    if (existing) await db.update(numberingSeries).set({ status: "ACTIVE" }).where(eq(numberingSeries.id, existing.id));
   });
 });
 
@@ -114,30 +113,30 @@ describe("Z.2 master data conversion (Part 10, items 17-29)", () => {
     expect(await ledgerCount(t.id, c.entityType)).toBe(before + 1);
   });
 
-  it.each(cases)("23/24/26. $label: valid manual code preserved without ledger; weak manual code rejected", async (c) => {
+  it.each(cases)("23/24/26 (AF.1). $label: any manual code is rejected and nothing is allocated or ledgered", async (c) => {
     const t = await acme(); const cookie = await acmeAdmin();
     const before = await ledgerCount(t.id, c.entityType);
     const mod = await import(`@/app/api/${c.route}/route`);
-    const good = `M-${genId().slice(0, 6)}`;
-    const ok = await mod.POST(makeRequest(`/api/${c.route}`, { method: "POST", cookie, body: { ...(await c.body(t.id)), [c.codeField]: good } }));
-    expect(ok.status).toBe(201);
-    expect((await ok.json())[c.codeField]).toBe(good);
+    for (const code of [`M-${genId().slice(0, 6)}`, "AB"]) {
+      const res = await mod.POST(makeRequest(`/api/${c.route}`, { method: "POST", cookie, body: { ...(await c.body(t.id)), [c.codeField]: code } }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe(MANUAL_CODE_REJECTED);
+    }
     expect(await ledgerCount(t.id, c.entityType)).toBe(before);
-    const weak = await mod.POST(makeRequest(`/api/${c.route}`, { method: "POST", cookie, body: { ...(await c.body(t.id)), [c.codeField]: "AB" } }));
-    expect(weak.status).toBe(400);
   });
 
-  it("25. PATCH validates a changed manual code and never allocates", async () => {
+  it("25 (AF.1). PATCH refuses any code change and never allocates", async () => {
     const t = await acme(); const cookie = await acmeAdmin();
     await ensureSeries(t.id, "WORKSHOP", "W");
     const { POST } = await import("@/app/api/workshops/route");
     const created = await (await POST(makeRequest("/api/workshops", { method: "POST", cookie, body: { name: "P" } }))).json();
     const before = await ledgerCount(t.id, "WORKSHOP");
     const { PATCH } = await import("@/app/api/workshops/[id]/route");
-    const weak = await PATCH(makeRequest(`/api/workshops/${created.id}`, { method: "PATCH", cookie, body: { workshopCode: "X" } }), { params: Promise.resolve({ id: created.id }) } as any);
-    expect(weak.status).toBe(400);
-    const good = await PATCH(makeRequest(`/api/workshops/${created.id}`, { method: "PATCH", cookie, body: { workshopCode: `R-${genId().slice(0, 6)}` } }), { params: Promise.resolve({ id: created.id }) } as any);
-    expect(good.status).toBe(200);
+    for (const code of ["X", `R-${genId().slice(0, 6)}`]) {
+      const res = await PATCH(makeRequest(`/api/workshops/${created.id}`, { method: "PATCH", cookie, body: { workshopCode: code } }), { params: Promise.resolve({ id: created.id }) } as any);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe(CODE_IMMUTABLE);
+    }
     expect(await ledgerCount(t.id, "WORKSHOP")).toBe(before);
   });
 
@@ -149,12 +148,22 @@ describe("Z.2 master data conversion (Part 10, items 17-29)", () => {
     expect(new Set(rows.map((r) => r.code)).size).toBe(15);
   });
 
-  it("28/29. cross-tenant isolation: same manual code allowed in different tenants; Demo cannot see Riyadh's series", async () => {
-    const rCookie = await admin(); const dCookie = await loginAs("admin@demo-water.co", "password123");
-    const { POST } = await import("@/app/api/workshops/route");
-    const code = `SHARED-${genId().slice(0, 6)}`;
-    expect((await POST(makeRequest("/api/workshops", { method: "POST", cookie: rCookie, body: { workshopCode: code, name: "R" } }))).status).toBe(201);
-    expect((await POST(makeRequest("/api/workshops", { method: "POST", cookie: dCookie, body: { workshopCode: code, name: "D" } }))).status).toBe(201);
+  it("28/29 (AF.1). cross-tenant isolation: a tenant allocates only from its OWN series — a series on one tenant never satisfies another", async () => {
+    // Self-contained negative case: MAINTENANCE_WAREHOUSE is given an
+    // active series on ACME only. Relying on "Demo happens to have no
+    // WORKSHOP series" was wrong — AE legitimately creates one for Demo
+    // to prove seriesCode is reusable across tenants.
+    const t = await acme(); const aCookie = await acmeAdmin(); const dCookie = await loginAs("admin@demo-water.co", "password123");
+    const d = await demo();
+    await ensureSeries(t.id, "MAINTENANCE_WAREHOUSE", "WH");
+    const demoSeries = await db.query.numberingSeries.findFirst({ where: and(eq(numberingSeries.tenantId, d.id), eq(numberingSeries.entityType, "MAINTENANCE_WAREHOUSE")) });
+    if (demoSeries) await db.update(numberingSeries).set({ status: "INACTIVE" }).where(eq(numberingSeries.id, demoSeries.id)); // temporarily deactivate
+    const { POST } = await import("@/app/api/maintenance-warehouses/route");
+    expect((await POST(makeRequest("/api/maintenance-warehouses", { method: "POST", cookie: aCookie, body: { name: "A" } }))).status).toBe(201);
+    const dRes = await POST(makeRequest("/api/maintenance-warehouses", { method: "POST", cookie: dCookie, body: { name: "D" } }));
+    expect(dRes.status).toBe(400);
+    expect((await dRes.json()).error).toBe(NO_ACTIVE_SERIES);
+    if (demoSeries) await db.update(numberingSeries).set({ status: "ACTIVE" }).where(eq(numberingSeries.id, demoSeries.id));
   });
 });
 
@@ -162,30 +171,34 @@ describe("Core master data audit decisions (Part 10, items 30-35)", () => {
   const schema = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
   const col = (table: string) => schema.slice(schema.indexOf(`export const ${table} = pgTable(`), schema.indexOf("(table) =>", schema.indexOf(`export const ${table} = pgTable(`)));
 
-  it("30/31. customers and customer_locations have no code column — mapped as schema-gap, not converted", () => {
-    expect(col("customers")).not.toMatch(/customer_code|customerCode/);
-    expect(col("customerLocations")).not.toMatch(/site_code|siteCode/);
-    expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "CUSTOMER")?.status).toBe("schema-gap");
-    expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "CUSTOMER_SITE")?.status).toBe("schema-gap");
+  it("30/31 (AG). customers.customerCode and customerLocations.siteCode now exist — converted, not schema-gap", () => {
+    expect(col("customers")).toMatch(/customer_code|customerCode/);
+    expect(col("customerLocations")).toMatch(/site_code|siteCode/);
+    expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "CUSTOMER")?.status).toBe("converted");
+    expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "CUSTOMER_SITE")?.status).toBe("converted");
   });
 
-  it("32/33. plate number and license number are legal identifiers: still manual, still required, never routed to the allocator", () => {
+  it("32/33 (AG). plate/license stay manual and required; vehicleCode/driverCode are now system-generated via resolveEntityCode — all converted", () => {
     expect(col("vehicles")).toContain('plateNumber: text("plate_number").notNull()');
     expect(col("drivers")).toContain('licenseNumber: text("license_number").notNull()');
+    expect(col("vehicles")).toMatch(/vehicle_code|vehicleCode/);
+    expect(col("drivers")).toMatch(/driver_code|driverCode/);
     const v = fs.readFileSync(path.join(process.cwd(), "app/api/vehicles/route.ts"), "utf8");
     const d = fs.readFileSync(path.join(process.cwd(), "app/api/drivers/route.ts"), "utf8");
-    expect(v).not.toContain("allocateNextNumber"); expect(v).not.toContain("resolveEntityCode");
-    expect(d).not.toContain("allocateNextNumber"); expect(d).not.toContain("resolveEntityCode");
-    expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "VEHICLE")?.status).toBe("schema-gap");
-    expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "DRIVER")?.status).toBe("schema-gap");
+    expect(v).toContain("resolveEntityCode");
+    expect(d).toContain("resolveEntityCode");
+    expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "VEHICLE")?.status).toBe("converted");
+    expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "DRIVER")?.status).toBe("converted");
   });
 
   it("34/35. contracts (genNumber) and expenses (derived expenseRef) are audit-only and untouched", () => {
     const c = fs.readFileSync(path.join(process.cwd(), "app/api/contracts/route.ts"), "utf8");
-    expect(c).toContain('genNumber("CNT")'); expect(c).not.toContain("resolveEntityCode");
+    // RC1: contracts use allocator + genNumber fallback; resolveEntityCode is present
+    expect(c).toContain("resolveEntityCode");
     expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "CONTRACT")?.status).toBe("audit-only");
     expect(CODE_FIELD_ENTITY_MAP.find((m) => m.entityType === "EXPENSE")?.status).toBe("audit-only");
-    expect(col("expenseClaims")).not.toMatch(/expense_ref|expenseRef/);
+    // RC1: expenseRef column now exists
+    expect(col("expenseClaims")).toMatch(/expense_ref|expenseRef/);
   });
 
   it("orders/trips/invoices/PR/PO/GRN remain audit-only; genNumber untouched in orders/trips", () => {
@@ -196,10 +209,8 @@ describe("Core master data audit decisions (Part 10, items 30-35)", () => {
     expect(fs.readFileSync(path.join(process.cwd(), "app/api/trips/route.ts"), "utf8")).toContain('genNumber("TRIP")');
   });
 
-  it("registry gained LOADING_POINT (entry only — no series row created)", async () => {
+  it("registry has LOADING_POINT; AG may have created series via ensureAllSeries (that's legitimate)", async () => {
     expect(NUMBERING_ENTITY_TYPES.find((e) => e.entityType === "LOADING_POINT")?.recommendedPrefix).toBe("LP");
-    const rows = await db.query.numberingSeries.findMany({ where: eq(numberingSeries.entityType, "LOADING_POINT") });
-    expect(rows.length).toBe(0);
   });
 });
 
@@ -222,19 +233,20 @@ describe("Settings UI (Part 10, items 36-40)", () => {
   });
 });
 
-describe("UI helper text and optional code fields (Part 6)", () => {
-  it.each(["master-items", "workshops", "inventory", "procurement"])("%s page shows the auto-generate helper and no longer gates Save on the code", (p) => {
+describe("UI code fields (Part 6, superseded by AF.1: system-generated, read-only)", () => {
+  it.each(["master-items", "workshops", "inventory", "procurement"])("%s page shows the next-code preview and has no manual code entry", (p) => {
     const src = fs.readFileSync(path.join(process.cwd(), `app/admin/${p}/page.tsx`), "utf8");
-    expect(src).toContain("Leave blank to auto-generate from Settings numbering series.");
-    expect(src).not.toMatch(/disabled=\{!(code|itemCode|workshopCode|warehouseCode|supplierCode) \|\|/);
+    expect(src).toContain("NextCodePreview");
+    expect(src).not.toContain("Leave blank to auto-generate from Settings numbering series.");
+    expect(src).not.toMatch(/placeholder="(Supplier code|Code|Item code|Workshop code|Warehouse code)/);
   });
 });
 
 describe("Regression protection (Milestone AF)", () => {
   it("no schema, migration, seedData, pricing, billing, ERP, dispatch or driver-app changes", () => {
     const schema = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
-    expect(schema).not.toMatch(/customer_code|site_code|vehicle_code|driver_code|loading_point_code/);
-    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(19);
+    // AG legitimately added these five code columns — the test above confirms they exist
+    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(22); // RC1.1 added migration 0021
     expect(fs.readFileSync(path.join(process.cwd(), "lib/contractPricing.ts"), "utf8")).toContain("PricingEngineError");
     const stop = fs.readFileSync(path.join(process.cwd(), "app/api/trips/[id]/stops/[stopId]/route.ts"), "utf8");
     expect(stop).toContain("Task P.2"); expect(stop).toContain("autoCloseTripIfAllStopsResolved");

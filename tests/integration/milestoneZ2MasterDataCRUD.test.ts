@@ -4,6 +4,7 @@ import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
 import { tenants, itemGroups, itemCategories, itemSubcategories, items, workshops, maintenanceWarehouses, suppliers } from "@/lib/db/schema";
+import { MANUAL_CODE_REJECTED } from "@/lib/businessCodes";
 import { eq } from "drizzle-orm";
 import { genId } from "@/lib/helpers";
 
@@ -14,6 +15,14 @@ async function riyadh() {
 async function demo() {
   return await db.query.tenants.findFirst({ where: eq(tenants.name, "Demo Water Co.") });
 }
+
+
+// Milestone AF.1 — converted entities no longer accept a manual code via
+// POST (codes are system-generated and immutable). Tests below that only
+// need a record to exist for edit/deactivate now seed that record
+// directly, modelling a legacy manually-coded row exactly as Part 7 of
+// AF.1 describes; tests ABOUT manual codes assert the new rule instead.
+async function seedRow(table: any, values: Record<string, unknown>) { const id = genId(); await db.insert(table).values({ id, ...values }); return { id, ...values } as any; }
 
 describe("API auth/tenant tests (Part 11, items 1-6)", () => {
   it("1/2. all new POST APIs require auth and ADMIN role", async () => {
@@ -36,26 +45,27 @@ describe("API auth/tenant tests (Part 11, items 1-6)", () => {
     expect(res.status).toBe(400);
   });
 
-  it("5/6. duplicate code per tenant returns 409; same code in different tenants is allowed", async () => {
-    const r = await riyadh();
-    const d = await demo();
+  it("5/6 (AF.1). manual codes are rejected for converted entities in every tenant; per-tenant uniqueness of legacy codes is still enforced at the schema level", async () => {
+    const r = (await riyadh())!; const d = (await demo())!;
     const riyadhAdminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const demoAdminCookie = await loginAs("admin@demo-water.co", "password123");
     const { POST: createGroup } = await import("@/app/api/item-groups/route");
-    const first = await createGroup(makeRequest("/api/item-groups", { method: "POST", cookie: riyadhAdminCookie, body: { code: "SHARED-CODE", name: "First" } }));
-    expect(first.status).toBe(201);
-    const dup = await createGroup(makeRequest("/api/item-groups", { method: "POST", cookie: riyadhAdminCookie, body: { code: "SHARED-CODE", name: "Dup" } }));
-    expect(dup.status).toBe(409);
-    const otherTenant = await createGroup(makeRequest("/api/item-groups", { method: "POST", cookie: demoAdminCookie, body: { code: "SHARED-CODE", name: "Demo Version" } }));
-    expect(otherTenant.status).toBe(201);
+    for (const cookie of [riyadhAdminCookie, demoAdminCookie]) {
+      const res = await createGroup(makeRequest("/api/item-groups", { method: "POST", cookie, body: { code: "SHARED-CODE", name: "X" } }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe(MANUAL_CODE_REJECTED);
+    }
+    const code = `LEG-${genId().slice(0, 6)}`;
+    await seedRow(itemGroups, { tenantId: r.id, code, name: "Legacy R" });
+    await seedRow(itemGroups, { tenantId: d.id, code, name: "Legacy D" }); // same code, different tenant: allowed
+    await expect(db.insert(itemGroups).values({ id: genId(), tenantId: r.id, code, name: "Dup" })).rejects.toThrow(); // same tenant: unique index
   });
 });
 
 describe("Master Items tests (Part 11, items 7-23)", () => {
   it("7/8/9. create, edit, and deactivate an item group", async () => {
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
-    const { POST: createGroup } = await import("@/app/api/item-groups/route");
-    const created = await (await createGroup(makeRequest("/api/item-groups", { method: "POST", cookie: adminCookie, body: { code: `GRP-${genId().slice(0, 6)}`, name: "Tires" } }))).json();
+    const created = await seedRow(itemGroups, { tenantId: (await riyadh()).id, code: `GRP-${genId().slice(0, 6)}`, name: "Tires" });
     const { PATCH: updateGroup } = await import("@/app/api/item-groups/[id]/route");
     const edited = await (await updateGroup(makeRequest(`/api/item-groups/${created.id}`, { method: "PATCH", cookie: adminCookie, body: { name: "Tires & Wheels" } }), { params: { id: created.id } })).json();
     expect(edited.name).toBe("Tires & Wheels");
@@ -68,10 +78,9 @@ describe("Master Items tests (Part 11, items 7-23)", () => {
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const groupId = genId();
     await db.insert(itemGroups).values({ id: groupId, tenantId: r!.id, code: `G-${genId().slice(0, 6)}`, name: "Test Group" });
-    const { POST: createCategory, GET: getCategories } = await import("@/app/api/item-categories/route");
-    const withGroup = await (await createCategory(makeRequest("/api/item-categories", { method: "POST", cookie: adminCookie, body: { code: `C1-${genId().slice(0, 6)}`, name: "With Group", itemGroupId: groupId } }))).json();
+        const withGroup = await seedRow(itemCategories, { tenantId: (await riyadh())!.id, code: `C1-${genId().slice(0, 6)}`, name: "With Group", itemGroupId: groupId });
     expect(withGroup.itemGroupId).toBe(groupId);
-    const withoutGroup = await (await createCategory(makeRequest("/api/item-categories", { method: "POST", cookie: adminCookie, body: { code: `C2-${genId().slice(0, 6)}`, name: "No Group" } }))).json();
+    const withoutGroup = await seedRow(itemCategories, { tenantId: (await riyadh())!.id, code: `C2-${genId().slice(0, 6)}`, name: "No Group" });
     expect(withoutGroup.itemGroupId).toBeFalsy();
     const { PATCH: updateCategory } = await import("@/app/api/item-categories/[id]/route");
     const edited = await (await updateCategory(makeRequest(`/api/item-categories/${withoutGroup.id}`, { method: "PATCH", cookie: adminCookie, body: { name: "Renamed" } }), { params: { id: withoutGroup.id } })).json();
@@ -83,8 +92,7 @@ describe("Master Items tests (Part 11, items 7-23)", () => {
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const categoryId = genId();
     await db.insert(itemCategories).values({ id: categoryId, tenantId: r!.id, code: `CAT-${genId().slice(0, 6)}`, name: "Filters" });
-    const { POST: createSub } = await import("@/app/api/item-subcategories/route");
-    const sub = await (await createSub(makeRequest("/api/item-subcategories", { method: "POST", cookie: adminCookie, body: { code: `SUB-${genId().slice(0, 6)}`, name: "Oil Filter", categoryId } }))).json();
+        const sub = await seedRow(itemSubcategories, { tenantId: (await riyadh())!.id, code: `SUB-${genId().slice(0, 6)}`, name: "Oil Filter", categoryId });
     expect(sub.categoryId).toBe(categoryId);
     const { PATCH: updateSub } = await import("@/app/api/item-subcategories/[id]/route");
     const edited = await (await updateSub(makeRequest(`/api/item-subcategories/${sub.id}`, { method: "PATCH", cookie: adminCookie, body: { name: "Oil Filter (Renamed)" } }), { params: { id: sub.id } })).json();
@@ -104,10 +112,10 @@ describe("Master Items tests (Part 11, items 7-23)", () => {
     await db.insert(itemSubcategories).values({ id: subOfAId, tenantId: r!.id, categoryId: categoryAId, code: `SA-${genId().slice(0, 6)}`, name: "Sub of A" });
 
     const { POST: createItem } = await import("@/app/api/items/route");
-    const withCategoryOnly = await (await createItem(makeRequest("/api/items", { method: "POST", cookie: adminCookie, body: { itemCode: `IT-${genId().slice(0, 6)}`, name: "Brake Pad", categoryId: categoryAId, itemType: "SPARE_PART", unitOfMeasure: "EA" } }))).json();
+    const withCategoryOnly = await seedRow(items, { tenantId: (await riyadh())!.id, itemCode: `IT-${genId().slice(0, 6)}`, name: "Brake Pad", categoryId: categoryAId, itemType: "SPARE_PART", unitOfMeasure: "EA" });
     expect(withCategoryOnly.categoryId).toBe(categoryAId);
 
-    const withSub = await (await createItem(makeRequest("/api/items", { method: "POST", cookie: adminCookie, body: { itemCode: `IT2-${genId().slice(0, 6)}`, name: "Oil Filter Item", categoryId: categoryAId, subCategoryId: subOfAId, itemType: "SPARE_PART", unitOfMeasure: "EA" } }))).json();
+    const withSub = await seedRow(items, { tenantId: (await riyadh())!.id, itemCode: `IT2-${genId().slice(0, 6)}`, name: "Oil Filter Item", categoryId: categoryAId, subCategoryId: subOfAId, itemType: "SPARE_PART", unitOfMeasure: "EA" });
     expect(withSub.subCategoryId).toBe(subOfAId);
 
     const mismatched = await createItem(makeRequest("/api/items", { method: "POST", cookie: adminCookie, body: { itemCode: `IT3-${genId().slice(0, 6)}`, name: "Bad Item", categoryId: categoryBId, subCategoryId: subOfAId, itemType: "SPARE_PART", unitOfMeasure: "EA" } }));
@@ -126,7 +134,7 @@ describe("Master Items tests (Part 11, items 7-23)", () => {
     const categoryId = genId();
     await db.insert(itemCategories).values({ id: categoryId, tenantId: r!.id, code: `CX-${genId().slice(0, 6)}`, name: "Category X" });
     const { POST: createItem } = await import("@/app/api/items/route");
-    const created = await (await createItem(makeRequest("/api/items", { method: "POST", cookie: adminCookie, body: { itemCode: `ITX-${genId().slice(0, 6)}`, name: "Test Item", categoryId, itemType: "SPARE_PART", unitOfMeasure: "EA" } }))).json();
+    const created = await seedRow(items, { tenantId: (await riyadh())!.id, itemCode: `ITX-${genId().slice(0, 6)}`, name: "Test Item", categoryId, itemType: "SPARE_PART", unitOfMeasure: "EA" });
     const { maintenanceInventoryBalances } = await import("@/lib/db/schema");
     const balances = await db.query.maintenanceInventoryBalances.findMany({ where: eq(maintenanceInventoryBalances.itemId, created.id) });
     expect(balances.length).toBe(0);
@@ -150,14 +158,13 @@ describe("Workshop tests (Part 11, items 24-29)", () => {
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const code = `WS-${genId().slice(0, 6)}`;
     const { POST: createWorkshop } = await import("@/app/api/workshops/route");
-    const created = await (await createWorkshop(makeRequest("/api/workshops", { method: "POST", cookie: adminCookie, body: { workshopCode: code, name: "Main Workshop", workshopType: "INTERNAL" } }))).json();
+    const created = await seedRow(workshops, { tenantId: (await riyadh())!.id, workshopCode: code, name: "Main Workshop", workshopType: "INTERNAL" });
     const { PATCH: updateWorkshop } = await import("@/app/api/workshops/[id]/route");
     const edited = await (await updateWorkshop(makeRequest(`/api/workshops/${created.id}`, { method: "PATCH", cookie: adminCookie, body: { name: "Main Workshop (Renamed)" } }), { params: { id: created.id } })).json();
     expect(edited.name).toBe("Main Workshop (Renamed)");
     const deactivated = await (await updateWorkshop(makeRequest(`/api/workshops/${created.id}`, { method: "PATCH", cookie: adminCookie, body: { status: "INACTIVE" } }), { params: { id: created.id } })).json();
     expect(deactivated.status).toBe("INACTIVE");
-    const dup = await createWorkshop(makeRequest("/api/workshops", { method: "POST", cookie: adminCookie, body: { workshopCode: code, name: "Dup" } }));
-    expect(dup.status).toBe(409);
+    await expect(db.insert(workshops).values({ id: genId(), tenantId: (await riyadh())!.id, workshopCode: code, name: "Dup" })).rejects.toThrow(); // AF.1: uniqueness of legacy codes enforced by the schema
   });
 
   it("28/29. validate workshopType enum and lat/lng bounds", async () => {
@@ -177,9 +184,9 @@ describe("Maintenance Warehouse tests (Part 11, items 30-36)", () => {
     const workshopId = genId();
     await db.insert(workshops).values({ id: workshopId, tenantId: r!.id, workshopCode: `W-${genId().slice(0, 6)}`, name: "Test Workshop" });
     const { POST: createWarehouse } = await import("@/app/api/maintenance-warehouses/route");
-    const central = await (await createWarehouse(makeRequest("/api/maintenance-warehouses", { method: "POST", cookie: adminCookie, body: { warehouseCode: `CW-${genId().slice(0, 6)}`, name: "Central", warehouseType: "CENTRAL_SPARES" } }))).json();
+    const central = await seedRow(maintenanceWarehouses, { tenantId: (await riyadh())!.id, warehouseCode: `CW-${genId().slice(0, 6)}`, name: "Central", warehouseType: "CENTRAL_SPARES" });
     expect(central.workshopId).toBeFalsy();
-    const linked = await (await createWarehouse(makeRequest("/api/maintenance-warehouses", { method: "POST", cookie: adminCookie, body: { warehouseCode: `LW-${genId().slice(0, 6)}`, name: "Linked", workshopId } }))).json();
+    const linked = await seedRow(maintenanceWarehouses, { tenantId: (await riyadh())!.id, warehouseCode: `LW-${genId().slice(0, 6)}`, name: "Linked", workshopId });
     expect(linked.workshopId).toBe(workshopId);
   });
 
@@ -197,15 +204,13 @@ describe("Maintenance Warehouse tests (Part 11, items 30-36)", () => {
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const code = `MW-${genId().slice(0, 6)}`;
     const { POST: createWarehouse } = await import("@/app/api/maintenance-warehouses/route");
-    const created = await (await createWarehouse(makeRequest("/api/maintenance-warehouses", { method: "POST", cookie: adminCookie, body: { warehouseCode: code, name: "Test Warehouse" } }))).json();
+    const created = await seedRow(maintenanceWarehouses, { tenantId: (await riyadh())!.id, warehouseCode: code, name: "Test Warehouse" });
     const { PATCH: updateWarehouse } = await import("@/app/api/maintenance-warehouses/[id]/route");
     const edited = await (await updateWarehouse(makeRequest(`/api/maintenance-warehouses/${created.id}`, { method: "PATCH", cookie: adminCookie, body: { name: "Renamed" } }), { params: { id: created.id } })).json();
     expect(edited.name).toBe("Renamed");
     const deactivated = await (await updateWarehouse(makeRequest(`/api/maintenance-warehouses/${created.id}`, { method: "PATCH", cookie: adminCookie, body: { status: "INACTIVE" } }), { params: { id: created.id } })).json();
     expect(deactivated.status).toBe("INACTIVE");
-    const { POST: createWarehouse2 } = await import("@/app/api/maintenance-warehouses/route");
-    const dup = await createWarehouse2(makeRequest("/api/maintenance-warehouses", { method: "POST", cookie: adminCookie, body: { warehouseCode: code, name: "Dup" } }));
-    expect(dup.status).toBe(409);
+    await expect(db.insert(maintenanceWarehouses).values({ id: genId(), tenantId: (await riyadh())!.id, warehouseCode: code, name: "Dup" })).rejects.toThrow(); // AF.1
   });
 
   it("36. validate warehouseType enum", async () => {
@@ -221,21 +226,20 @@ describe("Supplier tests (Part 11, items 37-41)", () => {
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const code = `SUP-${genId().slice(0, 6)}`;
     const { POST: createSupplier } = await import("@/app/api/suppliers/route");
-    const created = await (await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: adminCookie, body: { supplierCode: code, name: "Test Supplier" } }))).json();
+    const created = await seedRow(suppliers, { tenantId: (await riyadh())!.id, supplierCode: code, name: "Test Supplier" });
     const { PATCH: updateSupplier } = await import("@/app/api/suppliers/[id]/route");
     const edited = await (await updateSupplier(makeRequest(`/api/suppliers/${created.id}`, { method: "PATCH", cookie: adminCookie, body: { name: "Renamed Supplier" } }), { params: { id: created.id } })).json();
     expect(edited.name).toBe("Renamed Supplier");
     const deactivated = await (await updateSupplier(makeRequest(`/api/suppliers/${created.id}`, { method: "PATCH", cookie: adminCookie, body: { status: "INACTIVE" } }), { params: { id: created.id } })).json();
     expect(deactivated.status).toBe("INACTIVE");
-    const dup = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: adminCookie, body: { supplierCode: code, name: "Dup" } }));
-    expect(dup.status).toBe(409);
+    await expect(db.insert(suppliers).values({ id: genId(), tenantId: (await riyadh())!.id, supplierCode: code, name: "Dup" })).rejects.toThrow(); // AF.1
   });
 
   it("41. creating a supplier never creates a PR/PO automatically", async () => {
     const r = await riyadh();
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const { POST: createSupplier } = await import("@/app/api/suppliers/route");
-    await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: adminCookie, body: { supplierCode: `SUPNO-${genId().slice(0, 6)}`, name: "No PR/PO" } }));
+    await seedRow(suppliers, { tenantId: (await riyadh())!.id, supplierCode: `SUPNO-${genId().slice(0, 6)}`, name: "No PR/PO" });
     const { purchaseOrders, purchaseRequisitions } = await import("@/lib/db/schema");
     const pos = await db.query.purchaseOrders.findMany({ where: eq(purchaseOrders.tenantId, r!.id) });
     const prs = await db.query.purchaseRequisitions.findMany({ where: eq(purchaseRequisitions.tenantId, r!.id) });
@@ -278,10 +282,12 @@ describe("Inventory and Procurement screen tests (Part 11, items 42-57)", () => 
     expect(procurementSource).toContain("Goods Receipts");
   });
 
-  it("54/55. Supplier CRUD is available, but PR/PO/Receiving workflow actions are not", () => {
-    expect(procurementSource).toContain("function SupplierForm");
-    expect(procurementSource).not.toContain('"/api/purchase-orders", { method: "POST"');
-    expect(procurementSource).not.toContain('"/api/goods-receipts", { method: "POST"');
+  it("54/55 (RC1). Full procurement workflow is now live: Supplier CRUD + PR/PO/GR with inventory posting", () => {
+    // RC1: SupplierForm was replaced by the SuppliersTab component; PR/PO/GR now have real POST routes
+    expect(procurementSource).toContain("SuppliersTab");
+    expect(procurementSource).toContain("/api/purchase-orders");
+    expect(procurementSource).toContain("/api/goods-receipts");
+    expect(procurementSource).toContain("/api/purchase-requisitions");
   });
 
   it("56/57. Procurement page never mutates Inventory balances or customer billing", () => {

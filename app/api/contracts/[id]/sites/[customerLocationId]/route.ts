@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { contracts, contractSiteScope } from "@/lib/db/schema";
+import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 
@@ -20,6 +21,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
+  const _deny = await enforceRbac(session, tenantId, "contracts"); if (_deny) return _deny;
 
   const contract = await db.query.contracts.findFirst({ where: and(eq(contracts.id, id), eq(contracts.tenantId, tenantId)) });
   if (!contract) return NextResponse.json({ error: "Contract not found" }, { status: 404 });

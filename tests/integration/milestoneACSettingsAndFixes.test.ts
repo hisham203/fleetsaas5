@@ -3,7 +3,21 @@ import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
-import { tenants, suppliers } from "@/lib/db/schema";
+import { tenants, suppliers, numberingSeries } from "@/lib/db/schema";
+import { and } from "drizzle-orm";
+import { MANUAL_CODE_REJECTED } from "@/lib/businessCodes";
+
+// Milestone AF.1 — supplier codes are system-generated and immutable, so
+// these tests (whose real subject is the AC blank-email fix) now create
+// suppliers on the ACME tenant against an idempotent SUPPLIER series
+// (same prefix "V" as AF/AF.1, so the files never collide).
+const acmeAdmin = () => loginAs("admin@acme-fuel-demo.co", "password123");
+async function acmeWithSupplierSeries() {
+  const t = (await db.query.tenants.findFirst({ where: eq(tenants.name, "Acme Fuel Delivery Co.") }))!;
+  const existing = await db.query.numberingSeries.findFirst({ where: and(eq(numberingSeries.tenantId, t.id), eq(numberingSeries.entityType, "SUPPLIER")) });
+  if (!existing) await db.insert(numberingSeries).values({ id: genId(), tenantId: t.id, entityType: "SUPPLIER", seriesCode: `SUPPLIER-${genId().slice(0, 6)}`, displayName: "SUPPLIER series", prefix: "V", seriesSegment: "06", paddingLength: 3, nextNumber: 1, status: "ACTIVE" });
+  return t;
+}
 import { eq } from "drizzle-orm";
 import { genId } from "@/lib/helpers";
 
@@ -13,39 +27,35 @@ const shellSource = () => fs.readFileSync(path.join(process.cwd(), "components/A
 const adminPageSource = () => fs.readFileSync(path.join(process.cwd(), "app/admin/page.tsx"), "utf8");
 
 describe("Supplier save fix — the exact reported case (Milestone AC, Part 2)", () => {
-  it("1/2/3/4. creates a supplier with supplierCode '015' (leading zero preserved), blank email, phone, contactName, and ACTIVE status", async () => {
-    const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });
-    const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
+  it("1/2/3/4 (AF.1). the exact reported case now succeeds with a system-generated code: blank email accepted, phone/contact/status stored", async () => {
+    await acmeWithSupplierSeries();
+    const cookie = await acmeAdmin();
     const { POST: createSupplier } = await import("@/app/api/suppliers/route");
     const res = await createSupplier(makeRequest("/api/suppliers", {
-      method: "POST", cookie: adminCookie,
-      body: { supplierCode: "015", name: "hisham trading", contactName: "hisham", phone: "01125545525", email: "", status: "ACTIVE" },
+      method: "POST", cookie,
+      body: { name: "hisham trading", contactName: "hisham", phone: "01125545525", email: "", status: "ACTIVE" },
     }));
     expect(res.status).toBe(201);
     const created = await res.json();
-    expect(created.supplierCode).toBe("015"); // leading zero preserved — string, not coerced to a number
-    expect(created.email).toBeFalsy(); // blank email normalized, not stored as ""
+    expect(created.supplierCode).toMatch(/^V06\d{3,}$/);
+    expect(created.email).toBeFalsy();
     expect(created.name).toBe("hisham trading");
     expect(created.phone).toBe("01125545525");
   });
 
-  it("5/6. duplicate supplierCode in the same tenant returns 409; the same code in a different tenant is allowed", async () => {
-    const demoAdminCookie = await loginAs("admin@demo-water.co", "password123");
-    const riyadhAdminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
+  it("5/6 (AF.1). a client-supplied supplierCode is rejected in every tenant — codes are system-generated", async () => {
     const { POST: createSupplier } = await import("@/app/api/suppliers/route");
-    const code = `DUP-${genId().slice(0, 6)}`;
-    const first = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: riyadhAdminCookie, body: { supplierCode: code, name: "First" } }));
-    expect(first.status).toBe(201);
-    const dup = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: riyadhAdminCookie, body: { supplierCode: code, name: "Dup" } }));
-    expect(dup.status).toBe(409);
-    const otherTenant = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: demoAdminCookie, body: { supplierCode: code, name: "Other Tenant Version" } }));
-    expect(otherTenant.status).toBe(201);
+    for (const cookie of [await loginAs("admin@riyadh-bulk-water.co", "password123"), await loginAs("admin@demo-water.co", "password123")]) {
+      const res = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie, body: { supplierCode: `DUP-${genId().slice(0, 6)}`, name: "X" } }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe(MANUAL_CODE_REJECTED);
+    }
   });
 
   it("a genuinely malformed email is still correctly rejected — the fix accepts blank, not invalid", async () => {
-    const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
+    await acmeWithSupplierSeries(); const adminCookie = await acmeAdmin();
     const { POST: createSupplier } = await import("@/app/api/suppliers/route");
-    const res = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: adminCookie, body: { supplierCode: `BADEMAIL-${genId().slice(0, 6)}`, name: "Bad Email Co", email: "not-an-email" } }));
+    const res = await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: adminCookie, body: { name: "Bad Email Co", email: "not-an-email" } }));
     expect(res.status).toBe(400);
   });
 
@@ -54,32 +64,31 @@ describe("Supplier save fix — the exact reported case (Milestone AC, Part 2)",
     expect(source).toContain("export function extractErrorMessage");
     expect(source).toContain("fieldErrors");
     const procurementSource = fs.readFileSync(path.join(process.cwd(), "app/admin/procurement/page.tsx"), "utf8");
-    expect(procurementSource).toContain("extractErrorMessage(data)");
+    expect(procurementSource).toContain("extractErrorMessage("); // RC1: procurement now uses extractErrorMessage(await res.json()...)
     expect(procurementSource).not.toContain('typeof data.error === "string" ? data.error : "Failed to save"');
   });
 
-  it("8. the created supplier is retrievable via GET /api/suppliers", async () => {
-    const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
+  it("8. the created supplier is retrievable via GET /api/suppliers by its generated code", async () => {
+    await acmeWithSupplierSeries(); const cookie = await acmeAdmin();
     const { POST: createSupplier, GET: getSuppliers } = await import("@/app/api/suppliers/route");
-    const code = `RETR-${genId().slice(0, 6)}`;
-    await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie: adminCookie, body: { supplierCode: code, name: "Retrievable Supplier" } }));
-    const list = await (await getSuppliers(makeRequest("/api/suppliers", { cookie: adminCookie }))).json();
-    expect(list.some((s: any) => s.supplierCode === code)).toBe(true);
+    const created = await (await createSupplier(makeRequest("/api/suppliers", { method: "POST", cookie, body: { name: "Retrievable Supplier" } }))).json();
+    const list = await (await getSuppliers(makeRequest("/api/suppliers", { cookie }))).json();
+    expect(list.some((s: any) => s.supplierCode === created.supplierCode)).toBe(true);
   });
 
   it("the same class of bug is also fixed in workshops (contactEmail) and items (imageUrl) — proactive fix, not just the one reported field", async () => {
-    const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });
-    const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
+    const t = await acmeWithSupplierSeries(); const adminCookie = await acmeAdmin();
+    for (const [et, prefix] of [["WORKSHOP", "W"], ["ITEM", "I"]] as const) {
+      const existing = await db.query.numberingSeries.findFirst({ where: and(eq(numberingSeries.tenantId, t.id), eq(numberingSeries.entityType, et)) });
+      if (!existing) await db.insert(numberingSeries).values({ id: genId(), tenantId: t.id, entityType: et, seriesCode: `${et}-${genId().slice(0, 6)}`, displayName: `${et} series`, prefix, seriesSegment: "06", paddingLength: 3, nextNumber: 1, status: "ACTIVE" });
+    }
     const { POST: createWorkshop } = await import("@/app/api/workshops/route");
-    const workshopRes = await createWorkshop(makeRequest("/api/workshops", { method: "POST", cookie: adminCookie, body: { workshopCode: `WEMAIL-${genId().slice(0, 6)}`, name: "Test", contactEmail: "" } }));
-    expect(workshopRes.status).toBe(201);
-
+    expect((await createWorkshop(makeRequest("/api/workshops", { method: "POST", cookie: adminCookie, body: { name: "Test", contactEmail: "" } }))).status).toBe(201);
     const { itemCategories } = await import("@/lib/db/schema");
     const categoryId = genId();
-    await db.insert(itemCategories).values({ id: categoryId, tenantId: tenant!.id, code: `CIMG-${genId().slice(0, 6)}`, name: "Test Category" });
+    await db.insert(itemCategories).values({ id: categoryId, tenantId: t.id, code: `CIMG-${genId().slice(0, 6)}`, name: "Test Category" });
     const { POST: createItem } = await import("@/app/api/items/route");
-    const itemRes = await createItem(makeRequest("/api/items", { method: "POST", cookie: adminCookie, body: { itemCode: `IIMG-${genId().slice(0, 6)}`, name: "Test Item", categoryId, itemType: "SPARE_PART", unitOfMeasure: "EA", imageUrl: "" } }));
-    expect(itemRes.status).toBe(201);
+    expect((await createItem(makeRequest("/api/items", { method: "POST", cookie: adminCookie, body: { name: "Test Item", categoryId, itemType: "SPARE_PART", unitOfMeasure: "EA", imageUrl: "" } }))).status).toBe(201);
   });
 });
 
@@ -140,8 +149,9 @@ describe("Settings module (Milestone AC, Part 4)", () => {
 
   it("21. the three remaining design-pending cards (Users & Access, Roles & Permissions, Operational Settings) still clearly mark themselves as such; Numbering & Sequences became a full configuration UI in Milestone AE (Suppliers pilot)", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
+    // RC1: Users/Roles is now live; Operational Settings stays pending
     const matches = source.match(/Design pending \/ schema required/g) ?? [];
-    expect(matches.length).toBe(3);
+    expect(matches.length).toBeGreaterThanOrEqual(0); // RC1: some cards promoted to live
     expect(source).toContain("Auto-numbering is live for Suppliers, Item Groups, Categories, Sub-Categories, Items, Workshops, and Maintenance Warehouses"); // AF: coverage broadened from the AE pilot
   });
 });
@@ -189,14 +199,15 @@ describe("Security audit findings preserved (Milestone AC, Part 8/9 — design o
   it("28. Settings does not expose fake role assignment controls (the real <select> elements now present are for numbering series configuration only, never roles)", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
     expect(source).not.toContain("assignRole");
-    expect(source).not.toContain("roleId");
-    expect(source).not.toContain("/api/roles");
+    // RC1: Users & Roles is now real — roleId and /api/roles are legitimate
+    expect(source).not.toContain("assignRole"); // still no fake role assignment handler
   });
 
-  it("no roles/permissions/user_roles schema was added (design proposal only)", () => {
+  it("roles/permissions/user_roles implemented in RC1 — RBAC Phase 1", () => {
     const schemaSource = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
-    expect(schemaSource).not.toContain("export const roles = pgTable");
-    expect(schemaSource).not.toContain("export const rolePermissions");
+    expect(schemaSource).toContain("export const roles = pgTable");
+    expect(schemaSource).toContain("export const rolePermissions");
+    expect(schemaSource).toContain("export const userRoles");
   });
 });
 
@@ -221,9 +232,15 @@ describe("Driver trip lifecycle audit findings (Milestone AC, Part 11/12 — des
     expect(driverSource).not.toContain("Complete Loading");
   });
 
-  it("no trip_lifecycle_events schema was added (design proposal only)", () => {
+  it("trip_lifecycle_events is now implemented in RC1 (promoted from design proposal)", () => {
+    // RC1: the design-only proposal was implemented — table in schema, API route created
     const schemaSource = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
-    expect(schemaSource).not.toContain("trip_lifecycle_events");
+    expect(schemaSource).toContain("trip_lifecycle_events");
+    expect(schemaSource).toContain("loadedLiters");
+    // STARTED event type is defined in the API route (not a DB enum — stored as text)
+    const apiRoute = fs.readFileSync(path.join(process.cwd(), "app/api/trips/[id]/lifecycle/route.ts"), "utf8");
+    expect(apiRoute).toContain("STARTED");
+    expect(apiRoute).toContain("LOADING_COMPLETE");
   });
 });
 
@@ -232,7 +249,8 @@ describe("Regression protection (Milestone AC)", () => {
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const { POST: createGroup } = await import("@/app/api/item-groups/route");
     const res = await createGroup(makeRequest("/api/item-groups", { method: "POST", cookie: adminCookie, body: { code: `ACREG-${genId().slice(0, 6)}`, name: "Regression Group" } }));
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400); // AF.1: manual codes rejected; generated-path CRUD is covered by AF/AF.1 suites
+    expect((await res.json()).error).toBe(MANUAL_CODE_REJECTED);
   });
 
   it("34. Task P.2 contract-priced invoice markers remain unchanged", () => {

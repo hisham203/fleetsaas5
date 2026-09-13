@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRequireSession } from "@/lib/useSession";
 import AdminShell from "@/components/AdminShell";
 import KpiCard from "@/components/KpiCard";
+import NextCodePreview from "@/components/NextCodePreview";
 
 // Milestone Q, Gate Q6 — Loading Points. Deliberately NOT a new entity:
 // this reuses the existing `warehouses` table/API exactly as-is (the
@@ -129,6 +130,7 @@ export default function LoadingPointsPage() {
                     <>
                       <tr key={w.id} className="border-t border-slate-100">
                         <td className="px-4 py-2 font-medium">{w.name}</td>
+                        <td className="px-4 py-2 text-steel font-mono text-xs">{(w as any).loadingPointCode ?? <span className="italic">Legacy</span>}</td>
                         <td className="px-4 py-2 text-steel">{w.address}</td>
                         <td className="px-4 py-2 text-steel">{w.lat.toFixed(4)}, {w.lng.toFixed(4)}</td>
                         <td className="px-4 py-2 text-steel">{w.isDefault ? "Yes" : "—"}</td>
@@ -174,6 +176,8 @@ function LoadingPointForm({ warehouse, onCancel, onSaved }: { warehouse?: any; o
   const [lng, setLng] = useState<string>(warehouse?.lng != null ? String(warehouse.lng) : "");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Milestone AG.1 — internal loading point code readiness
+  const [codeReady, setCodeReady] = useState(false);
 
   async function save() {
     setSubmitting(true);
@@ -193,6 +197,18 @@ function LoadingPointForm({ warehouse, onCancel, onSaved }: { warehouse?: any; o
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
+      {/* Milestone AG.1: create shows preview; edit shows existing code read-only */}
+      {!warehouse ? (
+        <NextCodePreview entityType="LOADING_POINT" label="Loading Point internal code" onReady={setCodeReady} />
+      ) : (
+        <div className="bg-paper rounded-lg px-3 py-2">
+          <p className="text-steel text-xs">Loading Point internal code</p>
+          {warehouse.loadingPointCode
+            ? <p className="font-mono font-medium text-sm">{warehouse.loadingPointCode}</p>
+            : <p className="text-steel text-xs italic">Legacy — no internal code</p>}
+          {warehouse.loadingPointCode && <p className="text-steel text-[11px] mt-0.5">Code cannot be changed after creation.</p>}
+        </div>
+      )}
       <div>
         <label className="text-steel text-xs block mb-1">Site name</label>
         <input className="w-full border rounded-lg px-2 py-1.5 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Al-Kharj Filling Station" />
@@ -214,7 +230,7 @@ function LoadingPointForm({ warehouse, onCancel, onSaved }: { warehouse?: any; o
       <p className="text-steel text-xs">City, district, status, and contact/notes aren&apos;t supported by the schema yet — not shown here rather than faked.</p>
       {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex gap-2">
-        <button disabled={!name || !address || !lat || !lng || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
+        <button disabled={!name || !address || !lat || !lng || (!warehouse && !codeReady) || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
           {warehouse ? "Save changes" : "Create loading point"}
         </button>
         <button onClick={onCancel} className="text-steel text-xs">Cancel</button>

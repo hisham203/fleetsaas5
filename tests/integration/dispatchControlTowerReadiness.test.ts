@@ -18,9 +18,9 @@ describe("Dispatch page source-level improvements (Task N)", () => {
     expect(dispatchSource).not.toContain("bottleSizeLtr");
   });
 
-  it("3. vehicle readiness includes capacityLiters when present, with a units fallback", () => {
+  it("3. vehicle readiness shows capacityLiters; the legacy units fallback was removed from visible Bulk Water UI in Milestone AF.1", () => {
     expect(dispatchSource).toContain("capacityLiters");
-    expect(dispatchSource).toContain("capacityUnits");
+    expect(dispatchSource).not.toContain("} units`");
   });
 
   it("4. the loading point zero-inventory note uses the exact specified wording, shown only when genuinely no inventory is tracked there", () => {
