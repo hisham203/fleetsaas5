@@ -55,8 +55,29 @@ const TAB_TITLES: Record<TabKey, string> = {
 // dedicated test (see Milestone AB's test suite) now asserts both
 // contain every Operations item together, so a future addition here
 // can't silently repeat this drift.
+// Nav icon path helper
+const I = (d: string) => d;
+
+// Milestone AB, Part 3 — navigation architecture finding: this function
+// is a SEPARATE, DUPLICATE sidebar definition from
+// components/AdminShell.tsx's own DEFAULT_SECTIONS. They are not a
+// single source of truth — this file needs its own copy because its
+// items mix real hrefs (Dispatch Control Tower, Loading Points) with
+// onClick-based in-page tab switches (Overview, Fleet, Drivers, ...),
+// which AdminShell's shared config has no way to express. This is
+// exactly how the "Dispatch (Live) invisible after login" bug
+// persisted through Milestone AA's fix: that milestone correctly fixed
+// /dispatch's OWN layout, but never touched this separate list, which
+// an ADMIN sees immediately on login (ROLE_DESTINATIONS.ADMIN =
+// "/admin") and which had silently drifted out of sync, missing
+// Dispatch (Live) entirely. A full consolidation into one shared
+// config was judged a broader refactor than this milestone's own "low
+// risk only" instruction allows — so both lists remain, but a
+// dedicated test (see Milestone AB's test suite) now asserts both
+// contain every Operations item together, so a future addition here
+// can't silently repeat this drift.
 function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
-  const item = (label: string, key: TabKey) => ({ label, onClick: () => setTab(key), activeKey: key });
+  const item = (label: string, key: TabKey, icon?: string) => ({ label, icon, onClick: () => setTab(key), activeKey: key });
   return [
     { label: "", items: [item("Overview / Dashboard", "overview")] },
     {
@@ -79,7 +100,12 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
     },
     {
       label: "Finance",
-      items: [item("Billing", "billing"), { label: "Expenses", href: "/admin/expenses" }, item("Scorecards", "scorecards"), item("Reports", "reports")],
+      items: [
+        item("Billing", "billing"),
+        { label: "Expenses", href: "/admin/expenses" },
+        item("Scorecards", "scorecards"),
+        item("Reports", "reports"),
+      ],
     },
     {
       label: "Platform",
@@ -222,7 +248,7 @@ function AdminPageInner() {
   return (
     <AdminShell title={TAB_TITLES[tab]} tenantName={tenant.name} sections={adminSidebarSections(setTab)} activeKey={tab} extra={session?.isPlatformAdmin ? <CompanySwitcher currentTenantId={tenant?.id} /> : undefined}>
 
-      <div className="p-6">
+      <div className="page-content">
         {tab === "overview" && <Overview tenant={tenant} customers={customers} vehicles={vehicles} drivers={drivers} />}
         {tab === "fleet" && <FleetTab tenant={tenant} vehicles={vehicles} warehouses={warehouses} onChange={load} />}
         {tab === "drivers" && <DriversTab tenant={tenant} drivers={drivers} onChange={load} />}
@@ -284,9 +310,9 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
         <Card title="Collected" value={`SAR ${totalCollected.toFixed(2)}`} />
         <Card title="Pending (credit)" value={`SAR ${totalPending.toFixed(2)}`} />
       </div>
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <h3 className="font-medium mb-3">Invoices</h3>
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Invoice #</th>
@@ -395,7 +421,7 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
 
 function Card({ title, value, sub }: { title: string; value: string | number; sub?: string }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="card card-body">
       <p className="text-steel text-xs uppercase tracking-wide">{title}</p>
       <p className="text-2xl font-semibold mt-1">{value}</p>
       {sub && <p className="text-steel text-xs mt-1">{sub}</p>}
@@ -404,12 +430,8 @@ function Card({ title, value, sub }: { title: string; value: string | number; su
 }
 
 function Overview({ tenant, customers, vehicles, drivers }: any) {
-  // Milestone X, Part 11 — a small, self-contained addition: Overview
-  // fetches its own pending-expense count rather than threading a new
-  // prop through the whole page's data-loading chain, keeping this a
-  // safe, isolated change. No new KPI is invented — this is the same
-  // real count the Expenses screen itself computes from the same,
-  // unmodified GET /api/expenses endpoint.
+  // Milestone X, Part 11 — fetches pending expense count from real data.
+  // No invented metrics.
   const [pendingExpenseCount, setPendingExpenseCount] = useState<number | null>(null);
   useEffect(() => {
     fetch("/api/expenses?status=PENDING")
@@ -418,43 +440,76 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
       .catch(() => setPendingExpenseCount(null));
   }, []);
 
+  const availableVehicles = vehicles.filter((v: any) => v.status === "AVAILABLE").length;
+  const availableDrivers = drivers.filter((d: any) => d.status === "AVAILABLE").length;
+  const inTripVehicles = vehicles.filter((v: any) => v.status === "IN_TRIP" || v.status === "ON_TRIP").length;
+
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="page-content">
+      {/* Page header */}
+      <div className="mb-4">
         <h2 className="text-lg font-semibold">Operations Overview</h2>
         <p className="text-steel text-sm mt-0.5">{tenant.name} — a snapshot of fleet, customers, and team at a glance.</p>
       </div>
-      <div className="grid sm:grid-cols-4 gap-4">
+
+      {/* Primary KPI grid — uses Card primitives (test: "Card title=\"Customers\"") */}
+      <div className="grid sm:grid-cols-4 gap-4 mb-6">
         <Card title="Sector" value={tenant.sector.replace("_", " ")} />
         <Card title="Customers" value={customers.length} />
-        <Card title="Vehicles" value={vehicles.length} sub={`${vehicles.filter((v: any) => v.status === "AVAILABLE").length} available`} />
-        <Card title="Drivers" value={drivers.length} sub={`${drivers.filter((d: any) => d.status === "AVAILABLE").length} available`} />
+        <Card title="Vehicles" value={vehicles.length} sub={`${availableVehicles} available`} />
+        <Card title="Drivers" value={drivers.length} sub={`${availableDrivers} available`} />
       </div>
+
       {pendingExpenseCount !== null && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
+        <div className="card card-body flex items-center justify-between mb-4">
           <div>
-            <p className="text-steel text-xs uppercase tracking-wide">Finance</p>
+            <p className="kpi-label">Finance</p>
             <p className="text-sm mt-0.5">{pendingExpenseCount} expense request{pendingExpenseCount === 1 ? "" : "s"} awaiting approval.</p>
           </div>
-          <a href="/admin/expenses" className="text-aquaDark hover:underline text-sm font-medium">View Expenses</a>
+          <a href="/admin/expenses" className="text-aquaDark hover:underline text-sm font-medium">View →</a>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <h3 className="font-medium mb-4">Team &amp; Users</h3>
-        <table className="w-full text-sm">
+      {/* Quick links */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+        {[
+          { label: "Dispatch Control Tower", href: "/admin/dispatch", desc: "Dispatch & trip status", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+          { label: "Customers & Contracts", href: "/admin/customers", desc: "Manage accounts & contracts", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
+          { label: "Expenses", href: "/admin/expenses", desc: "Review & approve claims", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+        ].map(link => (
+          <a key={link.href} href={link.href} className="card card-body flex items-start gap-3 hover:border-aqua/40 transition-colors group">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-aquaLight flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 text-steel group-hover:text-aquaDark" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-ink">{link.label}</p>
+              <p className="text-xs text-steel mt-0.5">{link.desc}</p>
+            </div>
+          </a>
+        ))}
+      </div>
+
+      {/* Team */}
+      <div className="card overflow-hidden">
+        <div className="card-header">
+          <h3 className="section-title">Team & Users</h3>
+          <span className="text-xs text-steel">{tenant.users.length} users</span>
+        </div>
+        <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
-              <th className="pb-2">Name</th>
-              <th className="pb-2">Email</th>
-              <th className="pb-2">Role</th>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
             </tr>
           </thead>
           <tbody>
             {tenant.users.map((u: any) => (
-              <tr key={u.id} className="border-b border-slate-50">
-                <td className="py-2">{u.name}</td>
-                <td className="py-2 text-steel">{u.email}</td>
-                <td className="py-2"><StatusBadge status={u.role} /></td>
+              <tr key={u.id}>
+                <td className="font-medium">{u.name}</td>
+                <td className="text-steel">{u.email}</td>
+                <td><StatusBadge status={u.role} /></td>
               </tr>
             ))}
           </tbody>
@@ -556,7 +611,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Vehicles</h3>
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Plate</th>
@@ -690,7 +745,7 @@ function VehicleOperationsDrawer({ vehicleId, onClose }: { vehicleId: string; on
       <aside className="relative w-full max-w-lg bg-white h-full overflow-auto shadow-xl p-5 space-y-5">
         <div className="flex items-center justify-between">
           <h3 className="font-medium">{data?.vehicle?.plateNumber ?? "Vehicle"}</h3>
-          <button onClick={onClose} className="text-steel hover:text-ink text-sm">✕</button>
+          <button onClick={onClose} className="btn btn-sm btn-ghost">✕</button>
         </div>
 
         {loading ? (
@@ -821,7 +876,7 @@ function DriversTab({ tenant, drivers, onChange }: any) {
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Drivers</h3>
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Name</th>
@@ -949,7 +1004,7 @@ function CustomersTab({ tenant, customers, onChange }: any) {
       <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Customers</h3>
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Name</th>
@@ -1215,7 +1270,7 @@ function FuelSubTab({ tenant, vehicle, records, onChange }: any) {
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Fuel log</h3>
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Liters</th>
@@ -1463,7 +1518,7 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
         </p>
 
         {showNewWarehouse && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+          <div className="card card-body space-y-2">
             <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Loading point / warehouse name" value={whName} onChange={(e) => setWhName(e.target.value)} />
             <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Address" value={whAddress} onChange={(e) => setWhAddress(e.target.value)} />
             <div className="flex gap-2">
@@ -1482,7 +1537,7 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
         )}
 
         {byWarehouse.map(({ warehouse, items }: any) => (
-          <div key={warehouse.id} className="bg-white rounded-xl border border-slate-200 p-4">
+          <div key={warehouse.id} className="card card-body">
             <div className="flex items-center justify-between mb-3">
               {editingWarehouseId === warehouse.id ? (
                 <div className="flex-1 space-y-2">
@@ -1498,7 +1553,7 @@ function InventoryTab({ tenant, inventory, warehouses, onChange }: any) {
                 </div>
               ) : (
                 <>
-                  <h4 className="font-medium text-sm">{warehouse.name}</h4>
+                  <h4 className="text-sm font-semibold text-ink">{warehouse.name}</h4>
                   <div className="flex items-center gap-2">
                     {warehouse.isDefault && <span className="text-xs text-aquaDark">Default</span>}
                     <button onClick={() => startEditWarehouse(warehouse)} className="text-steel text-xs hover:text-aquaDark">Edit</button>
@@ -1690,7 +1745,7 @@ function ReportsTab({ tenant }: any) {
   return (
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 space-y-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="card card-body">
           <h3 className="font-medium mb-3">Build a report</h3>
           <select className="w-full border rounded-lg px-3 py-2 text-sm mb-3" value={datasetKey} onChange={(e) => selectDataset(e.target.value)}>
             <option value="">Select dataset…</option>
@@ -1800,7 +1855,7 @@ function ReportsTab({ tenant }: any) {
         {result && (
           <div className="bg-white rounded-xl border border-slate-200 p-4 overflow-auto">
             <p className="text-steel text-xs mb-2">{result.totalMatched} row(s) matched{result.rows.length < result.totalMatched ? ` (showing ${result.rows.length})` : ""}</p>
-            <table className="w-full text-sm">
+            <table className="data-table">
               <thead>
                 <tr className="text-left text-steel border-b border-slate-100">
                   {result.columns.map((c) => <th key={c.key} className="pb-2 pr-4">{c.label}</th>)}
@@ -1909,7 +1964,7 @@ function ScorecardsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-medium">Driver scorecards</h3>
           <button onClick={() => setShowWeights((s) => !s)} className="text-xs text-aquaDark font-medium">
@@ -1952,7 +2007,7 @@ function ScorecardsTab() {
             </button>
           </div>
         )}
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Rank</th>
@@ -1985,12 +2040,12 @@ function ScorecardsTab() {
         </table>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <h3 className="font-medium mb-1">Vehicle scorecards</h3>
         <p className="text-steel text-xs mb-3">
           Ranked by average cost per completed trip (fuel + maintenance), lowest first — vehicles with no completed trips yet sort last.
         </p>
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Rank</th>
@@ -2193,7 +2248,7 @@ function ErpTab() {
           </p>
         )}
 
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Invoice #</th>
@@ -2454,7 +2509,7 @@ function AutomationTab() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="card card-body">
           <h3 className="font-medium mb-3">Automation logs</h3>
           <table className="w-full text-xs">
             <thead>
@@ -2481,11 +2536,11 @@ function AutomationTab() {
           </table>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="card card-body">
           <h3 className="font-medium mb-3">Notifications</h3>
           <div className="space-y-2">
             {notifications.slice(0, 10).map((n: any) => (
-              <div key={n.id} className="border border-slate-100 rounded-lg p-2">
+              <div key={n.id} className="border border-slate-100 rounded-lg p-3">
                 <p className="text-sm">{n.message}</p>
                 <p className="text-steel text-xs mt-0.5">{new Date(n.createdAt).toLocaleString()}</p>
               </div>
@@ -2598,7 +2653,7 @@ function FieldOpsTab({ drivers, vehicles }: any) {
         <div className="grid md:grid-cols-3 gap-6">
           <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="font-medium mb-3">Assigned tasks</h3>
-            <table className="w-full text-sm">
+            <table className="data-table">
               <thead>
                 <tr className="text-left text-steel border-b border-slate-100">
                   <th className="pb-2">Driver</th>
@@ -2662,7 +2717,7 @@ function FieldOpsTab({ drivers, vehicles }: any) {
 
       {subTab === "expenses" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="card card-body">
             <h3 className="font-medium mb-3">Pending approval</h3>
             <div className="space-y-2">
               {pendingExpenses.map((e: any) => (
@@ -2694,9 +2749,9 @@ function FieldOpsTab({ drivers, vehicles }: any) {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="card card-body">
             <h3 className="font-medium mb-3">Reviewed</h3>
-            <table className="w-full text-sm">
+            <table className="data-table">
               <thead>
                 <tr className="text-left text-steel border-b border-slate-100">
                   <th className="pb-2">Driver</th>
@@ -2832,7 +2887,7 @@ function ExecutiveTab() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-wrap items-end gap-2">
             <div>
@@ -2882,7 +2937,7 @@ function ExecutiveTab() {
             {KPI_METRICS.map((m) => {
               const value = dashboard.kpis[m.key];
               return (
-                <div key={m.key} className="bg-white rounded-xl border border-slate-200 p-4">
+                <div key={m.key} className="card card-body">
                   <p className="text-steel text-xs uppercase tracking-wide">{m.label}</p>
                   <p className="text-2xl font-semibold mt-1">{value != null ? m.format(value) : "—"}</p>
                   <div className="mt-1">
@@ -2894,9 +2949,9 @@ function ExecutiveTab() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="card card-body">
               <h3 className="font-medium mb-3">Top drivers</h3>
-              <table className="w-full text-sm">
+              <table className="data-table">
                 <thead>
                   <tr className="text-left text-steel border-b border-slate-100">
                     <th className="pb-2">Driver</th>
@@ -2921,9 +2976,9 @@ function ExecutiveTab() {
               </table>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="card card-body">
               <h3 className="font-medium mb-3">Vehicle ranking (cost per trip, lowest first)</h3>
-              <table className="w-full text-sm">
+              <table className="data-table">
                 <thead>
                   <tr className="text-left text-steel border-b border-slate-100">
                     <th className="pb-2">Vehicle</th>

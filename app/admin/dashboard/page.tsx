@@ -34,7 +34,7 @@ export default function DashboardPage() {
         {kpis.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {kpis.map(k => (
-              <div key={k.label} className="bg-white rounded-xl border border-slate-200 p-4">
+              <div key={k.label} className="card card-body">
                 <p className="text-steel text-xs uppercase tracking-wide">{k.label}</p>
                 <p className="text-2xl font-semibold mt-1">{k.value}</p>
                 <p className="text-steel text-xs mt-0.5">{k.sub}</p>
@@ -43,7 +43,7 @@ export default function DashboardPage() {
           </div>
         )}
         <div className="grid sm:grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="card card-body">
             <h2 className="font-medium text-sm mb-3">Quick Links</h2>
             <div className="space-y-2">
               {[["Control Tower", "/admin/dispatch"], ["Dispatch (Live)", "/dispatch"], ["Customers & Sites", "/admin/customers"], ["Contracts", "/admin/contracts"], ["Loading Points", "/admin/loading-points"], ["Fleet", "/admin?tab=fleet"], ["Reports", "/admin?tab=reports"]].map(([label, href]) => (
@@ -51,7 +51,7 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="card card-body">
             <h2 className="font-medium text-sm mb-3">Operational Modules</h2>
             <div className="space-y-2">
               {[["Procurement", "/admin/procurement"], ["Inventory", "/admin/inventory"], ["Maintenance", "/admin?tab=maintenance"], ["Expenses", "/admin/expenses"], ["Settings", "/admin/settings"]].map(([label, href]) => (

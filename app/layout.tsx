@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Fleet Ops — Water Delivery Platform",
-  description: "Phase 1: Order, Dispatch, Trip & Delivery Operations",
+  title: "Smarty1 — Fleet & Delivery Operations",
+  description: "Enterprise Fleet, Logistics & Delivery Operations Platform",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+  
+      </head>
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

@@ -52,9 +52,9 @@ export default function SettingsPage() {
           <p className="text-steel text-sm mt-0.5">The central place for platform configuration — numbering, users, roles, permissions, and operational settings.</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <div className="card card-body space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="font-medium text-sm">Numbering & Sequences</h3>
+            <h3 className="text-sm font-semibold text-ink">Numbering & Sequences</h3>
             <button onClick={() => setShowNew((v) => !v)} className="bg-ink text-white rounded-lg px-3 py-1 text-xs font-medium">{showNew ? "Cancel" : "+ New Series"}</button>
           </div>
           <p className="text-steel text-xs bg-warn/10 rounded-lg px-2 py-1.5">Auto-numbering is live for Suppliers, Item Groups, Categories, Sub-Categories, Items, Workshops, and Maintenance Warehouses. Other entities are listed below as future/audit-only — none are faked.</p>
@@ -95,7 +95,7 @@ export default function SettingsPage() {
             ) : series.length === 0 ? (
               <p className="text-steel text-sm">No numbering series configured yet.</p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="data-table">
                 <thead className="text-steel text-xs uppercase"><tr><th className="text-left py-1">Entity</th><th className="text-left py-1">Prefix</th><th className="text-left py-1">Next</th><th className="text-left py-1">Status</th><th className="text-left py-1">Actions</th></tr></thead>
                 <tbody>
                   {series.map((s: any) => (
@@ -142,8 +142,8 @@ export default function SettingsPage() {
 
         <div className="grid sm:grid-cols-2 gap-4">
           {otherCards.map((c) => (
-            <div key={c.title} className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
-              <h3 className="font-medium text-sm">{c.title}</h3>
+            <div key={c.title} className="card card-body space-y-2">
+              <h3 className="text-sm font-semibold text-ink">{c.title}</h3>
               <p className="text-steel text-sm">{c.description}</p>
               <p className="text-warn text-xs bg-warn/10 rounded-lg px-2 py-1 inline-block">{c.status}</p>
             </div>
@@ -176,11 +176,11 @@ function UsersRolesSection() {
     const d = await fetch("/api/user-roles").then(r => r.json());
     setData(d); setBusy(false);
   }
-  if (!data) return <div className="bg-white rounded-xl border border-slate-200 p-4"><p className="text-steel text-sm">Loading users…</p></div>;
+  if (!data) return <div className="card card-body"><p className="text-steel text-sm">Loading users…</p></div>;
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+    <div className="card card-body space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-medium text-sm">Users &amp; Roles</h3>
+        <h3 className="text-sm font-semibold text-ink">Users &amp; Roles</h3>
         <span className="text-xs text-ok bg-ok/10 rounded px-2 py-0.5">RC1 Live</span>
       </div>
       <p className="text-steel text-xs">Assign module-level roles to tenant users. The legacy system role (ADMIN/DISPATCHER/DRIVER) still grants full access unless you add explicit role assignments.</p>
@@ -188,7 +188,7 @@ function UsersRolesSection() {
         {data.users.map((u: any) => {
           const assigned = data.userRoles.filter((ur: any) => ur.userId === u.id);
           return (
-            <div key={u.id} className="border border-slate-100 rounded-lg p-2">
+            <div key={u.id} className="border border-slate-100 rounded-lg p-3">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-sm font-medium">{u.name} <span className="text-steel text-xs font-normal">{u.email}</span></p>
                 <span className="text-xs text-steel bg-paper rounded px-1.5 py-0.5">{u.role}</span>

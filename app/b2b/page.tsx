@@ -142,7 +142,7 @@ function BulkOrderTab({ tenant, customer, locations, onOrderPlaced }: any) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="card card-body">
       <h3 className="font-medium mb-1">Place a bulk order</h3>
       <p className="text-steel text-xs mb-3">Select locations and set quantities — one order is created per location.</p>
 
@@ -155,7 +155,7 @@ function BulkOrderTab({ tenant, customer, locations, onOrderPlaced }: any) {
             <label className="flex items-start gap-2 cursor-pointer">
               <input type="checkbox" className="mt-1" checked={!!selected[loc.id]} onChange={() => toggleLocation(loc.id)} />
               <div className="flex-1">
-                <div className="font-medium text-sm">{loc.label}</div>
+                <div className="text-sm font-semibold text-ink">{loc.label}</div>
                 <div className="text-steel text-xs">{loc.address}</div>
               </div>
             </label>
@@ -240,12 +240,12 @@ function LocationsTab({ customerId, locations, onChange }: any) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <h3 className="font-medium mb-3">Delivery locations</h3>
         <div className="space-y-2">
           {locations.map((loc: any) => (
             <div key={loc.id} className="border border-slate-100 rounded-lg p-3">
-              <div className="font-medium text-sm">{loc.label}</div>
+              <div className="text-sm font-semibold text-ink">{loc.label}</div>
               <div className="text-steel text-xs">{loc.address}</div>
               {loc.contactName && (
                 <div className="text-steel text-xs mt-1">{loc.contactName} · {loc.contactPhone}</div>
@@ -256,7 +256,7 @@ function LocationsTab({ customerId, locations, onChange }: any) {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <h3 className="font-medium mb-3">Add a location</h3>
         <div className="space-y-2">
           <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Label (e.g. Warehouse - North)" value={label} onChange={(e) => setLabel(e.target.value)} />
@@ -283,7 +283,7 @@ function LocationsTab({ customerId, locations, onChange }: any) {
 
 function OrdersTab({ orders }: { orders: any[] }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="card card-body">
       <h3 className="font-medium mb-3">Order history</h3>
       <div className="space-y-2 max-h-[500px] overflow-auto">
         {orders.map((o) => (
@@ -329,7 +329,7 @@ function StatementTab({ statement }: { statement: any }) {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <h3 className="font-medium mb-2">Exposure breakdown</h3>
         <div className="text-sm space-y-1">
           <div className="flex justify-between">
@@ -343,7 +343,7 @@ function StatementTab({ statement }: { statement: any }) {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <h3 className="font-medium mb-3">Orders by status</h3>
         <div className="flex flex-wrap gap-2">
           {orderCounts.map((oc: any) => (
@@ -356,9 +356,9 @@ function StatementTab({ statement }: { statement: any }) {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <h3 className="font-medium mb-3">Invoices</h3>
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Invoice #</th>

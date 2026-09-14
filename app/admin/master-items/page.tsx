@@ -85,11 +85,11 @@ function GroupsTab({ groups, onChange }: any) {
         <button onClick={() => setShowNew((v) => !v)} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium">{showNew ? "Cancel" : "+ New Item Group"}</button>
       </div>
       {showNew && <GroupForm onCancel={() => setShowNew(false)} onSaved={() => { setShowNew(false); onChange(); }} />}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="card overflow-hidden">
         {groups.length === 0 ? (
           <p className="p-6 text-steel text-sm text-center">No item groups yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="data-table">
             <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {groups.map((g: any) => (
@@ -163,11 +163,11 @@ function CategoriesTab({ categories, groups, onChange }: any) {
         <button onClick={() => setShowNew((v) => !v)} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium">{showNew ? "Cancel" : "+ New Category"}</button>
       </div>
       {showNew && <CategoryForm groups={groups} onCancel={() => setShowNew(false)} onSaved={() => { setShowNew(false); onChange(); }} />}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="card overflow-hidden">
         {categories.length === 0 ? (
           <p className="p-6 text-steel text-sm text-center">No item categories yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="data-table">
             <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Group</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {categories.map((c: any) => (
@@ -248,11 +248,11 @@ function SubcategoriesTab({ subcategories, categories, onChange }: any) {
         <button onClick={() => setShowNew((v) => !v)} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium">{showNew ? "Cancel" : "+ New Sub-Category"}</button>
       </div>
       {showNew && <SubcategoryForm categories={categories} onCancel={() => setShowNew(false)} onSaved={() => { setShowNew(false); onChange(); }} />}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="card overflow-hidden">
         {subcategories.length === 0 ? (
           <p className="p-6 text-steel text-sm text-center">No item sub-categories yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="data-table">
             <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Category</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {subcategories.map((s: any) => (
@@ -334,11 +334,11 @@ function ItemsTab({ items, categories, subcategories, groups, onChange }: any) {
         <button onClick={() => setShowNew((v) => !v)} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium">{showNew ? "Cancel" : "+ New Item"}</button>
       </div>
       {showNew && <ItemForm categories={categories} subcategories={subcategories} groups={groups} onCancel={() => setShowNew(false)} onSaved={() => { setShowNew(false); onChange(); }} />}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="card overflow-hidden">
         {items.length === 0 ? (
           <p className="p-6 text-steel text-sm text-center">No items yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="data-table">
             <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">UOM</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {items.map((it: any) => (

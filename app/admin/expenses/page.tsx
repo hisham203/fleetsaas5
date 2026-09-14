@@ -140,14 +140,14 @@ function ExpensesPageInner() {
 
         {error && <p className="text-danger text-sm">{error}</p>}
 
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="card overflow-hidden">
           {loading ? (
             <p className="p-6 text-steel text-sm">Loading…</p>
           ) : filtered.length === 0 ? (
             <p className="p-6 text-steel text-sm text-center">No expense requests found for this filter.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>
                     <th className="text-left px-4 py-2">Ref</th>

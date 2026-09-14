@@ -181,12 +181,12 @@ function ContractsPageInner() {
 
 function ContractList({ contracts, selectedId, onSelect }: { contracts: any[]; selectedId: string | null; onSelect: (id: string) => void }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="card card-body">
       <h3 className="font-medium mb-3">All contracts</h3>
       {contracts.length === 0 ? (
         <p className="text-steel text-sm">No contracts yet — use &quot;+ New contract&quot; to create the first one.</p>
       ) : (
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Contract #</th>
@@ -391,7 +391,7 @@ function ContractDetail({ contractId, distanceBands, onChange }: { contractId: s
   const readinessItems = computeReadinessItems(contract, pricingRules, distanceBands);
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+    <div className="card card-body space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <p className="font-mono text-xs text-steel">{contract.contractNumber}</p>
@@ -1049,7 +1049,7 @@ function NewContractForm({ customers, onCreated, initialCustomerId }: { customer
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+    <div className="card card-body space-y-2">
       <h3 className="font-medium mb-2">New contract</h3>
       <select className="w-full border rounded-lg px-3 py-2 text-sm" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
         <option value="">Select company customer…</option>
@@ -1189,12 +1189,12 @@ function DistanceBandsSummary({ bands, onChange }: { bands: any[]; onChange: () 
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="card card-body">
       <h3 className="font-medium mb-3">Distance bands</h3>
       {bands.length === 0 ? (
         <p className="text-steel text-sm">No distance bands defined yet for this tenant — pricing rules that reference a distanceBandCode won&apos;t match until at least one exists.</p>
       ) : (
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Code</th>

@@ -147,12 +147,12 @@ export default function CustomersConfigPage() {
 
 function CustomerList({ customers, contractsByCustomer, selectedId, onSelect }: { customers: any[]; contractsByCustomer: Map<string, any[]>; selectedId: string | null; onSelect: (id: string) => void }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="card card-body">
       <h3 className="font-medium mb-3">All customers</h3>
       {customers.length === 0 ? (
         <p className="text-steel text-sm">No customers yet — use the Admin → Customers tab to add one.</p>
       ) : (
-        <table className="w-full text-sm">
+        <table className="data-table">
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Name</th>
@@ -256,7 +256,7 @@ function NewCustomerButton({ onCreated }: { onCreated: (id: string) => void }) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 w-72 shrink-0">
-      <p className="font-medium text-sm">New customer</p>
+      <p className="text-sm font-semibold text-ink">New customer</p>
       <NextCodePreview entityType="CUSTOMER" label="Customer internal code" onReady={setCodeReady} />
       <input className="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
       <select className="w-full border rounded-lg px-2 py-1.5 text-sm" value={type} onChange={(e) => setType(e.target.value as "B2C" | "B2B")}>
@@ -324,7 +324,7 @@ function CustomerProfileCard({ customer, isAdmin, onUpdated }: { customer: any; 
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="card card-body">
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-medium">Customer profile</h3>
         {isAdmin && !editing && (
@@ -399,7 +399,7 @@ function CustomerOperationsPanel({ customer, contracts, isAdmin }: { customer: a
   const pendingOrders = orders.filter((o) => !["DELIVERED", "PARTIALLY_DELIVERED", "FAILED", "CANCELLED"].includes(o.status));
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+    <div className="card card-body space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="font-medium">Contracts &amp; Operational Activity</h3>
         {isAdmin && (
@@ -607,7 +607,7 @@ function CustomerSitesPanel({ customer, contracts, distanceBands, isAdmin }: { c
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+    <div className="card card-body space-y-3">
       <div>
         <p className="font-medium">{customer.name}</p>
         <p className="text-steel text-xs">{customer.type} · {customer.phone ?? customer.loginEmail ?? "no contact on file"}</p>

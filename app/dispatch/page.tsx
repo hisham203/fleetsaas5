@@ -473,7 +473,7 @@ function DispatchPageInner() {
 
       <div className="p-6 grid lg:grid-cols-3 gap-6">
         {/* Order queue */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="card card-body">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-medium">Dispatch queue</h3>
             <button onClick={() => setShowNewOrder((s) => !s)} className="text-xs text-aquaDark font-medium">
@@ -532,7 +532,7 @@ function DispatchPageInner() {
         </div>
 
         {/* Trip planner */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="card card-body">
           <h3 className="font-medium mb-3">Plan trip</h3>
           <p className="text-steel text-xs mb-2">{selected.length} order(s) selected</p>
           {selected.length > 0 && (
@@ -599,7 +599,7 @@ function DispatchPageInner() {
         </div>
 
         {/* Live trips */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="card card-body">
           <h3 className="font-medium mb-3">Live trips</h3>
           {error && <p className="text-danger text-xs mb-2">{error}</p>}
           <div className="space-y-3 max-h-[500px] overflow-auto">
@@ -733,7 +733,7 @@ function DispatchPageInner() {
             <aside className="relative w-full max-w-sm bg-white h-full overflow-auto shadow-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-medium">{trip.tripNumber}</h3>
-                <button onClick={() => setDetailTripId(null)} className="text-steel hover:text-ink text-sm">✕</button>
+                <button onClick={() => setDetailTripId(null)} className="btn btn-sm btn-ghost">✕</button>
               </div>
               <div className="space-y-2 text-sm">
                 <DetailRow label="Trip status" value={<StatusBadge status={trip.status} />} />

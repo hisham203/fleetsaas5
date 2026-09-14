@@ -46,13 +46,13 @@ export default function WorkshopsPage() {
         </div>
         {showNew && <WorkshopForm onCancel={() => setShowNew(false)} onSaved={() => { setShowNew(false); load(); }} />}
 
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="card overflow-hidden">
           {dataLoading ? (
             <p className="p-6 text-steel text-sm">Loading…</p>
           ) : workshops.length === 0 ? (
             <p className="p-6 text-steel text-sm text-center">No workshops yet — use &quot;+ New Workshop&quot; above to create one.</p>
           ) : (
-            <table className="w-full text-sm">
+            <table className="data-table">
               <thead className="bg-paper text-steel text-xs uppercase">
                 <tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">City</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr>
               </thead>

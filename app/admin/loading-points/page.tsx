@@ -80,7 +80,7 @@ export default function LoadingPointsPage() {
 
   return (
     <AdminShell title="Loading Points" tenantName={tenant?.name}>
-      <div className="p-6 space-y-6">
+      <div className="page-content">
         {/* Q37: only a real, derivable metric is shown here. Government/
             private classification and active/out-of-service counts are
             deliberately not shown as KPI cards — no field distinguishes
@@ -107,14 +107,14 @@ export default function LoadingPointsPage() {
           />
         )}
 
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="card overflow-hidden">
           {loading ? (
             <p className="p-6 text-steel text-sm">Loading…</p>
           ) : warehouses.length === 0 ? (
             <p className="p-6 text-steel text-sm text-center">No loading points yet — use &quot;+ New Loading Point&quot; above to create one.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>
                     <th className="text-left px-4 py-2">Loading Point</th>

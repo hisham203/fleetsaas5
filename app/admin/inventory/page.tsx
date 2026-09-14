@@ -75,11 +75,11 @@ export default function InventoryPage() {
         ) : (
           <>
             {tab === "overview" && (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="card overflow-hidden">
                 {balances.length === 0 ? (
                   <p className="p-6 text-steel text-sm text-center">No stock balances yet. Balances are created once receiving is implemented in a future milestone.</p>
                 ) : (
-                  <table className="w-full text-sm">
+                  <table className="data-table">
                     <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Warehouse</th><th className="text-left px-4 py-2">Item</th><th className="text-left px-4 py-2">On Hand</th><th className="text-left px-4 py-2">Available</th></tr></thead>
                     <tbody>
                       {balances.map((b: any) => (
@@ -99,11 +99,11 @@ export default function InventoryPage() {
             {tab === "warehouses" && <WarehousesTab warehouses={warehouses} onChange={load} />}
 
             {tab === "movements" && (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="card overflow-hidden">
                 {movements.length === 0 ? (
                   <p className="p-6 text-steel text-sm text-center">No stock movements yet.</p>
                 ) : (
-                  <table className="w-full text-sm">
+                  <table className="data-table">
                     <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">Item</th><th className="text-left px-4 py-2">Qty</th><th className="text-left px-4 py-2">Date</th></tr></thead>
                     <tbody>
                       {movements.map((m: any) => (
@@ -121,11 +121,11 @@ export default function InventoryPage() {
             )}
 
             {tab === "lowstock" && (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="card overflow-hidden">
                 {lowStockItems.length === 0 ? (
                   <p className="p-6 text-steel text-sm text-center">No low-stock items — this reflects real balances against each item&apos;s own reorder point, not an invented KPI.</p>
                 ) : (
-                  <table className="w-full text-sm">
+                  <table className="data-table">
                     <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Item</th><th className="text-left px-4 py-2">Reorder Point</th></tr></thead>
                     <tbody>
                       {lowStockItems.map((it: any) => (
@@ -163,11 +163,11 @@ function WarehousesTab({ warehouses, onChange }: any) {
         <button onClick={() => setShowNew((v) => !v)} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium">{showNew ? "Cancel" : "+ New Maintenance Warehouse"}</button>
       </div>
       {showNew && <WarehouseForm workshops={workshops} onCancel={() => setShowNew(false)} onSaved={() => { setShowNew(false); onChange(); }} />}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="card overflow-hidden">
         {warehouses.length === 0 ? (
           <p className="p-6 text-steel text-sm text-center">No maintenance warehouses yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="data-table">
             <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">Workshop</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {warehouses.map((w: any) => (
@@ -274,7 +274,7 @@ function AdjustmentForm({ warehouses, items, onCancel, onSaved }: any) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2 max-w-md">
-      <p className="font-medium text-sm">Inventory Adjustment / Issue</p>
+      <p className="text-sm font-semibold text-ink">Inventory Adjustment / Issue</p>
       <div className="grid grid-cols-2 gap-2">
         <div><label className="text-xs text-steel">Warehouse</label>
           <select className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>

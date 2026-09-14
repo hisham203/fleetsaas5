@@ -65,9 +65,9 @@ export default function ReportsPage() {
           ))}
         </div>
         {currentDS && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="card card-body space-y-3">
             <div className="flex items-center justify-between">
-              <p className="font-medium text-sm">{currentDS.label}</p>
+              <p className="text-sm font-semibold text-ink">{currentDS.label}</p>
               <button onClick={run} disabled={running} className="bg-ink text-white rounded-lg px-4 py-1.5 text-sm font-medium disabled:opacity-40">
                 {running ? "Running…" : "Run Report"}
               </button>
@@ -83,12 +83,12 @@ export default function ReportsPage() {
           </div>
         )}
         {result && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="card overflow-hidden">
             <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
               <p className="text-steel text-xs">{result.totalMatched} rows</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>{result.columns.map((c: any) => <th key={c.key} className="text-left px-4 py-2 whitespace-nowrap">{c.label}</th>)}</tr>
                 </thead>

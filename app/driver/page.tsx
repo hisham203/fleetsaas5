@@ -141,11 +141,11 @@ export default function DriverPage() {
   }
 
   if (sessionLoading || !session) {
-    return <main className="min-h-screen bg-paper"><TopNav role="Driver" /><p className="p-6 text-steel">Loading…</p></main>;
+    return <main className="min-h-screen bg-paper flex flex-col"><TopNav role="Driver" /><p className="p-6 text-steel">Loading…</p></main>;
   }
 
   return (
-    <main className="min-h-screen bg-paper">
+    <main className="min-h-screen bg-paper flex flex-col">
       <TopNav role={`Driver — ${session.name}`} />
       <div className="p-6 max-w-lg mx-auto">
         {actionMessage && (
@@ -156,7 +156,7 @@ export default function DriverPage() {
           </div>
         )}
         {!myTrip && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4 text-center text-steel text-sm">
+          <div className="card card-body text-center text-steel text-sm">
             {myPlannedTrip
               ? myPlannedTrip.loadingConfirmed
                 ? "Your assigned trip is loaded and awaiting dispatch."
@@ -166,7 +166,7 @@ export default function DriverPage() {
         )}
 
         {myTrip && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="card card-body">
             <div className="flex items-center justify-between mb-1">
               <span className="font-mono text-sm">{myTrip.tripNumber}</span>
               <StatusBadge status={myTrip.status} />
@@ -254,17 +254,17 @@ function StopCard({ stop, onArrive, onDeliver, onFail }: any) {
       </p>
 
       {stop.status === "PENDING" && (
-        <button onClick={onArrive} className="w-full bg-ink text-white rounded-lg py-1.5 text-xs font-medium">
+        <button onClick={onArrive} className="w-full bg-ink text-white rounded-lg py-3 text-sm font-semibold">
           Arrived at stop
         </button>
       )}
 
       {stop.status === "ARRIVED" && !showFail && (
         <div className="flex gap-2">
-          <button onClick={onDeliver} className="flex-1 bg-ok text-white rounded-lg py-1.5 text-xs font-medium">
+          <button onClick={onDeliver} className="flex-1 bg-ok text-white rounded-lg py-3 text-sm font-semibold">
             Confirm delivery
           </button>
-          <button onClick={() => setShowFail(true)} className="flex-1 bg-danger text-white rounded-lg py-1.5 text-xs font-medium">
+          <button onClick={() => setShowFail(true)} className="flex-1 bg-danger text-white rounded-lg py-3 text-sm font-semibold">
             Report failure
           </button>
         </div>
@@ -445,7 +445,7 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
   return (
     <div className="mt-4 space-y-4">
       {openTasks.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="card card-body">
           <h3 className="font-medium text-sm mb-2">Your tasks</h3>
           <div className="space-y-2">
             {openTasks.map((t: any) => (
@@ -473,9 +473,9 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="card card-body">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="font-medium text-sm">Expenses</h3>
+          <h3 className="text-sm font-semibold text-ink">Expenses</h3>
           <button onClick={() => setShowExpenseForm((s) => !s)} className="text-aquaDark text-xs font-medium">
             {showExpenseForm ? "Cancel" : "+ Submit expense"}
           </button>

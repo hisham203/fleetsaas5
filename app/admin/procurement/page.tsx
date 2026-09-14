@@ -98,8 +98,8 @@ function SuppliersTab({ suppliers, onChange }: any) {
           <button disabled={!name || !codeReady || submitting} onClick={save} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Create Supplier</button>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card overflow-hidden">
+        <table className="data-table">
           <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Contact</th><th className="text-left px-4 py-2">Status</th></tr></thead>
           <tbody>{suppliers.map((s: any) => <tr key={s.id} className="border-t border-slate-50"><td className="px-4 py-2 font-mono text-xs">{s.supplierCode}</td><td className="px-4 py-2 font-medium">{s.name}</td><td className="px-4 py-2 text-steel text-xs">{s.contactName ?? "—"} {s.phone ? `· ${s.phone}` : ""}</td><td className="px-4 py-2"><StatusBadge status={s.status} /></td></tr>)}</tbody>
         </table>
@@ -145,7 +145,7 @@ function PRTab({ prs, items, warehouses, pos, onChange, isAdmin }: any) {
       </div>
       {showNew && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 max-w-2xl">
-          <p className="font-medium text-sm">New Purchase Requisition</p>
+          <p className="text-sm font-semibold text-ink">New Purchase Requisition</p>
           <div className="grid grid-cols-2 gap-2">
             <div><label className="text-xs text-steel">Priority</label>
               <select className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={priority} onChange={e => setPriority(e.target.value)}><option>LOW</option><option>NORMAL</option><option>HIGH</option><option>URGENT</option></select></div>
@@ -168,8 +168,8 @@ function PRTab({ prs, items, warehouses, pos, onChange, isAdmin }: any) {
           <button disabled={submitting || !lines.some(l => l.itemId)} onClick={submit} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Submit Requisition</button>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card overflow-hidden">
+        <table className="data-table">
           <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">PR #</th><th className="text-left px-4 py-2">Priority</th><th className="text-left px-4 py-2">Lines</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
           <tbody>
             {prs.map((pr: any) => (
@@ -230,7 +230,7 @@ function POTab({ pos, suppliers, approvedPRs, items, grs, onChange, isAdmin }: a
       </div>
       {showNew && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 max-w-2xl">
-          <p className="font-medium text-sm">New Purchase Order</p>
+          <p className="text-sm font-semibold text-ink">New Purchase Order</p>
           <div className="grid grid-cols-2 gap-2">
             <div><label className="text-xs text-steel">Supplier</label>
               <select className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={supplierId} onChange={e => setSupplierId(e.target.value)}><option value="">Select supplier…</option>{suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
@@ -256,8 +256,8 @@ function POTab({ pos, suppliers, approvedPRs, items, grs, onChange, isAdmin }: a
           <button disabled={submitting || !supplierId || !lines.some(l => l.itemId)} onClick={create} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">Create Purchase Order</button>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card overflow-hidden">
+        <table className="data-table">
           <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">PO #</th><th className="text-left px-4 py-2">Total</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">GRNs</th></tr></thead>
           <tbody>
             {pos.map((po: any) => (
@@ -310,7 +310,7 @@ function GRTab({ grs, pos, warehouses, items, onChange }: any) {
       </div>
       {showNew && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 max-w-2xl">
-          <p className="font-medium text-sm">Goods Receipt</p>
+          <p className="text-sm font-semibold text-ink">Goods Receipt</p>
           <div className="grid grid-cols-2 gap-2">
             <div><label className="text-xs text-steel">Purchase Order</label>
               <select className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1" value={poId} onChange={e => selectPO(e.target.value)}><option value="">Select PO…</option>{openPOs.map((p: any) => <option key={p.id} value={p.id}>{p.poNumber}</option>)}</select></div>
@@ -340,8 +340,8 @@ function GRTab({ grs, pos, warehouses, items, onChange }: any) {
           <p className="text-steel text-[11px]">Accepted quantities are posted to inventory on save.</p>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card overflow-hidden">
+        <table className="data-table">
           <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">GRN #</th><th className="text-left px-4 py-2">PO</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Received</th></tr></thead>
           <tbody>
             {grs.map((g: any) => {

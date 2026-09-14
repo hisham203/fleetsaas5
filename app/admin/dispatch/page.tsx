@@ -122,7 +122,7 @@ function DispatchControlTowerPageInner() {
 
   return (
     <AdminShell title="Dispatch Control Tower" tenantName={tenant?.name}>
-      <div className="p-6 space-y-6">
+      <div className="page-content">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           <KpiCard label="New Demand" value={kpi.newDemand} />
           <KpiCard label="Waiting Assignment" value={kpi.waitingAssignment} tone={kpi.waitingAssignment > 0 ? "warn" : "default"} />
@@ -154,7 +154,7 @@ function DispatchControlTowerPageInner() {
 
         {error && <p className="text-danger text-sm">{error}</p>}
 
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="card overflow-hidden">
           {loading ? (
             <p className="p-6 text-steel text-sm">Loading…</p>
           ) : filteredRows.length === 0 ? (
@@ -172,7 +172,7 @@ function DispatchControlTowerPageInner() {
             )
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>
                     <th className="text-left px-4 py-2">Order</th>

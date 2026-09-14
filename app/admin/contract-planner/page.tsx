@@ -104,7 +104,7 @@ function ContractPlannerPageInner() {
 
   return (
     <AdminShell title="Contract & Capacity Planner" tenantName={tenant?.name}>
-      <div className="p-6 space-y-6">
+      <div className="page-content">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard label="Active Contracts" value={rows.length} />
           <KpiCard label="Ready for Dispatch" value={readyCount} tone="ok" />
@@ -119,7 +119,7 @@ function ContractPlannerPageInner() {
             note below for exactly what remains manual. */}
         {(demand || capacity) && (
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="card card-body">
               <h3 className="font-medium text-sm mb-2">Demand</h3>
               {demand ? (
                 <div className="text-sm space-y-1">
@@ -130,7 +130,7 @@ function ContractPlannerPageInner() {
                 <p className="text-steel text-sm">Loading…</p>
               )}
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="card card-body">
               <h3 className="font-medium text-sm mb-2">Capacity</h3>
               {capacity ? (
                 <div className="text-sm space-y-1">
@@ -172,14 +172,14 @@ function ContractPlannerPageInner() {
           <div className="bg-warn/10 border border-warn/30 rounded-lg px-4 py-2 text-warn text-sm">{deepLinkNotice}</div>
         )}
 
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="card overflow-hidden">
           {loading ? (
             <p className="p-6 text-steel text-sm">Loading…</p>
           ) : filteredRows.length === 0 ? (
             <p className="p-6 text-steel text-sm text-center">No contracts match this view.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>
                     <th className="text-left px-4 py-2">Contract</th>

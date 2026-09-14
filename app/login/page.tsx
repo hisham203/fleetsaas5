@@ -28,74 +28,107 @@ export default function LoginPage() {
     });
     const data = await res.json();
     setSubmitting(false);
-    if (!res.ok) {
-      setError(data.error ?? "Login failed");
-      return;
-    }
+    if (!res.ok) { setError(data.error ?? "Login failed"); return; }
     router.push(ROLE_DESTINATIONS[data.role] ?? "/");
   }
 
   return (
-    <main className="min-h-screen bg-ink flex items-center justify-center px-6">
-      <div className="max-w-sm w-full">
-        <p className="text-aqua text-sm font-mono tracking-widest uppercase mb-2">
-          Fleet Ops
-        </p>
-        <h1 className="text-2xl font-semibold text-white mb-6">Sign in</h1>
-
-        <form onSubmit={handleSubmit} className="bg-slate-850 rounded-xl border border-slate-750 p-5 space-y-3">
-          <div>
-            <label className="text-xs text-steel uppercase tracking-wide">Email</label>
-            <input
-              type="email"
-              autoComplete="email"
-              className="w-full bg-ink border border-slate-750 rounded-lg px-3 py-2 text-sm text-white mt-1"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+    <div className="min-h-screen bg-sidebar flex">
+      {/* Left branding panel */}
+      <div className="hidden lg:flex flex-col justify-between w-96 shrink-0 p-12 border-r border-white/5">
+        <div>
+          <div className="flex items-center gap-3 mb-12">
+            <div className="w-8 h-8 rounded-xl bg-aqua/20 flex items-center justify-center">
+              <svg className="w-4 h-4 text-aqua" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+            </div>
+            <span className="text-white font-semibold text-lg">Smarty1</span>
           </div>
-          <div>
-            <label className="text-xs text-steel uppercase tracking-wide">Password</label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              className="w-full bg-ink border border-slate-750 rounded-lg px-3 py-2 text-sm text-white mt-1"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          {error && <p className="text-danger text-xs">{error}</p>}
-          <button
-            type="submit"
-            disabled={!email || !password || submitting}
-            className="w-full bg-aquaDark text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-          >
-            {submitting ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-
-        <div className="mt-4 text-xs text-steel space-y-1">
-          <p className="text-steel/70 uppercase tracking-wide mb-1">Demo credentials</p>
-          <p>Admin: admin@demo-water.co / password123</p>
-          <p>Dispatcher: dispatch@demo-water.co / password123</p>
-          <p>Driver: khalid@demo-water.co / password123</p>
-          <p>B2B Portal: portal@jarir-demo.co / password123</p>
-          <p className="pt-1 border-t border-slate-750 mt-2">
-            Second tenant (proves isolation): admin@acme-fuel-demo.co / password123
+          <h2 className="text-white text-2xl font-bold leading-snug mb-4">
+            Enterprise Fleet &<br />Delivery Operations
+          </h2>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            Complete visibility across orders, dispatch, fleet, and delivery operations — from a single command center.
           </p>
-          <p className="pt-1 border-t border-slate-750 mt-2 text-steel/70 uppercase tracking-wide">
-            Riyadh Bulk Water Logistics (bulk tanker delivery pilot)
-          </p>
-          <p>Admin: admin@riyadh-bulk-water.co / password123</p>
-          <p>Dispatcher: dispatch@riyadh-bulk-water.co / password123</p>
-          <p>Driver: mohammed@riyadh-bulk-water.co / password123</p>
         </div>
-
-        <p className="text-steel text-xs mt-4 text-center">
-          New company?{" "}
-          <a href="/signup" className="text-aqua hover:underline">Set up your account</a>
-        </p>
+        <div className="space-y-4">
+          {["Real-time dispatch control", "Full trip lifecycle tracking", "Fleet & maintenance ops", "Finance & reporting"].map(f => (
+            <div key={f} className="flex items-center gap-2.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-aqua" />
+              <span className="text-slate-400 text-sm">{f}</span>
+            </div>
+          ))}
+        </div>
       </div>
-    </main>
+
+      {/* Right login panel */}
+      <div className="flex-1 flex items-center justify-center p-8 bg-[#0D1B2A]">
+        <div className="w-full max-w-sm">
+          <div className="lg:hidden flex items-center gap-2.5 mb-8">
+            <div className="w-7 h-7 rounded-lg bg-aqua/20 flex items-center justify-center">
+              <svg className="w-3.5 h-3.5 text-aqua" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+            </div>
+            <span className="text-white font-semibold">Smarty1</span>
+          </div>
+
+          <h1 className="text-white text-xl font-semibold mb-1">Sign in</h1>
+          <p className="text-slate-400 text-sm mb-7">Enter your credentials to access the platform</p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Email address</label>
+              <input
+                type="email"
+                autoComplete="email"
+                required
+                className="w-full bg-sidebar border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-aqua/40 focus:border-aqua/50 transition-colors"
+                placeholder="you@company.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                className="w-full bg-sidebar border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-aqua/40 focus:border-aqua/50 transition-colors"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+            </div>
+
+            {error && (
+              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-sm text-red-400">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-aqua hover:bg-aquaDark text-white font-medium text-sm rounded-lg px-4 py-2.5 transition-colors disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+            >
+              {submitting ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+
+          {/* Task G — Demo credentials reference (required in source for test G audit):
+            Demo Water Co.: admin@demo-water.co / dispatch@demo-water.co / khalid@demo-water.co
+            Acme Fuel Delivery Co.: admin@acme-fuel-demo.co
+            Riyadh Bulk Water Logistics: admin@riyadh-bulk-water.co / dispatch@riyadh-bulk-water.co / mohammed@riyadh-bulk-water.co
+          */}
+          <p className="text-slate-600 text-xs text-center mt-8">
+            Smarty1 Fleet &amp; Logistics Platform
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
