@@ -57,6 +57,11 @@ function DispatchPageInner() {
   const [newPayment, setNewPayment] = useState("CASH");
   const [newDiscount, setNewDiscount] = useState(0);
   const [orderError, setOrderError] = useState("");
+  // Migration 0022: tanker capacity selection for contract orders
+  const [newContractId, setNewContractId] = useState("");
+  const [contractCapacities, setContractCapacities] = useState<number[]>([]);
+  const [selectedTankerLtr, setSelectedTankerLtr] = useState<number | "">("");
+  const [derivedTankerLtr, setDerivedTankerLtr] = useState<number | null>(null);
   const [sla, setSla] = useState<{ orders: any[]; summary: any } | null>(null);
   const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
   const [dispatchingTripId, setDispatchingTripId] = useState<string | null>(null);
@@ -98,19 +103,39 @@ function DispatchPageInner() {
     setControlTowerRows(Array.isArray(ct) ? ct : []);
   }, [session]);
 
+  // Migration 0022: load eligible tanker capacities when a contract is selected
+  async function onContractChange(cid: string) {
+    setNewContractId(cid);
+    setSelectedTankerLtr("");
+    setDerivedTankerLtr(null);
+    setContractCapacities([]);
+    if (!cid) return;
+    try {
+      const res = await fetch(`/api/contract-pricing-rules?contractId=${cid}`);
+      if (!res.ok) return;
+      const rules = await res.json();
+      const caps = [...new Set<number>(rules.map((r: any) => r.tankerCapacityLtr).filter(Boolean) as number[])];
+      setContractCapacities(caps);
+      if (caps.length === 1) setDerivedTankerLtr(caps[0]);
+    } catch {}
+  }
+
   async function createOrder() {
     setOrderError("");
+    const body: Record<string, any> = {
+      tenantId: tenant.id,
+      customerId: newCustomerId,
+      qtyOrdered: newQty,
+      emptyBottlesToCollect: newEmpties,
+      paymentMethod: newPayment,
+      discountAmount: newDiscount,
+    };
+    if (newContractId) body.contractId = newContractId;
+    if (selectedTankerLtr) body.selectedTankerCapacityLtr = selectedTankerLtr;
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tenantId: tenant.id,
-        customerId: newCustomerId,
-        qtyOrdered: newQty,
-        emptyBottlesToCollect: newEmpties,
-        paymentMethod: newPayment,
-        discountAmount: newDiscount,
-      }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -118,6 +143,10 @@ function DispatchPageInner() {
       return;
     }
     setNewCustomerId("");
+    setNewContractId("");
+    setContractCapacities([]);
+    setSelectedTankerLtr("");
+    setDerivedTankerLtr(null);
     setNewQty(1);
     setNewEmpties(0);
     setNewDiscount(0);
@@ -483,26 +512,52 @@ function DispatchPageInner() {
           <p className="text-steel text-xs mb-3">{pendingOrders.length} order(s) waiting for assignment</p>
 
           {showNewOrder && (
-            <div className="border border-slate-200 rounded-lg p-3 mb-3 space-y-2">
-              <select className="w-full border rounded-lg px-2 py-1.5 text-xs" value={newCustomerId} onChange={(e) => setNewCustomerId(e.target.value)}>
+            <div className="card card-body space-y-2 mb-3">
+              <select className="form-select text-xs" value={newCustomerId} onChange={(e) => setNewCustomerId(e.target.value)}>
                 <option value="">Select customer…</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
                 ))}
               </select>
+              {/* Migration 0022: contract + tanker capacity selection */}
+              <select className="form-select text-xs" value={newContractId} onChange={(e) => onContractChange(e.target.value)}>
+                <option value="">No contract (direct order)</option>
+                {/* Contracts for the selected customer — filter at render time */}
+              </select>
+              {contractCapacities.length === 1 && derivedTankerLtr && (
+                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-aquaLight rounded text-xs text-aquaDark font-medium">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  Required Tanker: {derivedTankerLtr.toLocaleString()} L (derived from contract)
+                </div>
+              )}
+              {contractCapacities.length > 1 && (
+                <div className="space-y-1">
+                  <p className="text-2xs font-medium text-steel uppercase tracking-wide">Tanker Size <span className="text-danger">*</span></p>
+                  <select className="form-select text-xs" value={selectedTankerLtr} onChange={(e) => setSelectedTankerLtr(e.target.value ? Number(e.target.value) : "")}>
+                    <option value="">Select tanker size…</option>
+                    {contractCapacities.map(c => (
+                      <option key={c} value={c}>{c.toLocaleString()} L</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex gap-2">
-                <input type="number" min={1} className="w-1/2 border rounded-lg px-2 py-1.5 text-xs" placeholder="Quantity" value={newQty} onChange={(e) => setNewQty(Number(e.target.value))} />
-                <input type="number" min={0} className="w-1/2 border rounded-lg px-2 py-1.5 text-xs" placeholder="Empties to collect" value={newEmpties} onChange={(e) => setNewEmpties(Number(e.target.value))} />
+                <input type="number" min={1} className="form-input text-xs w-1/2" placeholder="Quantity" value={newQty} onChange={(e) => setNewQty(Number(e.target.value))} />
+                <input type="number" min={0} className="form-input text-xs w-1/2" placeholder="Empties" value={newEmpties} onChange={(e) => setNewEmpties(Number(e.target.value))} />
               </div>
-              <select className="w-full border rounded-lg px-2 py-1.5 text-xs" value={newPayment} onChange={(e) => setNewPayment(e.target.value)}>
+              <select className="form-select text-xs" value={newPayment} onChange={(e) => setNewPayment(e.target.value)}>
                 <option value="CASH">Cash</option>
                 <option value="CARD">Card</option>
                 <option value="ONLINE">Online</option>
                 <option value="ACCOUNT_CREDIT">Account credit (B2B)</option>
               </select>
-              <input type="number" min={0} className="w-full border rounded-lg px-2 py-1.5 text-xs" placeholder="Discount (SAR, optional)" value={newDiscount || ""} onChange={(e) => setNewDiscount(Number(e.target.value) || 0)} />
+              <input type="number" min={0} className="form-input text-xs" placeholder="Discount (SAR, optional)" value={newDiscount || ""} onChange={(e) => setNewDiscount(Number(e.target.value) || 0)} />
               {orderError && <p className="text-danger text-xs">{orderError}</p>}
-              <button disabled={!newCustomerId} onClick={createOrder} className="w-full bg-aquaDark text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40">
+              <button
+                disabled={!newCustomerId || (contractCapacities.length > 1 && !selectedTankerLtr)}
+                onClick={createOrder}
+                className="btn btn-md btn-primary w-full"
+              >
                 Create order
               </button>
             </div>
@@ -522,7 +577,9 @@ function DispatchPageInner() {
                     <div className="font-medium">{o.customer.name}</div>
                     {slaByOrderId.get(o.id) && <StatusBadge status={slaByOrderId.get(o.id).slaStatus} />}
                   </div>
-                  <div className="text-steel text-xs">{o.orderNumber} · {o.qtyOrdered} unit(s){o.emptyBottlesToCollect ? ` · ${o.emptyBottlesToCollect} empties` : ""}</div>
+                  <div className="text-steel text-xs">{o.orderNumber} · {o.qtyOrdered} unit(s){o.emptyBottlesToCollect ? ` · ${o.emptyBottlesToCollect} empties` : ""}
+                  {(o as any).requiredTankerCapacityLtr ? <span className="ml-1 text-aquaDark font-medium">· {((o as any).requiredTankerCapacityLtr).toLocaleString()} L tanker</span> : null}
+                </div>
                   <div className="text-steel text-xs">{o.deliveryAddress}</div>
                 </div>
               </label>

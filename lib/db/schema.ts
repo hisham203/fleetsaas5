@@ -238,6 +238,15 @@ export const orders = pgTable("orders", {
   // task proves it's needed and safe to start setting.
   invoiceId: text("invoice_id"),
   completedAt: timestamp("completed_at", { mode: "date" }), // BR-20: when delivered/failed, for SLA MET/MISSED calc
+  // Migration 0022 (approved UAT final closure): the commercial tanker size
+  // selected/derived for this specific order from the contract pricing rules.
+  // NULL = non-contract order or wildcard contract (no capacity constraint).
+  // NON-NULL = the tanker size that was commercially selected at order creation.
+  // This value drives both pricing (which rule is used) and vehicle assignment
+  // (which tanker can fulfill this order). Immutable after operational assignment
+  // begins. Set at order creation — automatically for single-capacity contracts,
+  // explicitly by the user for multi-capacity contracts.
+  requiredTankerCapacityLtr: integer("required_tanker_capacity_ltr"),
   createdAt: createdAt(),
 });
 

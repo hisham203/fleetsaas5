@@ -26,6 +26,9 @@ export const VAT_RATE = 0.15; // Saudi VAT
 // exact reported "Failed to save" bug). Used by every form's save()
 // handler so this class of bug can't quietly recur.
 export function extractErrorMessage(data: any): string {
+  // If the server returned a structured { error: CODE, message: "..." } pair,
+  // surface the human-readable message (not the raw code):
+  if (typeof data?.error === "string" && typeof data?.message === "string") return data.message;
   if (typeof data?.error === "string") return data.error;
   const fieldErrors = data?.error?.fieldErrors;
   if (fieldErrors && typeof fieldErrors === "object") {

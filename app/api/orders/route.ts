@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { orders, customers, customerLocations } from "@/lib/db/schema";
+import { orders, customers, customerLocations, contractPricingRules } from "@/lib/db/schema";
 import { genId, genNumber } from "@/lib/helpers";
 import { getCreditExposure } from "@/lib/creditCheck";
 import { enforceRbac } from "@/lib/enforceRbac";
@@ -33,6 +33,10 @@ const createSchema = z.object({
   // existing non-contract order flow completely unchanged — nothing
   // below this comment runs unless contractId is actually provided.
   contractId: z.string().min(1).optional(),
+  // Migration 0022: the explicitly selected tanker capacity for multi-capacity contracts.
+  // Auto-derived for single-capacity contracts; required for multi-capacity contracts;
+  // omitted for non-contract orders.
+  selectedTankerCapacityLtr: z.number().int().positive().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -163,6 +167,55 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Migration 0022: determine the commercial tanker capacity for this order.
+  //
+  // CASE A — contract with exactly one non-wildcard capacity:
+  //   Automatically derive and store it. User never needs to pick.
+  //
+  // CASE B — contract with multiple non-wildcard capacities:
+  //   The caller must supply `selectedTankerCapacityLtr`.
+  //   Validate it exists in the contract's pricing rules.
+  //   Reject with TANKER_CAPACITY_REQUIRED if not supplied.
+  //   Reject with INVALID_TANKER_CAPACITY_FOR_CONTRACT if supplied but invalid.
+  //
+  // CASE C — non-contract order or wildcard-only contract:
+  //   requiredTankerCapacityLtr stays null. No constraint.
+  const selectedTankerLtr: number | undefined = data.selectedTankerCapacityLtr;
+  let requiredTankerCapacityLtr: number | null = null;
+
+  if (attachedContract?.id) {
+    const pricingRules = await db.query.contractPricingRules.findMany({
+      where: eq(contractPricingRules.contractId, attachedContract.id),
+      columns: { tankerCapacityLtr: true },
+    });
+    const uniqueCapacities = [
+      ...new Set(pricingRules.map(r => r.tankerCapacityLtr).filter((c): c is number => c != null))
+    ];
+
+    if (uniqueCapacities.length === 0) {
+      // CASE C: wildcard-only contract — no capacity constraint
+      requiredTankerCapacityLtr = null;
+    } else if (uniqueCapacities.length === 1) {
+      // CASE A: auto-derive the single valid capacity
+      requiredTankerCapacityLtr = uniqueCapacities[0];
+    } else {
+      // CASE B: multi-capacity — explicit selection required
+      if (selectedTankerLtr == null) {
+        return NextResponse.json({
+          error: `This contract supports multiple tanker capacities (${uniqueCapacities.map(c => c.toLocaleString() + " L").join(", ")}). Select the tanker size for this order before saving.`,
+          errorCode: "TANKER_CAPACITY_REQUIRED",
+        }, { status: 422 });
+      }
+      if (!uniqueCapacities.includes(selectedTankerLtr)) {
+        return NextResponse.json({
+          error: `${selectedTankerLtr.toLocaleString()} L is not a valid tanker capacity for this contract. Valid sizes: ${uniqueCapacities.map(c => c.toLocaleString() + " L").join(", ")}.`,
+          errorCode: "INVALID_TANKER_CAPACITY_FOR_CONTRACT",
+        }, { status: 422 });
+      }
+      requiredTankerCapacityLtr = selectedTankerLtr;
+    }
+  }
+
   const id = genId();
   await db.insert(orders).values({
     id,
@@ -188,6 +241,8 @@ export async function POST(req: NextRequest) {
     paymentMethod: data.paymentMethod,
     pricePerBottle: effectivePricePerBottle,
     discountAmount: data.discountAmount,
+    // Migration 0022: persist the commercially selected/derived tanker capacity:
+    ...(requiredTankerCapacityLtr != null ? { requiredTankerCapacityLtr } : {}),
   });
 
   const created = await db.query.orders.findFirst({

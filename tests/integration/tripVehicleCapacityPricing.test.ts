@@ -125,21 +125,29 @@ describe("Trip creation — vehicle capacity pricing preview (Task D.5)", () => 
     expect(stop.pricingPreview.baseAmount).toBe("550.00"); // the capacity-specific rule, not the wildcard
   });
 
-  it("6/7. a capacity-specific rule beats a wildcard rule, and a different vehicle capacity selects a different rule", async () => {
-    const contractId = await createActiveContract();
+  it("6/7. a capacity-specific rule beats a wildcard rule (single-capacity contract)", async () => {
+    // UAT closure: multi-capacity contracts now block dispatch (TANKER_CAPACITY_REQUIRED).
+    // This test uses separate single-capacity contracts — one per capacity — which
+    // is the correct commercial model: each contract targets one tanker size.
+    const contract18kId = await createActiveContract();
     await db.insert(contractPricingRules).values([
-      { id: genId(), tenantId, pricingScope: "CONTRACT", contractId, rateType: "STANDARD", pricePerTrip: 300, vatRate: 0.15 }, // wildcard
-      { id: genId(), tenantId, pricingScope: "CONTRACT", contractId, rateType: "STANDARD", tankerCapacityLtr: 18000, pricePerTrip: 420, vatRate: 0.15 },
-      { id: genId(), tenantId, pricingScope: "CONTRACT", contractId, rateType: "STANDARD", tankerCapacityLtr: 28000, pricePerTrip: 680, vatRate: 0.15 },
+      { id: genId(), tenantId, pricingScope: "CONTRACT", contractId: contract18kId, rateType: "STANDARD", pricePerTrip: 300, vatRate: 0.15 }, // wildcard
+      { id: genId(), tenantId, pricingScope: "CONTRACT", contractId: contract18kId, rateType: "STANDARD", tankerCapacityLtr: 18000, pricePerTrip: 420, vatRate: 0.15 },
     ]);
-
-    const orderA = await createContractOrder(contractId);
+    const orderA = await createContractOrder(contract18kId);
     const { res: resA } = await createTripWithCapacity(orderA.id, 18000, "d5-cap-18k");
+    expect(resA.status).toBe(201);
     const bodyA = await resA.json();
     expect(bodyA.stops[0].pricingPreview.baseAmount).toBe("420.00");
 
-    const orderB = await createContractOrder(contractId);
+    const contract28kId = await createActiveContract();
+    await db.insert(contractPricingRules).values([
+      { id: genId(), tenantId, pricingScope: "CONTRACT", contractId: contract28kId, rateType: "STANDARD", pricePerTrip: 300, vatRate: 0.15 }, // wildcard
+      { id: genId(), tenantId, pricingScope: "CONTRACT", contractId: contract28kId, rateType: "STANDARD", tankerCapacityLtr: 28000, pricePerTrip: 680, vatRate: 0.15 },
+    ]);
+    const orderB = await createContractOrder(contract28kId);
     const { res: resB } = await createTripWithCapacity(orderB.id, 28000, "d5-cap-28k");
+    expect(resB.status).toBe(201);
     const bodyB = await resB.json();
     expect(bodyB.stops[0].pricingPreview.baseAmount).toBe("680.00");
   });

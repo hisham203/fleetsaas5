@@ -28,7 +28,7 @@ beforeAll(async () => {
 describe("Schema — 5 new columns and indexes (Part 2)", () => {
   it("1. migration 0019 exists and is purely additive", () => {
     const sql = src("drizzle/0019_loud_taskmaster.sql");
-    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter(f => f.endsWith(".sql")).length).toBe(22);
+    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter(f => f.endsWith(".sql")).length).toBe(23);
     expect(sql).toContain('ADD COLUMN "customer_code"');
     expect(sql).toContain('ADD COLUMN "site_code"');
     expect(sql).toContain('ADD COLUMN "vehicle_code"');

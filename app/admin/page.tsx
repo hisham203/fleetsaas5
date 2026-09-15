@@ -880,6 +880,7 @@ function DriversTab({ tenant, drivers, onChange }: any) {
           <thead>
             <tr className="text-left text-steel border-b border-slate-100">
               <th className="pb-2">Name</th>
+              <th className="pb-2">Driver Code</th>
               <th className="pb-2">License</th>
               <th className="pb-2">Phone</th>
               <th className="pb-2">Status</th>
@@ -888,11 +889,12 @@ function DriversTab({ tenant, drivers, onChange }: any) {
           <tbody>
             {drivers.map((d: any) => (
               <tr key={d.id} className="border-b border-slate-50">
-                <td className="py-2">{d.user.name}</td>
+                {/* Guard against orphaned drivers where user was deleted */}
+                <td className="py-2">{d.user?.name ?? "—"}</td>
+                {/* Milestone AG.1: driverCode is the internal Smarty1 code (D06NNN), separate from licenseNumber */}
+                <td className="py-2 font-mono text-xs text-aquaDark">{(d as any).driverCode ?? "—"}</td>
                 <td className="py-2 font-mono text-xs">{d.licenseNumber}</td>
-                {/* Milestone AG.1 — internal driver code */}
-                <td className="py-2 text-steel text-xs font-mono">{(d as any).driverCode ?? "—"}</td>
-                <td className="py-2">{d.phone}</td>
+                <td className="py-2 text-xs">{d.phone ?? "—"}</td>
                 <td className="py-2"><StatusBadge status={d.status} /></td>
               </tr>
             ))}
@@ -2687,7 +2689,7 @@ function FieldOpsTab({ drivers, vehicles }: any) {
             <div className="space-y-2">
               <select className="w-full border rounded-lg px-3 py-2 text-sm" value={driverId} onChange={(e) => setDriverId(e.target.value)}>
                 <option value="">Select driver…</option>
-                {drivers.map((d: any) => <option key={d.id} value={d.id}>{d.user.name}</option>)}
+                {drivers.map((d: any) => <option key={d.id} value={d.id}>{d.user?.name ?? "Driver"}</option>)}
               </select>
               <select className="w-full border rounded-lg px-3 py-2 text-sm" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
                 <option value="">No specific vehicle</option>

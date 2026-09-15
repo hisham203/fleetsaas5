@@ -124,15 +124,25 @@ describe("Riyadh Bulk Water Logistics demo seed (Task F)", () => {
   });
 
   it("11/12. contract pricing rules exist for both STANDARD and OVERAGE, no bottle pricing", async () => {
-    const rows = await db.query.contractPricingRules.findMany({ where: eq(contractPricingRules.tenantId, tenantId) });
-    // Other test files add their own pricing rules for their own
-    // contracts to this same tenant — this stays scoped to "at least
-    // the 10 real seeded ones", matching the vehicle/contract fixes above.
+    const allRows = await db.query.contractPricingRules.findMany({ where: eq(contractPricingRules.tenantId, tenantId) });
+    // Other test files add their own pricing rules (for their own contracts) to this
+    // same tenant. Scope to seed rules only: TENANT_DEFAULT rules have contractId=null;
+    // CONTRACT rules belong to seeded "RBW-" contracts. Filter to these to avoid
+    // contamination from test-created rules which may have been cleaned up.
+    const seedContracts = await db.query.contracts.findMany({
+      where: (c, { and, like: likeOp }) => and(eq(c.tenantId, tenantId), likeOp(c.contractNumber, "RBW-%")),
+      columns: { id: true },
+    });
+    const seedContractIds = new Set(seedContracts.map((c) => c.id));
+    const rows = allRows.filter(
+      (r) => r.contractId == null || seedContractIds.has(r.contractId)
+    );
     expect(rows.length).toBeGreaterThanOrEqual(10);
     expect(rows.some((r) => r.rateType === "STANDARD")).toBe(true);
     expect(rows.some((r) => r.rateType === "OVERAGE")).toBe(true);
     expect(rows.some((r) => r.pricingScope === "TENANT_DEFAULT")).toBe(true);
     expect(rows.some((r) => r.pricingScope === "CONTRACT")).toBe(true);
+    // Seed rules all use pricePerTrip (test-created rules may use pricePerLiter):
     expect(rows.every((r) => r.pricePerTrip != null && r.pricePerTrip > 0)).toBe(true);
   });
 

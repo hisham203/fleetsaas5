@@ -2,8 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { trips, tripStops, orders, vehicles, drivers, warehouses } from "@/lib/db/schema";
+import { trips, tripStops, orders, vehicles, drivers, warehouses, contractPricingRules } from "@/lib/db/schema";
 import { genId, genNumber } from "@/lib/helpers";
+// assertTankerCapacity, RelationshipError, ERR available from "@/lib/relationshipValidators" if needed
 import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { optimizeRoute } from "@/lib/googleMaps";
@@ -129,6 +130,48 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Migration 0022 — tanker-capacity enforcement using the persisted order field.
+    //
+    // PRIMARY PATH (new orders): use order.requiredTankerCapacityLtr.
+    // LEGACY PATH (NULL contract orders): derive from pricing rules at dispatch time.
+    //
+    // Strict equality. No >= or "close enough". A 28k tanker is NOT a 21k tanker.
+    for (const order of selectedOrders) {
+      let requiredCap: number | null = (order as any).requiredTankerCapacityLtr ?? null;
+
+      if (requiredCap == null && order.contractId) {
+        // Legacy NULL contract order — derive from pricing rules (fail-closed per UAT spec):
+        const pricingRules = await db.query.contractPricingRules.findMany({
+          where: eq(contractPricingRules.contractId, order.contractId),
+          columns: { tankerCapacityLtr: true },
+        });
+        const uniqueCapacities = [...new Set(
+          pricingRules.map(r => r.tankerCapacityLtr).filter((c): c is number => c != null)
+        )];
+        if (uniqueCapacities.length === 0) {
+          requiredCap = null; // wildcard-only — no constraint
+        } else if (uniqueCapacities.length === 1) {
+          requiredCap = uniqueCapacities[0]; // safe to derive
+        } else {
+          // Multiple capacities + NULL order — fail-closed per spec section 7B:
+          return NextResponse.json({
+            error: `This existing order uses a contract with multiple tanker sizes (${uniqueCapacities.map(c => c.toLocaleString() + " L").join(", ")}). Select/reprice the order before dispatch.`,
+            errorCode: "TANKER_CAPACITY_REQUIRED",
+          }, { status: 422 });
+        }
+      }
+
+      if (requiredCap == null) continue; // non-contract or wildcard — no constraint
+      if (vehicle.capacityLiters == null) continue; // vehicle has no capacity set — skip
+
+      if (vehicle.capacityLiters !== requiredCap) {
+        return NextResponse.json({
+          error: `Order ${order.orderNumber} is priced for a ${requiredCap.toLocaleString()} L tanker. Selected vehicle ${vehicle.plateNumber} has a capacity of ${vehicle.capacityLiters.toLocaleString()} L. Assign a ${requiredCap.toLocaleString()} L tanker or reprice the order first.`,
+          errorCode: "TANKER_CAPACITY_MISMATCH",
+        }, { status: 422 });
+      }
+    }
+
     // BR-06: optimize stop order as a round trip from the chosen warehouse.
     let orderedStopIds = selectedOrders.map((o) => o.id);
     let estimatedDurationMinutes: number | null = null;
@@ -187,7 +230,9 @@ export async function POST(req: NextRequest) {
             qtyOrdered: stop.order.qtyOrdered,
             requestedTime: stop.order.requestedTime,
           },
-          tankerCapacityLtr: vehicle.capacityLiters,
+          // Use the stop's order requiredTankerCapacityLtr (persisted commercial capacity).
+          // fall back to vehicle capacity (equal at this point due to capacity enforcement above):
+          tankerCapacityLtr: (stop.order as any).requiredTankerCapacityLtr ?? vehicle.capacityLiters,
         });
         if (preview) stop.pricingPreview = preview;
       }

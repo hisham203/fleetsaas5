@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { goodsReceipts, goodsReceiptLines, purchaseOrders, purchaseOrderLines, maintenanceInventoryBalances, maintenanceInventoryMovements } from "@/lib/db/schema";
+import { maintenanceWarehouses, goodsReceipts, goodsReceiptLines, purchaseOrders, purchaseOrderLines, maintenanceInventoryBalances, maintenanceInventoryMovements } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { enforceRbac } from "@/lib/enforceRbac";
 import { resolveEntityCode } from "@/lib/businessCodes";
@@ -54,6 +54,17 @@ export async function POST(req: NextRequest) {
   const { lines, ...grData } = parsed.data;
   const po = await db.query.purchaseOrders.findFirst({ where: and(eq(purchaseOrders.id, grData.purchaseOrderId), eq(purchaseOrders.tenantId, tenantId)) });
   if (!po) return NextResponse.json({ error: "Purchase order not found" }, { status: 404 });
+  // Relationship L — GR must post to a Maintenance Warehouse, not an operational loading point:
+  const mwh = await db.query.maintenanceWarehouses.findFirst({
+    where: and(eq(maintenanceWarehouses.id, grData.warehouseId), eq(maintenanceWarehouses.tenantId, tenantId)),
+    columns: { id: true },
+  });
+  if (!mwh) {
+    return NextResponse.json({
+      error: "The receiving warehouse must be a Maintenance Warehouse. Operational Loading Points cannot receive procurement stock.",
+      errorCode: "INVALID_MAINTENANCE_WAREHOUSE",
+    }, { status: 422 });
+  }
   const grId = genId();
   // RC1: GOODS_RECEIPT requires a configured numbering series — no timestamp fallback.
   let grnNumber: string;

@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "required_tanker_capacity_ltr" integer;

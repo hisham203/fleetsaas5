@@ -246,7 +246,7 @@ describe("Regression protection (Milestone AF)", () => {
   it("no schema, migration, seedData, pricing, billing, ERP, dispatch or driver-app changes", () => {
     const schema = fs.readFileSync(path.join(process.cwd(), "lib/db/schema.ts"), "utf8");
     // AG legitimately added these five code columns — the test above confirms they exist
-    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(22); // RC1.1 added migration 0021
+    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(23); // RC1.1 added migration 0021
     expect(fs.readFileSync(path.join(process.cwd(), "lib/contractPricing.ts"), "utf8")).toContain("PricingEngineError");
     const stop = fs.readFileSync(path.join(process.cwd(), "app/api/trips/[id]/stops/[stopId]/route.ts"), "utf8");
     expect(stop).toContain("Task P.2"); expect(stop).toContain("autoCloseTripIfAllStopsResolved");
