@@ -37,14 +37,16 @@ describe("Dispatcher trip assignment fix (G.3)", () => {
       const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });
       const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
       const loadingPoint = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenant!.id) });
-      const customer = await db.query.customers.findFirst({ where: eq(customers.tenantId, tenant!.id) });
+      // Use a fresh B2B customer with no contracts (admin no longer bypasses ACTIVE_CONTRACT_REQUIRED):
+      const freshId1 = genId();
+      await db.insert(customers).values({ id: freshId1, tenantId: tenant!.id, name: "G3 Dup Test Customer", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
       const isolated1 = await createIsolatedDriverAndVehicle(tenant!.id, "g3-dup-first");
       const isolated2 = await createIsolatedDriverAndVehicle(tenant!.id, "g3-dup-second");
 
       const { POST: createOrder } = await import("@/app/api/orders/route");
       const order = await (await createOrder(makeRequest("/api/orders", {
         method: "POST", cookie: adminCookie,
-        body: { customerId: customer!.id, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+        body: { customerId: freshId1, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
       }))).json();
 
       const { POST: createTrip } = await import("@/app/api/trips/route");
@@ -76,12 +78,11 @@ describe("Dispatcher trip assignment fix (G.3)", () => {
     const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const loadingPoint = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenant!.id) });
-    const customer = await db.query.customers.findFirst({ where: eq(customers.tenantId, tenant!.id) });
+    // Use a fresh B2B customer with no contracts (Phase 1 final closure: admin can no longer bypass
+    // ACTIVE_CONTRACT_REQUIRED, so we need a customer without active contracts for a direct order):
+    const freshCustId = genId();
+    await db.insert(customers).values({ id: freshCustId, tenantId: tenant!.id, name: "G3 Direct Test Customer", type: "B2C", address: "Test Riyadh", lat: 24.7, lng: 46.7 });
     const isolated = await createIsolatedDriverAndVehicle(tenant!.id, "g3-happy-path");
-    // A dedicated, isolated 28,000L tanker (capacityUnits null, matching
-    // the real seeded fleet's shape exactly) rather than the shared
-    // seeded RBW-T006 — avoids any availability contention with another
-    // test that might also reach for that same real vehicle.
     const tanker28kId = genId();
     await db.insert(vehicles).values({
       id: tanker28kId, tenantId: tenant!.id, plateNumber: "TEST-CAP-28K", vehicleType: "Water Tanker",
@@ -91,7 +92,7 @@ describe("Dispatcher trip assignment fix (G.3)", () => {
     const { POST: createOrder } = await import("@/app/api/orders/route");
     const order = await (await createOrder(makeRequest("/api/orders", {
       method: "POST", cookie: adminCookie,
-      body: { customerId: customer!.id, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+      body: { customerId: freshCustId, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
     }))).json();
 
     const { POST: createTrip } = await import("@/app/api/trips/route");

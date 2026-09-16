@@ -31,7 +31,7 @@ async function baseSetup(label: string) {
   const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
   const warehouse = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenantId) });
   const customerId = genId();
-  await db.insert(customers).values({ id: customerId, tenantId, name: `W Test Customer ${label}`, type: "B2B", address: "Test", lat: 24.7, lng: 46.7 });
+  await db.insert(customers).values({ id: customerId, tenantId, name: `W Test Customer ${label}`, type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
   return { tenantId, adminCookie, warehouseId: warehouse!.id, customerId };
 }
 

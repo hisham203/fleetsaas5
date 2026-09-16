@@ -108,13 +108,17 @@ export async function ensureAllSeries(tenantId: string) {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function cleanupAllocatedContracts(_tenantId?: string) {
   const { like } = await import("drizzle-orm");
-  const { numberingSequenceLedger } = await import("@/lib/db/schema");
+  const { numberingSequenceLedger, tenants: tenantsTable } = await import("@/lib/db/schema");
   // Clear all ledger rows for allocator-generated contract numbers
   await db.delete(numberingSequenceLedger).where(like(numberingSequenceLedger.generatedNumber, "%06%"));
   // Clear all contracts with allocator-style numbers
   await db.delete(contracts).where(like(contracts.contractNumber, "%06%"));
   // Reset ALL CONTRACT series nextNumbers to 1 (all tenants)
-  await db.update(numberingSeries).set({ nextNumber: 1 }).where(
-    (await import("drizzle-orm")).eq(numberingSeries.entityType, "CONTRACT")
-  );
+  const { eq: eqOp } = await import("drizzle-orm");
+  await db.update(numberingSeries).set({ nextNumber: 1 }).where(eqOp(numberingSeries.entityType, "CONTRACT"));
+  // Re-ensure all numbering series after cleanup so subsequent tests can create contracts:
+  const allTenants = await db.query.tenants.findMany({ columns: { id: true } });
+  for (const t of allTenants) {
+    await ensureAllSeries(t.id);
+  }
 }

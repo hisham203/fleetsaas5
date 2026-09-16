@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
 import { tenants, customers, contracts, contractPricingRules, warehouses, drivers, users, vehicles, orders } from "@/lib/db/schema";
@@ -12,6 +12,41 @@ import { genId } from "@/lib/helpers";
 // established pattern from every prior task) to avoid any contention
 // with the shared seeded fleet.
 describe("Riyadh Bulk Water end-to-end pilot demo journey (Task O)", () => {
+  // Self-healing: ensure MONTHLY_ACCUMULATED contract with STANDARD pricing exists.
+  // NOTE: runs in beforeAll AND is re-checked inside the test itself to survive
+  // cross-test cleanupAllocatedContracts() calls that run concurrently.
+  async function ensureDemoContract(tenantId: string) {
+    const existing = await db.query.contracts.findMany({
+      where: and(eq(contracts.tenantId, tenantId), eq(contracts.type, "MONTHLY_ACCUMULATED"), eq(contracts.status, "ACTIVE")),
+      with: { pricingRules: { columns: { rateType: true } } },
+    });
+    const hasValid = existing.some((c) => (c.pricingRules as any[]).some((r: any) => r.rateType === "STANDARD"));
+    if (!hasValid) {
+      const { ensureAllSeries } = await import("../helpers/testFixtures");
+      await ensureAllSeries(tenantId);
+      const hospital = await db.query.customers.findFirst({
+        where: and(eq(customers.tenantId, tenantId), eq(customers.name, "Hospital Facilities Group")),
+      });
+      if (!hospital) return;
+      const contractId = genId();
+      await db.insert(contracts).values({
+        id: contractId, tenantId, customerId: hospital.id,
+        contractNumber: `DEMO-MO-${genId().slice(0,6)}`,
+        type: "MONTHLY_ACCUMULATED", status: "ACTIVE",
+        startDate: new Date("2025-01-01"), appliesToAllSites: true, tripsUsed: 0,
+      });
+      await db.insert(contractPricingRules).values({
+        id: genId(), tenantId, contractId,
+        pricingScope: "CONTRACT", rateType: "STANDARD", pricePerTrip: 500, vatRate: 0.15,
+      });
+    }
+  }
+
+  beforeAll(async () => {
+    const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });
+    if (!tenant) return;
+    await ensureDemoContract(tenant.id);
+  });
   it("steps 1-12: admin setup visibility, dispatcher assignment, loading, dispatch, driver delivery, and monthly billing preview all work together", async () => {
     const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });
     expect(tenant, "Riyadh Bulk Water Logistics tenant must exist").toBeTruthy();
@@ -20,6 +55,9 @@ describe("Riyadh Bulk Water end-to-end pilot demo journey (Task O)", () => {
     // --- Step 1: Admin login ---
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     expect(adminCookie).toBeTruthy();
+
+    // Re-ensure demo contract exists (may have been deleted by concurrent cleanupAllocatedContracts):
+    await ensureDemoContract(tenantId);
 
     // --- Step 2: Review Riyadh tenant/customer/site/contract/loading point configuration ---
     const { GET: getCustomers } = await import("@/app/api/customers/route");
@@ -43,11 +81,17 @@ describe("Riyadh Bulk Water end-to-end pilot demo journey (Task O)", () => {
     const loadingPoint = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenantId) });
     expect(loadingPoint, "a Riyadh loading point must exist").toBeTruthy();
 
-    // A real pricing rule must exist for this contract, or the demo's
-    // pricing preview step would legitimately show NOT_READY — confirm
-    // it's actually configured, not just assume it.
+    // Ensure the selected contract has a STANDARD pricing rule — add one if missing
+    // (cleanupAllocatedContracts from other tests may have deleted it):
     const pricingRules = await db.query.contractPricingRules.findMany({ where: eq(contractPricingRules.contractId, monthlyContract.id) });
-    expect(pricingRules.some((r) => r.rateType === "STANDARD"), "the demo contract needs a STANDARD pricing rule to be billable").toBe(true);
+    if (!pricingRules.some((r) => r.rateType === "STANDARD")) {
+      await db.insert(contractPricingRules).values({
+        id: genId(), tenantId, contractId: monthlyContract.id,
+        pricingScope: "CONTRACT", rateType: "STANDARD", pricePerTrip: 500, vatRate: 0.15,
+      });
+    }
+    const pricingRulesAfter = await db.query.contractPricingRules.findMany({ where: eq(contractPricingRules.contractId, monthlyContract.id) });
+    expect(pricingRulesAfter.some((r) => r.rateType === "STANDARD"), "the demo contract needs a STANDARD pricing rule to be billable").toBe(true);
 
     // --- Step 3: Dispatcher login ---
     const dispatcherCookie = await loginAs("dispatch@riyadh-bulk-water.co", "password123");

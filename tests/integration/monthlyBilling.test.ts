@@ -2,7 +2,7 @@ import { cleanupAllocatedContracts } from "../helpers/testFixtures";
 import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
-import { contracts, contractPricingRules, contractPeriods, customerLocations, invoices, invoiceLineItems } from "@/lib/db/schema";
+import { contracts, contractPricingRules, contractPeriods, customerLocations, invoices, invoiceLineItems, customers } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
 import { createIsolatedDriverAndVehicle, ensureAllSeries} from "../helpers/testFixtures";
@@ -478,10 +478,14 @@ describe("Manual Monthly Billing (Task E)", () => {
   });
 
   it("30/31/32/36. existing non-contract flow, trip lifecycle, invoice listing, and single-order invoice_line_items behavior are all unaffected", async () => {
+    // Per production UAT closure, B2B customers with active contracts cannot create direct orders.
+    // Use a fresh customer (no contract) to preserve the billing regression check.
+    const plainCustId = genId();
+    await db.insert(customers).values({ id: plainCustId, tenantId, name: "Task E Plain Customer", type: "B2C", address: "Test Address, Riyadh", lat: 24.68, lng: 46.69 });
     const { POST: createOrder } = await import("@/app/api/orders/route");
     const plainOrder = await (await createOrder(makeRequest("/api/orders", {
       method: "POST", cookie: waterAdminCookie,
-      body: { customerId: jarirId, qtyOrdered: 2, emptyBottlesToCollect: 2, paymentMethod: "CASH" },
+      body: { customerId: plainCustId, qtyOrdered: 2, emptyBottlesToCollect: 2, paymentMethod: "CASH" },
     }))).json();
     expect(plainOrder.contractId ?? null).toBeNull();
 

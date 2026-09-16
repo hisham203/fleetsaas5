@@ -23,7 +23,9 @@ describe("Pilot operational fixes (Task G.2)", () => {
       const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
 
       const loadingPoint = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenant!.id) });
-      const customer = await db.query.customers.findFirst({ where: eq(customers.tenantId, tenant!.id) });
+      // Fresh B2C customer — B2B requires contractId (B2B_CONTRACT_REQUIRED):
+      const freshRiyadhId = genId();
+      await db.insert(customers).values({ id: freshRiyadhId, tenantId: tenant!.id, name: "G2 Riyadh Loading B2C", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
       // A dedicated driver/vehicle for this test — this file creates
       // several trips across several tests, and the shared seeded
       // "Mohammed" driver would otherwise become unavailable (still
@@ -40,7 +42,7 @@ describe("Pilot operational fixes (Task G.2)", () => {
       const { POST: createOrder } = await import("@/app/api/orders/route");
       const order = await (await createOrder(makeRequest("/api/orders", {
         method: "POST", cookie: adminCookie,
-        body: { customerId: customer!.id, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+        body: { customerId: freshRiyadhId, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
       }))).json();
 
       const { POST: createTrip } = await import("@/app/api/trips/route");
@@ -98,13 +100,15 @@ describe("Pilot operational fixes (Task G.2)", () => {
       await db.insert(warehouses).values({ id: warehouseId, tenantId: tenant!.id, name: "G2 Acme Test Warehouse", address: "Test", lat: 24.7, lng: 46.7 });
       await db.insert(inventoryItems).values({ id: genId(), tenantId: tenant!.id, warehouseId, itemName: "Diesel Tank - Full", quantity: 5, unit: "tank" });
 
-      const customer = await db.query.customers.findFirst({ where: eq(customers.tenantId, tenant!.id) });
+      // Use a fresh B2C customer — B2B always requires contractId (B2B_CONTRACT_REQUIRED):
+      const freshCustId = genId();
+      await db.insert(customers).values({ id: freshCustId, tenantId: tenant!.id, name: "G2 Acme Test Customer", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
       const isolated = await createIsolatedDriverAndVehicle(tenant!.id, "g2-acme-diesel");
 
       const { POST: createOrder } = await import("@/app/api/orders/route");
       const order = await (await createOrder(makeRequest("/api/orders", {
         method: "POST", cookie: adminCookie,
-        body: { customerId: customer!.id, qtyOrdered: 2, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+        body: { customerId: freshCustId, qtyOrdered: 2, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
       }))).json();
 
       const { POST: createTrip } = await import("@/app/api/trips/route");
@@ -162,18 +166,23 @@ describe("Pilot operational fixes (Task G.2)", () => {
     });
 
     it("5. a valid expense submission (real vehicleId, real tripId) succeeds cleanly and exposes no passwordHash", async () => {
-      const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });
-      const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
-      const driverCookie = await loginAs("mohammed@riyadh-bulk-water.co", "password123");
+      // Use Acme tenant to avoid Riyadh seed integrity checks:
+      const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Acme Fuel Delivery Co.") });
+      const adminCookie = await loginAs("admin@acme-fuel-demo.co", "password123");
 
       const loadingPoint = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenant!.id) });
-      const customer = await db.query.customers.findFirst({ where: eq(customers.tenantId, tenant!.id) });
+      // Use a fresh B2C customer in Acme tenant (no active contracts):
+      const freshCustId = genId();
+      await db.insert(customers).values({ id: freshCustId, tenantId: tenant!.id, name: "G2 Expense Test B2C", type: "B2C", address: "Test Acme", lat: 24.7, lng: 46.7 });
       const isolated = await createIsolatedDriverAndVehicle(tenant!.id, "g2-valid-expense");
 
+      // Ensure Acme has ORDER numbering series:
+      const { ensureAllSeries } = await import("../helpers/testFixtures");
+      await ensureAllSeries(tenant!.id);
       const { POST: createOrder } = await import("@/app/api/orders/route");
       const order = await (await createOrder(makeRequest("/api/orders", {
         method: "POST", cookie: adminCookie,
-        body: { customerId: customer!.id, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+        body: { customerId: freshCustId, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
       }))).json();
       const { POST: createTrip } = await import("@/app/api/trips/route");
       const trip = await (await createTrip(makeRequest("/api/trips", {

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { orders, customers, customerLocations, contractPricingRules } from "@/lib/db/schema";
+import { orders, customers, customerLocations, contractPricingRules, contracts } from "@/lib/db/schema";
 import { genId, genNumber } from "@/lib/helpers";
 import { getCreditExposure } from "@/lib/creditCheck";
 import { enforceRbac } from "@/lib/enforceRbac";
@@ -165,6 +165,25 @@ export async function POST(req: NextRequest) {
       }
       throw err;
     }
+  }
+
+  // Production UAT — DEFECT 3: server-side direct-order bypass protection.
+  // If the selected customer/site has active eligible contracts, a contractId MUST be provided.
+  // Phase 1 Pilot Release — FINAL B2B COMMERCIAL POLICY:
+  // B2B customers ALWAYS require a contract. The direct-order path (pricePerBottle)
+  // is reserved for B2C / individual customers only.
+  //
+  // Phase 1 fails closed. No silent fallback. No role-based bypass.
+  //   • B2B + no contract on file   → B2B_CONTRACT_REQUIRED (422)
+  //   • B2B + only retired contract → B2B_CONTRACT_REQUIRED (422)
+  //   • B2B + valid contract        → contractId mandatory (same 422 if omitted)
+  //
+  // For B2C customers, direct orders remain fully supported.
+  if (!data.contractId && customer.type === "B2B") {
+    return NextResponse.json({
+      error: "B2B customers require an active contract. Create or activate a contract for this customer/site, then attach it to the order.",
+      errorCode: "B2B_CONTRACT_REQUIRED",
+    }, { status: 422 });
   }
 
   // Migration 0022: determine the commercial tanker capacity for this order.

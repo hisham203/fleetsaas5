@@ -188,7 +188,7 @@ describe("MONTHLY_ACCUMULATED and legacy behavior preserved (Task P.2)", () => {
     const adminCookie = await loginAs("admin@demo-water.co", "password123");
     const warehouse = await db.query.warehouses.findFirst({ where: and(eq(warehouses.tenantId, tenantId), eq(warehouses.isDefault, true)) });
     const customerId = genId();
-    await db.insert(customers).values({ id: customerId, tenantId, name: "P2 Legacy Customer", type: "B2B", address: "Test", lat: 24.7, lng: 46.7 });
+    await db.insert(customers).values({ id: customerId, tenantId, name: "P2 Legacy Customer", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
     const result = await runFullDeliveryJourney({ tenantId, adminCookie, warehouseId: warehouse!.id, customerId, label: `p2-legacy-${genId().slice(0, 6)}`, capacityLiters: undefined });
     expect(result.deliverStatus).toBe(200);
     expect(result.deliverBody.invoice).toBeTruthy();
@@ -409,7 +409,7 @@ describe("Reschedule/reassign contractId carry-forward (Task P.2, Part 7)", () =
     const adminCookie = await loginAs("admin@demo-water.co", "password123");
     const warehouse = await db.query.warehouses.findFirst({ where: and(eq(warehouses.tenantId, tenantId), eq(warehouses.isDefault, true)) });
     const customerId = genId();
-    await db.insert(customers).values({ id: customerId, tenantId, name: "P2 Legacy Reschedule Customer", type: "B2B", address: "Test", lat: 24.7, lng: 46.7 });
+    await db.insert(customers).values({ id: customerId, tenantId, name: "P2 Legacy Reschedule Customer", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
     const { POST: createOrder } = await import("@/app/api/orders/route");
     const order = await (await createOrder(makeRequest("/api/orders", {
       method: "POST", cookie: adminCookie, body: { customerId, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },

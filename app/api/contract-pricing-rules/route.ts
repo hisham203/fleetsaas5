@@ -103,24 +103,43 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // A practical, targeted duplicate check — not a substitute for the
-  // pricing engine's own full specificity/priority ambiguity detection at
-  // lookup time, but catches the simple, common mistake of creating the
-  // exact same rule (same scope/contract/rateType/dimensions) with
-  // overlapping effective dates before it ever reaches a real lookup.
-  const exactMatches = await db.query.contractPricingRules.findMany({
+  // Targeted duplicate check: catches creating the same rule dimensions with overlapping
+  // effective dates WITHIN THE SAME ACTIVE COMMERCIAL SCOPE.
+  //
+  // Critical scoping rule: a rule under a retired (CANCELLED/SUSPENDED) contract must NOT
+  // block equivalent rules under a new ACTIVE replacement contract. The check:
+  // - For CONTRACT scope: already scoped by contractId (each contract has its own rules)
+  // - For TENANT_DEFAULT scope: only consider rules where their effective date range
+  //   hasn't fully ended (expired rules don't create commercial ambiguity)
+  //
+  // We do NOT consider CONTRACT-scope rules from non-ACTIVE contracts as blockers,
+  // because retiring a contract must never prevent a replacement contract from having
+  // equivalent commercial pricing dimensions.
+  const exactMatchQuery = await db.query.contractPricingRules.findMany({
     where: and(
       eq(contractPricingRules.tenantId, tenantId),
       eq(contractPricingRules.pricingScope, data.pricingScope),
       eq(contractPricingRules.rateType, data.rateType),
+      // CONTRACT scope: only rules on the SAME contract (different contract = no conflict)
       data.pricingScope === "CONTRACT" ? eq(contractPricingRules.contractId, data.contractId!) : undefined
     ),
+    with: { contract: { columns: { status: true } } },
+  });
+  // Filter: exclude rules whose parent contract is not ACTIVE (for CONTRACT scope)
+  // This is the key fix — a CANCELLED/SUSPENDED contract's rules never block replacements:
+  const activeRules = exactMatchQuery.filter((r) => {
+    if (data.pricingScope === "CONTRACT") {
+      // CONTRACT-scope rule: its contract must be ACTIVE to be a real commercial blocker
+      return (r as any).contract?.status === "ACTIVE";
+    }
+    // TENANT_DEFAULT scope: no contract parent, always consider (no retirement concept)
+    return true;
   });
   const newStart = data.effectiveStartDate ?? null;
   const newEnd = data.effectiveEndDate ?? null;
   const overlaps = (aStart: Date | null, aEnd: Date | null, bStart: Date | null, bEnd: Date | null) =>
     (aStart == null || bEnd == null || aStart <= bEnd) && (aEnd == null || bStart == null || aEnd >= bStart);
-  const duplicate = exactMatches.find(
+  const duplicate = activeRules.find(
     (r) =>
       (r.cityCode ?? null) === (data.cityCode ?? null) &&
       (r.zoneCode ?? null) === (data.zoneCode ?? null) &&
@@ -130,7 +149,7 @@ export async function POST(req: NextRequest) {
   );
   if (duplicate) {
     return NextResponse.json(
-      { error: `An identical pricing rule (${duplicate.id}) already exists with an overlapping effective date range` },
+      { error: `An identical pricing rule (${duplicate.id}) already exists with an overlapping effective date range on the same active contract`, errorCode: "DUPLICATE_PRICING_RULE" },
       { status: 409 }
     );
   }

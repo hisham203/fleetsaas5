@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
+import { genId } from "@/lib/helpers";
 import { tenants, warehouses, customers, inventoryItems } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createIsolatedDriverAndVehicle } from "../helpers/testFixtures";
@@ -48,12 +49,14 @@ describe("Loading confirmation regression checks (Task N, Parts 4/6)", () => {
     const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Riyadh Bulk Water Logistics") });
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const loadingPoint = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenant!.id) });
-    const customer = await db.query.customers.findFirst({ where: eq(customers.tenantId, tenant!.id) });
+    // Phase 1 Final Closure: use fresh customer (admin no longer bypasses ACTIVE_CONTRACT_REQUIRED):
+    const freshCustId = genId();
+    await db.insert(customers).values({ id: freshCustId, tenantId: tenant!.id, name: "Direct Test Customer", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
     const isolated = await createIsolatedDriverAndVehicle(tenant!.id, "n-loading-reconfirm");
 
     const { POST: createOrder } = await import("@/app/api/orders/route");
     const order = await (await createOrder(makeRequest("/api/orders", {
-      method: "POST", cookie: adminCookie, body: { customerId: customer!.id, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+      method: "POST", cookie: adminCookie, body: { customerId: freshCustId, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
     }))).json();
     const { POST: createTrip } = await import("@/app/api/trips/route");
     const trip = await (await createTrip(makeRequest("/api/trips", {
@@ -69,7 +72,9 @@ describe("Loading confirmation regression checks (Task N, Parts 4/6)", () => {
     const tenant = await db.query.tenants.findFirst({ where: eq(tenants.name, "Demo Water Co.") });
     const adminCookie = await loginAs("admin@demo-water.co", "password123");
     const mainWarehouse = await db.query.warehouses.findFirst({ where: and(eq(warehouses.tenantId, tenant!.id), eq(warehouses.isDefault, true)) });
-    const customer = await db.query.customers.findFirst({ where: eq(customers.tenantId, tenant!.id) });
+    // Phase 1 Final Closure: use fresh customer (admin no longer bypasses ACTIVE_CONTRACT_REQUIRED):
+    const freshCustId = genId();
+    await db.insert(customers).values({ id: freshCustId, tenantId: tenant!.id, name: "Direct Test Customer", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
     const isolated = await createIsolatedDriverAndVehicle(tenant!.id, "n-shortage-reconfirm");
 
     // Deliberately request more bottles than are in stock.
@@ -78,7 +83,7 @@ describe("Loading confirmation regression checks (Task N, Parts 4/6)", () => {
 
     const { POST: createOrder } = await import("@/app/api/orders/route");
     const order = await (await createOrder(makeRequest("/api/orders", {
-      method: "POST", cookie: adminCookie, body: { customerId: customer!.id, qtyOrdered: excessiveQty, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+      method: "POST", cookie: adminCookie, body: { customerId: freshCustId, qtyOrdered: excessiveQty, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
     }))).json();
     const { POST: createTrip } = await import("@/app/api/trips/route");
     const tripRes = await createTrip(makeRequest("/api/trips", {

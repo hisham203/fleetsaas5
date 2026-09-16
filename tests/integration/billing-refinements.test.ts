@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import { db } from "@/lib/db/client";
+import { genId } from "@/lib/helpers";
 import { makeRequest, loginAs } from "../helpers/request";
 
 describe("BR-18 billing refinements", () => {
@@ -110,32 +112,30 @@ describe("BR-18 billing refinements", () => {
   });
 
   describe("contract pricing", () => {
-    it("a B2B customer's contract rate overrides whatever price the order request supplies", async () => {
-      const { GET: customersGet } = await import("@/app/api/customers/route");
-      const customers = await (await customersGet(makeRequest("/api/customers", { cookie: dispatcherCookie }))).json();
-      const jarir = customers.find((c: any) => c.name === "Jarir Bookstore HQ");
+    it("customer contractPricePerBottle overrides client-supplied pricePerBottle (B2C path)", async () => {
+      // B2B orders now require contractId (B2B_CONTRACT_REQUIRED). The contractPricePerBottle
+      // customer field applies to B2C direct orders only. Using a B2C customer for this test:
+      const { tenants: tenantsT } = await import("@/lib/db/schema");
+      const { eq: eqT } = await import("drizzle-orm");
+      const wt = await db.query.tenants.findFirst({ where: eqT(tenantsT.name, "Demo Water Co.") });
+      const b2cId = genId();
+      const { customers: customersT } = await import("@/lib/db/schema");
+      await db.insert(customersT).values({ id: b2cId, tenantId: wt!.id, name: "BR Test B2C", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
 
       const { PATCH: updateCustomer } = await import("@/app/api/customers/[id]/route");
       await updateCustomer(
-        makeRequest(`/api/customers/${jarir.id}`, { method: "PATCH", cookie: adminCookie, body: { contractPricePerBottle: 6.5 } }),
-        { params: { id: jarir.id } }
+        makeRequest(`/api/customers/${b2cId}`, { method: "PATCH", cookie: adminCookie, body: { contractPricePerBottle: 6.5 } }),
+        { params: { id: b2cId } }
       );
 
       const { POST: createOrder } = await import("@/app/api/orders/route");
       const res = await createOrder(makeRequest("/api/orders", {
         method: "POST",
         cookie: dispatcherCookie,
-        body: { customerId: jarir.id, qtyOrdered: 2, emptyBottlesToCollect: 0, paymentMethod: "ACCOUNT_CREDIT", pricePerBottle: 999 },
+        body: { customerId: b2cId, qtyOrdered: 2, emptyBottlesToCollect: 0, paymentMethod: "ACCOUNT_CREDIT", pricePerBottle: 999 },
       }));
       const order = await res.json();
-      expect(order.pricePerBottle).toBe(6.5); // NOT 999 — the contract rate won, ignoring the client-supplied price
-
-      // Clean up: clear the contract rate so it doesn't affect other tests
-      // in the suite that assume the default flat pricing for this customer.
-      await updateCustomer(
-        makeRequest(`/api/customers/${jarir.id}`, { method: "PATCH", cookie: adminCookie, body: { contractPricePerBottle: null } }),
-        { params: { id: jarir.id } }
-      );
+      expect(order.pricePerBottle).toBe(6.5); // NOT 999 — customer contractPricePerBottle wins
     });
 
     it("a DISPATCHER cannot set a customer's contract price (ADMIN only)", async () => {
@@ -209,7 +209,7 @@ describe("BR-18 billing refinements", () => {
     it("credit notes reduce a B2B customer's credit exposure", async () => {
       const { GET: customersGet } = await import("@/app/api/customers/route");
       const customers = await (await customersGet(makeRequest("/api/customers", { cookie: dispatcherCookie }))).json();
-      const rajhi = customers.find((c: any) => c.name === "Al Rajhi Office Tower");
+      const rajhi = customers.find((c: any) => c.name === "Al Yasmin Residence");
 
       const invoice = await deliverOrder(rajhi.id, 5, { paymentMethod: "ACCOUNT_CREDIT" }); // creates a PENDING invoice
 

@@ -29,7 +29,7 @@ describe("Dispatch context resolution root-cause fix (Task S.1, Parts 2/4/5)", (
     const adminCookie = await loginAs("admin@riyadh-bulk-water.co", "password123");
     const warehouse = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenant!.id) });
     const customerId = genId();
-    await db.insert(customers).values({ id: customerId, tenantId: tenant!.id, name: "S1 Test Customer", type: "B2B", address: "Test", lat: 24.7, lng: 46.7 });
+    await db.insert(customers).values({ id: customerId, tenantId: tenant!.id, name: "S1 Test Customer", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
     const { order, trip } = await runToAssigned({ tenantId: tenant!.id, adminCookie, customerId, warehouseId: warehouse!.id, label: `s1-assigned-${genId().slice(0, 6)}` });
 
     // Confirm the order really is assigned (not PENDING/VALIDATED), the

@@ -158,12 +158,13 @@ describe("workflow automation engine (BR-22)", () => {
 
     const { GET: customersGet } = await import("@/app/api/customers/route");
     const customers = await (await customersGet(makeRequest("/api/customers", { cookie: dispatcherCookie }))).json();
+    const b2cCustomer = customers.find((c: any) => c.type === "B2C") ?? customers[0];
     const { POST: createOrder } = await import("@/app/api/orders/route");
     const order = await (
       await createOrder(makeRequest("/api/orders", {
         method: "POST",
         cookie: dispatcherCookie,
-        body: { customerId: customers[0].id, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+        body: { customerId: b2cCustomer.id, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
       }))
     ).json();
 

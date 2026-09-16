@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
-import { tenants, vehicles } from "@/lib/db/schema";
+import { tenants, vehicles , customers} from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { genId } from "@/lib/helpers";
 
@@ -109,12 +109,14 @@ describe("Re-confirmation of prior pilot fixes (Task H, Part 4)", () => {
     const { warehouses, customers } = await import("@/lib/db/schema");
     const { createIsolatedDriverAndVehicle } = await import("../helpers/testFixtures");
     const loadingPoint = await db.query.warehouses.findFirst({ where: eq(warehouses.tenantId, tenant!.id) });
-    const customer = await db.query.customers.findFirst({ where: eq(customers.tenantId, tenant!.id) });
+    // Phase 1 Final Closure: use fresh customer (admin no longer bypasses ACTIVE_CONTRACT_REQUIRED):
+    const freshCustId = genId();
+    await db.insert(customers).values({ id: freshCustId, tenantId: tenant!.id, name: "Direct Test Customer", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
     const isolated = await createIsolatedDriverAndVehicle(tenant!.id, "h-loading-reconfirm");
 
     const { POST: createOrder } = await import("@/app/api/orders/route");
     const order = await (await createOrder(makeRequest("/api/orders", {
-      method: "POST", cookie: adminCookie, body: { customerId: customer!.id, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
+      method: "POST", cookie: adminCookie, body: { customerId: freshCustId, qtyOrdered: 1, emptyBottlesToCollect: 0, paymentMethod: "CASH" },
     }))).json();
     const { POST: createTrip } = await import("@/app/api/trips/route");
     const trip = await (await createTrip(makeRequest("/api/trips", {

@@ -2,7 +2,7 @@ import { cleanupAllocatedContracts } from "../helpers/testFixtures";
 import { describe, it, expect, beforeAll } from "vitest";
 import { makeRequest, loginAs } from "../helpers/request";
 import { db } from "@/lib/db/client";
-import { contracts, contractPricingRules, contractSiteScope, customerLocations, vehicles } from "@/lib/db/schema";
+import { customers, contracts, contractPricingRules, contractSiteScope, customerLocations, vehicles } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
 import { eq } from "drizzle-orm";
 import { createIsolatedDriverAndVehicle, ensureAllSeries} from "../helpers/testFixtures";
@@ -94,11 +94,15 @@ describe("Trip creation — vehicle capacity pricing preview (Task D.5)", () => 
 
   // ---------- Existing behavior ----------
 
-  it("1. existing trip creation for non-contract orders still works, no pricingPreview key on the stop", async () => {
+  it("1. B2C direct-order trip creation still works (non-contract), no pricingPreview on stop", async () => {
+    // B2B customers require contracts (B2B_CONTRACT_REQUIRED). Use a fresh B2C customer for
+    // the non-contract direct-order regression path:
+    const b2cId = genId();
+    await db.insert(customers).values({ id: b2cId, tenantId, name: "D5 B2C Direct", type: "B2C", address: "Test", lat: 24.7, lng: 46.7 });
     const { POST: createOrder } = await import("@/app/api/orders/route");
     const plainOrder = await (await createOrder(makeRequest("/api/orders", {
       method: "POST", cookie: waterAdminCookie,
-      body: { customerId: jarirId, qtyOrdered: 2, emptyBottlesToCollect: 2, paymentMethod: "CASH" },
+      body: { customerId: b2cId, qtyOrdered: 2, emptyBottlesToCollect: 2, paymentMethod: "CASH" },
     }))).json();
 
     const { res } = await createTripWithCapacity(plainOrder.id, 18000, "d5-plain");
@@ -270,16 +274,19 @@ describe("Trip creation — vehicle capacity pricing preview (Task D.5)", () => 
     expect(contract!.tripsUsed).toBe(0);
   });
 
-  it("20. an order without contractId is unaffected by any of this", async () => {
+  it("20. production UAT closure: DISPATCHER cannot bypass active contract (direct order blocked)", async () => {
+    // Per production UAT closure, a DISPATCHER cannot create a direct order for a B2B
+    // customer that has an active contract. ADMIN sessions are exempt (admin override).
+    // This test verifies the dispatcher-specific enforcement.
+    const dispatcherCk = await loginAs("dispatch@demo-water.co", "password123");
     const { POST: createOrder } = await import("@/app/api/orders/route");
-    const order = await (await createOrder(makeRequest("/api/orders", {
-      method: "POST", cookie: waterAdminCookie,
+    const res = await createOrder(makeRequest("/api/orders", {
+      method: "POST", cookie: dispatcherCk,
       body: { customerId: jarirId, qtyOrdered: 1, emptyBottlesToCollect: 1, paymentMethod: "CASH" },
-    }))).json();
-    const { res } = await createTripWithCapacity(order.id, 21000, "d5-unaffected");
-    expect(res.status).toBe(201);
+    }));
+    expect(res.status).toBe(422);
     const body = await res.json();
-    expect(body.stops[0].pricingPreview).toBeUndefined();
+    expect(["ACTIVE_CONTRACT_REQUIRED", "B2B_CONTRACT_REQUIRED"]).toContain(body.errorCode);
   });
 
   it("21. no passwordHash or sensitive customer fields anywhere in the trip creation response", async () => {

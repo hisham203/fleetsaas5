@@ -59,6 +59,10 @@ function DispatchPageInner() {
   const [orderError, setOrderError] = useState("");
   // Migration 0022: tanker capacity selection for contract orders
   const [newContractId, setNewContractId] = useState("");
+  const [newLocationId, setNewLocationId] = useState("");
+  const [newCustomerType, setNewCustomerType] = useState<string>("");
+  const [customerSites, setCustomerSites] = useState<any[]>([]);
+  const [eligibleContracts, setEligibleContracts] = useState<any[]>([]);
   const [contractCapacities, setContractCapacities] = useState<number[]>([]);
   const [selectedTankerLtr, setSelectedTankerLtr] = useState<number | "">("");
   const [derivedTankerLtr, setDerivedTankerLtr] = useState<number | null>(null);
@@ -103,18 +107,66 @@ function DispatchPageInner() {
     setControlTowerRows(Array.isArray(ct) ? ct : []);
   }, [session]);
 
-  // Migration 0022: load eligible tanker capacities when a contract is selected
-  async function onContractChange(cid: string) {
+  // Step 1: load customer sites when customer is selected
+  async function onNewCustomerChange(cid: string) {
+    setNewCustomerId(cid);
+    setNewLocationId("");
+    setNewCustomerType("");
+    setCustomerSites([]);
+    setNewContractId("");
+    setEligibleContracts([]);
+    setContractCapacities([]);
+    setSelectedTankerLtr("");
+    setDerivedTankerLtr(null);
+    if (!cid) return;
+    // Capture customer type (B2B vs B2C) to drive contract/direct-order UI:
+    const selectedCustomer = customers.find((c: any) => c.id === cid);
+    setNewCustomerType(selectedCustomer?.type ?? "");
+    try {
+      const res = await fetch(`/api/customers/${cid}/locations`);
+      if (!res.ok) return;
+      const sites = await res.json();
+      setCustomerSites(Array.isArray(sites) ? sites : []);
+      // For B2C customers with no sites, load eligible contracts immediately:
+      if ((selectedCustomer?.type ?? "") !== "B2B") await onNewLocationChange("", cid);
+    } catch {}
+  }
+
+  // Step 2: load eligible contracts when site is selected (or when customer has no sites)
+  async function onNewLocationChange(lid: string, overrideCustomerId?: string) {
+    setNewLocationId(lid);
+    setNewContractId("");
+    setEligibleContracts([]);
+    setContractCapacities([]);
+    setSelectedTankerLtr("");
+    setDerivedTankerLtr(null);
+    const cid = overrideCustomerId ?? newCustomerId;
+    if (!cid) return;
+    try {
+      const params = new URLSearchParams({ customerId: cid });
+      if (lid) params.set("locationId", lid);
+      const res = await fetch(`/api/contracts/eligible?${params}`);
+      if (!res.ok) return;
+      const contracts = await res.json();
+      setEligibleContracts(Array.isArray(contracts) ? contracts : []);
+      if (contracts.length === 1) await onContractChange(contracts[0].id, contracts[0]);
+    } catch {}
+  }
+
+  // Load pricing capacities when a contract is selected:
+  async function onContractChange(cid: string, contractData?: any) {
     setNewContractId(cid);
     setSelectedTankerLtr("");
     setDerivedTankerLtr(null);
     setContractCapacities([]);
     if (!cid) return;
     try {
-      const res = await fetch(`/api/contract-pricing-rules?contractId=${cid}`);
-      if (!res.ok) return;
-      const rules = await res.json();
-      const caps = [...new Set<number>(rules.map((r: any) => r.tankerCapacityLtr).filter(Boolean) as number[])];
+      // Use pre-loaded eligibleTankerCapacities if available (from eligible endpoint):
+      const caps: number[] = contractData?.eligibleTankerCapacities ??
+        (() => {
+          const found = eligibleContracts.find((c: any) => c.id === cid);
+          return found?.eligibleTankerCapacities ?? [];
+        })();
       setContractCapacities(caps);
       if (caps.length === 1) setDerivedTankerLtr(caps[0]);
     } catch {}
@@ -130,6 +182,7 @@ function DispatchPageInner() {
       paymentMethod: newPayment,
       discountAmount: newDiscount,
     };
+    if (newLocationId) body.locationId = newLocationId;
     if (newContractId) body.contractId = newContractId;
     if (selectedTankerLtr) body.selectedTankerCapacityLtr = selectedTankerLtr;
     const res = await fetch("/api/orders", {
@@ -143,7 +196,11 @@ function DispatchPageInner() {
       return;
     }
     setNewCustomerId("");
+    setNewLocationId("");
+    setNewCustomerType("");
+    setCustomerSites([]);
     setNewContractId("");
+    setEligibleContracts([]);
     setContractCapacities([]);
     setSelectedTankerLtr("");
     setDerivedTankerLtr(null);
@@ -245,6 +302,14 @@ function DispatchPageInner() {
   const pendingOrders = orders.filter((o) => o.status === "PENDING" || o.status === "VALIDATED");
   const availableVehicles = vehicles.filter((v) => v.status === "AVAILABLE");
   const availableDrivers = drivers.filter((d) => d.status === "AVAILABLE");
+
+  // Tanker compatibility for the currently-selected orders (used in vehicle display):
+  const selectedOrderObjs = orders.filter((o) => selected.includes(o.id));
+  const selectedCapacities = [...new Set(
+    selectedOrderObjs.map((o) => (o as any).requiredTankerCapacityLtr).filter(Boolean)
+  )] as number[];
+  const requiredTripCapacity: number | null = selectedCapacities.length === 1 ? selectedCapacities[0] : null;
+  const hasMixedCapacities = selectedCapacities.length > 1;
   const activeTrips = trips.filter((t) => t.status !== "COMPLETED");
 
   function toggleOrder(id: string) {
@@ -513,17 +578,67 @@ function DispatchPageInner() {
 
           {showNewOrder && (
             <div className="card card-body space-y-2 mb-3">
-              <select className="form-select text-xs" value={newCustomerId} onChange={(e) => setNewCustomerId(e.target.value)}>
+              <select className="form-select text-xs" value={newCustomerId} onChange={(e) => onNewCustomerChange(e.target.value)}>
                 <option value="">Select customer…</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
                 ))}
               </select>
               {/* Migration 0022: contract + tanker capacity selection */}
-              <select className="form-select text-xs" value={newContractId} onChange={(e) => onContractChange(e.target.value)}>
-                <option value="">No contract (direct order)</option>
-                {/* Contracts for the selected customer — filter at render time */}
-              </select>
+              {/* Site selector — load customer sites, select site before contract */}
+              {newCustomerId && (
+                <div className="space-y-1">
+                  <p className="text-2xs font-medium text-steel uppercase tracking-wide">
+                    Site / Delivery Location {customerSites.length > 0 ? "" : "(no sites on file)"}
+                  </p>
+                  <select
+                    className="form-select text-xs"
+                    value={newLocationId}
+                    onChange={(e) => onNewLocationChange(e.target.value)}
+                  >
+                    <option value="">No specific site (all-sites contracts)</option>
+                    {customerSites.map((site: any) => (
+                      <option key={site.id} value={site.id}>{site.label || site.address}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Contract selector — shows eligible contracts for selected customer+site */}
+              {newCustomerId && (
+                <div className="space-y-1">
+                  <p className="text-2xs font-medium text-steel uppercase tracking-wide">
+                    Contract {eligibleContracts.length > 0 ? <span className="text-danger">*</span> : ""}
+                  </p>
+                  <select
+                    className="form-select text-xs"
+                    value={newContractId}
+                    onChange={(e) => onContractChange(e.target.value)}
+                  >
+                    {/* B2B: always requires a contract. B2C: direct order available when no contracts. */}
+                    {eligibleContracts.length === 0 && newCustomerType !== "B2B" && (
+                      <option value="">No contract (direct order)</option>
+                    )}
+                    {eligibleContracts.length === 0 && newCustomerType === "B2B" && (
+                      <option value="" disabled>No eligible active contract</option>
+                    )}
+                    {eligibleContracts.length > 0 && !newContractId && (
+                      <option value="">Select contract…</option>
+                    )}
+                    {eligibleContracts.map((c: any) => (
+                      <option key={c.id} value={c.id}>
+                        {c.contractNumber} — {c.type === "ONE_TIME_TRIP_COUNT" ? `${c.tripsUsed ?? 0}/${c.totalTripsPurchased ?? "∞"} trips` : "Monthly"}
+                      </option>
+                    ))}
+                  </select>
+                  {eligibleContracts.length === 0 && newCustomerId && (
+                    <p className="text-2xs text-danger mt-1">No eligible active contract for this customer/site. Create or activate a contract before placing this order.</p>
+                  )}
+                  {eligibleContracts.length > 0 && !newContractId && (
+                    <p className="text-2xs text-warn">Contract required — select one to continue.</p>
+                  )}
+                </div>
+              )}
               {contractCapacities.length === 1 && derivedTankerLtr && (
                 <div className="flex items-center gap-2 px-2.5 py-1.5 bg-aquaLight rounded text-xs text-aquaDark font-medium">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -554,7 +669,12 @@ function DispatchPageInner() {
               <input type="number" min={0} className="form-input text-xs" placeholder="Discount (SAR, optional)" value={newDiscount || ""} onChange={(e) => setNewDiscount(Number(e.target.value) || 0)} />
               {orderError && <p className="text-danger text-xs">{orderError}</p>}
               <button
-                disabled={!newCustomerId || (contractCapacities.length > 1 && !selectedTankerLtr)}
+                disabled={
+                  !newCustomerId ||
+                  (newCustomerType === "B2B" && !newContractId) ||
+                  (eligibleContracts.length > 0 && !newContractId) ||
+                  (contractCapacities.length > 1 && !selectedTankerLtr)
+                }
                 onClick={createOrder}
                 className="btn btn-md btn-primary w-full"
               >
@@ -615,6 +735,14 @@ function DispatchPageInner() {
                 <option key={d.id} value={d.id}>{d.user.name}</option>
               ))}
             </select>
+            {hasMixedCapacities && (
+              <div className="mb-2 px-2 py-1.5 bg-warn/10 rounded text-xs text-warn font-medium">
+                ⚠ Selected orders require different tanker sizes ({selectedCapacities.map(c => c.toLocaleString() + " L").join(", ")}). A single trip cannot serve mixed capacities.
+              </div>
+            )}
+            {requiredTripCapacity && (
+              <p className="mb-1.5 text-xs text-aquaDark font-medium">Required tanker: {requiredTripCapacity.toLocaleString()} L</p>
+            )}
             <select
               className="w-full border rounded-lg px-3 py-2 text-sm"
               value={vehicleId}
@@ -625,11 +753,19 @@ function DispatchPageInner() {
               }}
             >
               <option value="">Select vehicle…</option>
-              {availableVehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.plateNumber} ({v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : "capacity not set"})
-                </option>
-              ))}
+              {availableVehicles.map((v) => {
+                const compatible = !requiredTripCapacity || v.capacityLiters === requiredTripCapacity;
+                const capLabel = v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : "capacity not set";
+                return compatible ? (
+                  <option key={v.id} value={v.id}>
+                    {v.plateNumber} — {capLabel} — Eligible
+                  </option>
+                ) : (
+                  <option key={v.id} value={v.id} disabled>
+                    {v.plateNumber} — {capLabel} — Incompatible (requires {requiredTripCapacity.toLocaleString()} L)
+                  </option>
+                );
+              })}
             </select>
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
               <option value="">Loading point / warehouse…</option>
@@ -642,7 +778,11 @@ function DispatchPageInner() {
             )}
             {error && <p className="text-danger text-xs">{error}</p>}
             <button
-              disabled={selected.length === 0 || !driverId || !vehicleId || !warehouseId || busy}
+              disabled={
+                selected.length === 0 || !driverId || !vehicleId || !warehouseId || busy ||
+                hasMixedCapacities ||
+                (requiredTripCapacity != null && availableVehicles.find(v => v.id === vehicleId)?.capacityLiters !== requiredTripCapacity)
+              }
               onClick={createTrip}
               className="w-full bg-aquaDark text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
             >
