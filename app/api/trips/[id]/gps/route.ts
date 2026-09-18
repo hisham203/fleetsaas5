@@ -3,57 +3,118 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { trips, drivers } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { validateGpsPing, persistGpsPing, processGpsGeofence } from "@/lib/gpsIngestion";
+import { checkGpsRateLimit } from "@/lib/gpsRateLimit";
 
-const pingSchema = z.object({
-  lat: z.number(),
-  lng: z.number(),
-});
+const bodySchema = z.object({
+  lat:      z.number().finite(),
+  lng:      z.number().finite(),
+  accuracy: z.number().min(0).optional(),
+  speed:    z.number().min(0).optional(),
+  heading:  z.number().min(0).max(360).optional(),
+}).strict();
 
-// BR-12: Live Location Tracking. No real GPS hardware exists in this
-// prototype, so the driver app simulates a device ping by interpolating
-// position along the trip's stop sequence client-side and posting here —
-// see the simulation loop in app/driver/page.tsx. The shape of this
-// endpoint (lat/lng, latest-wins) is exactly what a real GPS/IoT device
-// integration would call, so swapping in real hardware later means
-// replacing the client-side sender, not this endpoint.
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * PATCH /api/trips/[id]/gps — Real-device GPS ping.
+ *
+ * Pipeline order (security-correct):
+ *   1. authenticate session
+ *   2. resolve tenant
+ *   3. resolve trip (tenant-scoped)
+ *   4. verify trip is active
+ *   5. verify driver owns this trip
+ *   6. apply GPS rate limit (identity-aware: tenantId:tripId:driverId)
+ *   7. parse + validate GPS payload
+ *   8. persist GPS (trips + vehicleGpsHistory)
+ *   9. process geofence (async, non-blocking)
+ *
+ * Unauthenticated and unauthorized requests are rejected at steps 1–5
+ * and NEVER reach step 6 — they cannot consume the legitimate driver's
+ * rate-limit window.
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const { id } = await params;
+
+  // ── Step 1: Authenticate ────────────────────────────────────────────────────
   const session = await getSessionFromRequest(req);
   if (!hasRole(session, ["ADMIN", "DRIVER"])) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // ── Step 2: Resolve tenant ───────────────────────────────────────────────────
   const tenantId = getSessionTenantId(session)!;
-  // DRIVER role has restricted dispatch access — only their own trips/stops.
-  // They bypass module-level enforcement here; the ownership check below gates their access.
-  if (session?.type !== "USER" || (session.user as any).role !== "DRIVER") {
-    const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
-  }
 
-  const body = await req.json();
-  const parsed = pingSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const trip = await db.query.trips.findFirst({ where: and(eq(trips.id, id), eq(trips.tenantId, tenantId)) });
+  // ── Step 3: Resolve trip (tenant-scoped) ────────────────────────────────────
+  const trip = await db.query.trips.findFirst({
+    where: and(eq(trips.id, id), eq(trips.tenantId, tenantId)),
+  });
   if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
 
-  // A driver can only ping their own trip.
-  if (session!.type === "USER" && session!.user.role === "DRIVER") {
-    const driverProfile = await db.query.drivers.findFirst({ where: eq(drivers.userId, session!.user.id) });
+  // ── Step 4: Verify trip is active ───────────────────────────────────────────
+  if (trip.status === "COMPLETED" || trip.status === "CANCELLED") {
+    return NextResponse.json({ error: "Trip is not active" }, { status: 422 });
+  }
+
+  // ── Step 5: Verify driver owns this trip ────────────────────────────────────
+  let effectiveDriverId = trip.driverId;
+  if (session!.type === "USER" && (session!.user as any).role === "DRIVER") {
+    const driverProfile = await db.query.drivers.findFirst({
+      where: (d, { eq: eq2 }) => eq2(d.userId, session!.user.id),
+      columns: { id: true },
+    });
     if (!driverProfile || driverProfile.id !== trip.driverId) {
       return NextResponse.json({ error: "Not your trip" }, { status: 403 });
     }
+    effectiveDriverId = driverProfile.id;
   }
 
-  await db
-    .update(trips)
-    .set({ currentLat: parsed.data.lat, currentLng: parsed.data.lng, lastPingAt: new Date() })
-    .where(eq(trips.id, trip.id));
+  // ── Step 6: Rate limit — AFTER full auth/authz ──────────────────────────────
+  // Key is identity-aware: tenantId:tripId:driverId
+  // Unauthenticated/unauthorized requests never reach this line.
+  const rateLimitKey = `${tenantId}:${id}:${effectiveDriverId}`;
+  const rateResult = checkGpsRateLimit(rateLimitKey);
+  if (!rateResult.allowed) {
+    return NextResponse.json(
+      { error: "GPS ping rate exceeded — try again shortly", retryAfterMs: rateResult.retryAfterMs },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(rateResult.retryAfterMs / 1000)) } }
+    );
+  }
 
-  return NextResponse.json({ ok: true });
+  // ── Step 7: Parse + validate GPS payload ────────────────────────────────────
+  const body = await req.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+
+  const parsed = bodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten(), errorCode: "INVALID_GPS_COORDINATES" }, { status: 422 });
+  }
+
+  const fieldErrors = validateGpsPing(parsed.data);
+  if (fieldErrors.length > 0) {
+    return NextResponse.json({ errors: fieldErrors, errorCode: "INVALID_GPS_COORDINATES" }, { status: 422 });
+  }
+
+  const ping = {
+    tenantId,
+    tripId: trip.id,
+    vehicleId: trip.vehicleId,
+    driverId: trip.driverId,
+    lat: parsed.data.lat,
+    lng: parsed.data.lng,
+    accuracy: parsed.data.accuracy ?? null,
+    speed: parsed.data.speed ?? null,
+    heading: parsed.data.heading ?? null,
+  };
+
+  // ── Steps 8–9: Persist + geofence ───────────────────────────────────────────
+  await persistGpsPing(ping);
+  processGpsGeofence(ping); // non-blocking
+
+  return NextResponse.json({ ok: true, lat: ping.lat, lng: ping.lng, recordedAt: new Date().toISOString() });
 }

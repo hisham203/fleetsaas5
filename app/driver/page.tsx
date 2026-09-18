@@ -10,6 +10,9 @@ export default function DriverPage() {
   const { session, loading: sessionLoading } = useRequireSession(["DRIVER"]);
   const [trips, setTrips] = useState<any[]>([]);
   const [epodStop, setEpodStop] = useState<any | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<"LIVE" | "STALE" | "OFFLINE">("OFFLINE");
+  const [geofenceSuggestion, setGeofenceSuggestion] = useState<string | null>(null);
+  const [lastPing, setLastPing] = useState<Date | null>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [actionMessage, setActionMessage] = useState<{ text: string; tone: "ok" | "danger" } | null>(null);
@@ -36,6 +39,25 @@ export default function DriverPage() {
     return () => clearInterval(interval);
   }, [session, load]);
 
+  // Poll operational events for geofence suggestions:
+  useEffect(() => {
+    if (!session) return;
+    const fetchEvents = async () => {
+      try {
+        const res = await fetch("/api/operational-events?unread=true");
+        if (!res.ok) return;
+        const data = await res.json();
+        const geo = (data.events ?? []).find((e: any) =>
+          e.eventType === "GEOFENCE_LOADING_ARRIVAL" || e.eventType === "GEOFENCE_CUSTOMER_ARRIVAL"
+        );
+        setGeofenceSuggestion(geo?.message ?? null);
+      } catch {}
+    };
+    fetchEvents();
+    const t = setInterval(fetchEvents, 15_000);
+    return () => clearInterval(t);
+  }, [session]);
+
   const myTrip = trips.find(
     (t) => t.driverId === driverId && (t.status === "DISPATCHED" || t.status === "IN_PROGRESS")
   );
@@ -48,50 +70,107 @@ export default function DriverPage() {
   // the driver is told while it's not yet theirs to act on.
   const myPlannedTrip = trips.find((t) => t.driverId === driverId && t.status === "PLANNED");
 
-  // BR-12 Live Location Tracking (simulated): while a trip is dispatched,
-  // interpolate a position along the stop sequence and ping the server
-  // every few seconds — standing in for a real device's GPS updates. See
-  // README for how to swap this for a real GPS/IoT integration.
+  // BR-12 Live Location Tracking — REAL DEVICE GPS via navigator.geolocation.watchPosition().
+  // Uses the browser Geolocation API to get genuine device coordinates.
+  // One watcher per active trip; cleaned up on trip change, completion, or unmount.
+  // Falls back gracefully when permission is denied or GPS is unavailable.
+  //
+  // GPS status states visible in the driver UI:
+  //   ACQUIRING  — watcher started, first fix not yet received
+  //   LIVE       — at least one valid fix sent to server successfully
+  //   STALE      — last successful server ping was > 30 seconds ago
+  //   ERROR      — permission denied / GPS unavailable / position unavailable
+  //   OFFLINE    — fetch to GPS endpoint failed (network issue)
+  //
+  // To run a controlled GPS demo for stakeholder demonstrations, use the GPS Demo
+  // panel in the Control Tower (Admin only, GPS_DEMO_ENABLED=true required).
+  const [gpsPermission, setGpsPermission] = useState<"acquiring" | "live" | "stale" | "error" | "offline">("acquiring");
+  const watchIdRef = useRef<number | null>(null);
+  const lastPingTimeRef = useRef<number>(0);
+  const MIN_PING_INTERVAL_MS = 5000; // rate-limit: send at most one ping per 5 seconds
+
   useEffect(() => {
-    if (gpsIntervalRef.current) {
-      clearInterval(gpsIntervalRef.current);
-      gpsIntervalRef.current = null;
+    // Clear any previous watcher:
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
     }
-    if (!myTrip) return;
+    if (!myTrip) {
+      setGpsPermission("acquiring");
+      setGpsStatus("OFFLINE");
+      return;
+    }
 
-    const coords = myTrip.stops
-      .filter((s: any) => s.order?.lat != null && s.order?.lng != null)
-      .sort((a: any, b: any) => a.sequence - b.sequence)
-      .map((s: any) => ({ lat: s.order.lat, lng: s.order.lng }));
-    if (coords.length === 0) return;
+    // Check if Geolocation API is available:
+    if (!navigator.geolocation) {
+      setGpsPermission("error");
+      setGpsStatus("OFFLINE");
+      return;
+    }
 
-    let step = 0;
-    const totalSteps = coords.length * 10; // 10 ticks between each stop, ~30s at 3s/tick
+    setGpsPermission("acquiring");
 
-    gpsIntervalRef.current = setInterval(() => {
-      const segment = Math.min(Math.floor(step / 10), coords.length - 1);
-      const nextSegment = Math.min(segment + 1, coords.length - 1);
-      const t = (step % 10) / 10;
-      const lat = coords[segment].lat + (coords[nextSegment].lat - coords[segment].lat) * t;
-      const lng = coords[segment].lng + (coords[nextSegment].lng - coords[segment].lng) * t;
+    const onSuccess = (position: GeolocationPosition) => {
+      const { latitude: lat, longitude: lng, accuracy, speed, heading } = position.coords;
+
+      // Client-side rate limiting — skip pings that arrive too fast:
+      const now = Date.now();
+      if (now - lastPingTimeRef.current < MIN_PING_INTERVAL_MS) return;
+      lastPingTimeRef.current = now;
+
+      const body: Record<string, number> = { lat, lng };
+      if (accuracy != null) body.accuracy = accuracy;
+      if (speed != null && speed >= 0) body.speed = speed;
+      if (heading != null && heading >= 0 && heading <= 360) body.heading = heading;
 
       fetch(`/api/trips/${myTrip.id}/gps`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat, lng }),
-      }).catch(() => {});
+        body: JSON.stringify(body),
+      }).then(r => {
+        if (r.ok) {
+          setGpsPermission("live");
+          setGpsStatus("LIVE");
+          setLastPing(new Date());
+        } else {
+          // 422 INVALID_GPS_COORDINATES or other server error:
+          setGpsPermission("error");
+        }
+      }).catch(() => {
+        setGpsPermission("offline");
+        setGpsStatus("STALE");
+      });
+    };
 
-      step = (step + 1) % (totalSteps + 1);
-    }, 3000);
+    const onError = (err: GeolocationPositionError) => {
+      if (err.code === GeolocationPositionError.PERMISSION_DENIED) {
+        setGpsPermission("error");
+        setGpsStatus("OFFLINE");
+      } else if (err.code === GeolocationPositionError.POSITION_UNAVAILABLE) {
+        setGpsPermission("error");
+        setGpsStatus("STALE");
+      } else {
+        // TIMEOUT — keep trying:
+        setGpsPermission("acquiring");
+      }
+    };
+
+    // Start real-device GPS watcher:
+    watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      maximumAge: 5000,       // accept cached position up to 5 seconds old
+      timeout: 15000,         // wait up to 15 seconds for a fix
+    });
 
     return () => {
-      if (gpsIntervalRef.current) clearInterval(gpsIntervalRef.current);
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
     };
-    // Intentional: depending on the full `myTrip` object (which gets a new
-    // reference on every 4s poll even when nothing changed) would restart
-    // this interval constantly; only restart when the trip actually changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myTrip?.id]);
+
 
   async function checkIn(tripId: string, stopId: string) {
     await fetch(`/api/trips/${tripId}/stops/${stopId}`, {
@@ -148,6 +227,33 @@ export default function DriverPage() {
     <main className="min-h-screen bg-paper flex flex-col">
       <TopNav role={`Driver — ${session.name}`} />
       <div className="p-6 max-w-lg mx-auto">
+        {/* GPS Status bar — shows real device GPS state */}
+        {myTrip && (
+          <div className={`rounded-lg px-3 py-2 text-xs flex items-center justify-between mb-3 ${
+            gpsPermission === "live" ? "bg-emerald-50 text-emerald-700" :
+            gpsPermission === "offline" ? "bg-amber-50 text-amber-700" :
+            gpsPermission === "error" ? "bg-red-50 text-red-700" :
+            "bg-slate-100 text-slate-500"
+          }`}>
+            <span>
+              {gpsPermission === "acquiring" && "📡 GPS: Acquiring…"}
+              {gpsPermission === "live" && "📡 GPS: Live"}
+              {gpsPermission === "stale" && "📡 GPS: Stale — reconnecting"}
+              {gpsPermission === "offline" && "📡 GPS: Offline — check connection"}
+              {gpsPermission === "error" && "📡 GPS: Unavailable — check location settings"}
+            </span>
+            <span>{lastPing ? `${Math.round((Date.now() - lastPing.getTime()) / 1000)}s ago` : ""}</span>
+          </div>
+        )}
+
+        {/* Geofence suggestion banner */}
+        {geofenceSuggestion && (
+          <div className="rounded-lg px-4 py-3 text-sm bg-blue-50 border border-blue-200 text-blue-800 mb-3 flex items-start justify-between gap-2">
+            <span>📍 {geofenceSuggestion}</span>
+            <button onClick={() => setGeofenceSuggestion(null)} className="text-blue-500 text-xs flex-shrink-0">✕</button>
+          </div>
+        )}
+
         {actionMessage && (
           <div
             className={`rounded-lg px-3 py-2 text-sm mb-4 ${actionMessage.tone === "ok" ? "bg-ok/10 text-ok" : "bg-danger/10 text-danger"}`}

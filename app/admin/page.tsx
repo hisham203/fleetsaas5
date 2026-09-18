@@ -419,6 +419,51 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
   );
 }
 
+function LiveOpsKPIs() {
+  const [kpi, setKpi] = useState<any>(null);
+  useEffect(() => {
+    fetch("/api/fleet/positions")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        const pos = d.positions ?? [];
+        setKpi({
+          activeTrips: pos.filter((v: any) => v.tripId && v.tripStatus !== "COMPLETED").length,
+          available:   pos.filter((v: any) => !v.tripId && v.vehicleStatus === "AVAILABLE").length,
+          inTransit:   pos.filter((v: any) => v.tripStatus === "STARTED").length,
+          gpsLive:     pos.filter((v: any) => v.gpsStatus === "LIVE").length,
+          gpsStale:    pos.filter((v: any) => v.gpsStatus === "STALE").length,
+          gpsOffline:  pos.filter((v: any) => v.gpsStatus === "OFFLINE").length,
+        });
+      })
+      .catch(() => {});
+  }, []);
+  if (!kpi) return null;
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-steel uppercase tracking-wide">Live Fleet Status</p>
+        <a href="/control-tower" className="text-xs text-aqua hover:underline">Open Control Tower →</a>
+      </div>
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        {[
+          { label: "Active Trips",    value: kpi.activeTrips, cls: "text-aqua" },
+          { label: "Available",       value: kpi.available,   cls: "text-emerald-600" },
+          { label: "In Transit",      value: kpi.inTransit,   cls: "text-amber-600" },
+          { label: "GPS Live",        value: kpi.gpsLive,     cls: "text-emerald-600" },
+          { label: "GPS Stale",       value: kpi.gpsStale,    cls: "text-amber-500" },
+          { label: "GPS Offline",     value: kpi.gpsOffline,  cls: "text-slate-400" },
+        ].map(({ label, value, cls }) => (
+          <div key={label} className="text-center">
+            <p className={`text-xl font-bold ${cls}`}>{value}</p>
+            <p className="text-2xs text-steel mt-0.5">{label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Card({ title, value, sub }: { title: string; value: string | number; sub?: string }) {
   return (
     <div className="card card-body">
@@ -460,6 +505,9 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
         <Card title="Drivers" value={drivers.length} sub={`${availableDrivers} available`} />
       </div>
 
+      {/* P2-01: Live Operations KPIs — from fleet positions endpoint */}
+      <LiveOpsKPIs />
+
       {pendingExpenseCount !== null && (
         <div className="card card-body flex items-center justify-between mb-4">
           <div>
@@ -473,6 +521,7 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
         {[
           { label: "Dispatch Control Tower", href: "/admin/dispatch", desc: "Dispatch & trip status", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+        { label: "🗼 Live Control Tower", href: "/control-tower", desc: "Live fleet map & GPS tracking", icon: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" },
           { label: "Customers & Contracts", href: "/admin/customers", desc: "Manage accounts & contracts", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
           { label: "Expenses", href: "/admin/expenses", desc: "Review & approve claims", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
         ].map(link => (

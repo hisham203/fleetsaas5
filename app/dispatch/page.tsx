@@ -50,6 +50,7 @@ function DispatchPageInner() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [fleetPositions, setFleetPositions] = useState<Record<string, any>>({});
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [newCustomerId, setNewCustomerId] = useState("");
   const [newQty, setNewQty] = useState(1);
@@ -217,6 +218,24 @@ function DispatchPageInner() {
     const interval = setInterval(load, 4000);
     return () => clearInterval(interval);
   }, [session, load]);
+
+  // P2-01: Poll fleet live positions for the vehicle selector (Workstream H):
+  useEffect(() => {
+    if (!session) return;
+    const fetchPos = async () => {
+      try {
+        const res = await fetch("/api/fleet/positions");
+        if (!res.ok) return;
+        const data = await res.json();
+        const byVehicle: Record<string, any> = {};
+        for (const pos of data.positions ?? []) byVehicle[pos.vehicleId] = pos;
+        setFleetPositions(byVehicle);
+      } catch {}
+    };
+    fetchPos();
+    const t = setInterval(fetchPos, 15_000);
+    return () => clearInterval(t);
+  }, [session]);
 
   // Milestone S — Part 3/5: resolves a ?tripId= or ?orderId= deep link
   // from the Dispatch Control Tower into real selection state, exactly
@@ -758,7 +777,7 @@ function DispatchPageInner() {
                 const capLabel = v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : "capacity not set";
                 return compatible ? (
                   <option key={v.id} value={v.id}>
-                    {v.plateNumber} — {capLabel} — Eligible
+                    {v.plateNumber} — {capLabel} — Eligible{fleetPositions[v.id]?.gpsStatus === "LIVE" ? " 📡" : ""}
                   </option>
                 ) : (
                   <option key={v.id} value={v.id} disabled>

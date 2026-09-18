@@ -183,6 +183,7 @@ export const customerLocations = pgTable("customer_locations", {
   cityCode: text("city_code"),
   zoneCode: text("zone_code"),
   distanceBandCode: text("distance_band_code"),
+  geofenceRadiusMeters: integer("geofence_radius_meters").default(150), // P2-01: metres for customer-site arrival detection
   createdAt: createdAt(),
 }, (table) => ({
   // Milestone AG — plain index only: this table has no tenantId, so a
@@ -1325,6 +1326,7 @@ export const warehouses = pgTable("warehouses", {
   // loading-point table; maintenance stock lives in maintenanceWarehouses).
   loadingPointCode: text("loading_point_code"),
   isDefault: boolean("is_default").notNull().default(false),
+  geofenceRadiusMeters: integer("geofence_radius_meters").default(200), // P2-01: metres for arrival detection
   createdAt: createdAt(),
 }, (table) => ({
   // Milestone AG — internal loading point code, unique per tenant (NULLs allowed).
@@ -2006,3 +2008,59 @@ export const invoiceLineItemsRelations = relations(invoiceLineItems, ({ one }) =
   invoice: one(invoices, { fields: [invoiceLineItems.invoiceId], references: [invoices.id] }),
   order: one(orders, { fields: [invoiceLineItems.orderId], references: [orders.id] }),
 }));
+
+// ============================================================
+// P2-01: Live Operations — GPS History & Operational Events
+// ============================================================
+
+// One row per GPS position update from a driver during an active trip.
+// The trips table keeps the LATEST position (currentLat/currentLng/lastPingAt)
+// for quick map display; this table keeps the HISTORY for operational review.
+export const vehicleGpsHistory = pgTable("vehicle_gps_history", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  tripId: text("trip_id").notNull(),
+  vehicleId: text("vehicle_id").notNull(),
+  driverId: text("driver_id").notNull(),
+  lat: real("lat").notNull(),
+  lng: real("lng").notNull(),
+  accuracy: real("accuracy"),          // metres (from device GPS)
+  speed: real("speed"),                // m/s (from device GPS)
+  heading: real("heading"),            // degrees 0–360
+  recordedAt: timestamp("recorded_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+// Operational event feed: geofence arrivals, GPS stale alerts, late trips, etc.
+// Separate from billing/commercial notifications — ops-only read/write path.
+export const operationalEvents = pgTable("operational_events", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  // event_type values: GPS_STALE | TRIP_LATE | DRIVER_NOT_STARTED |
+  //   GEOFENCE_LOADING_ARRIVAL | GEOFENCE_CUSTOMER_ARRIVAL |
+  //   LOADING_OVERRUN | DELIVERY_FAILED | POD_PENDING | EXCEPTION_OPEN
+  eventType: text("event_type").notNull(),
+  tripId: text("trip_id"),
+  vehicleId: text("vehicle_id"),
+  driverId: text("driver_id"),
+  orderId: text("order_id"),
+  message: text("message").notNull(),
+  severity: text("severity").notNull().default("INFO"), // INFO | WARNING | CRITICAL
+  read: boolean("read").notNull().default(false),
+  createdAt: createdAt(),
+});
+
+// ============================================================
+// P2-01 Relations
+// ============================================================
+
+export const vehicleGpsHistoryRelations = relations(vehicleGpsHistory, ({ one }) => ({
+  trip: one(trips, { fields: [vehicleGpsHistory.tripId], references: [trips.id] }),
+  vehicle: one(vehicles, { fields: [vehicleGpsHistory.vehicleId], references: [vehicles.id] }),
+  driver: one(drivers, { fields: [vehicleGpsHistory.driverId], references: [drivers.id] }),
+}));
+
+export const operationalEventsRelations = relations(operationalEvents, ({ one }) => ({
+  trip: one(trips, { fields: [operationalEvents.tripId], references: [trips.id] }),
+  vehicle: one(vehicles, { fields: [operationalEvents.vehicleId], references: [vehicles.id] }),
+}));
+

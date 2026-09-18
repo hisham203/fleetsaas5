@@ -162,6 +162,13 @@
       "when": 1789423034429,
       "tag": "0022_strong_tomas",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789576684765,
+      "tag": "0023_p2_live_operations",
+      "breakpoints": true
     }
   ]
 }
