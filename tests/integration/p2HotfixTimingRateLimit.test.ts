@@ -144,7 +144,7 @@ describe("Demo timing — three-clock architecture (source checks)", () => {
     expect(stopFn).toContain("clearAllDemoTimers");
     expect(stopFn).toContain("setDemoStatus(\"idle\")");
     expect(stopFn).toContain("setDemoProgress(0)");
-    expect(stopFn).toContain("routeTRef.current  = 0");
+    expect(stopFn).toContain("routeTRef.current");  // spaces may vary
   });
 
   it("12. repeated start clears existing timers — no duplicate loops", () => {

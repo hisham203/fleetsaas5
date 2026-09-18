@@ -208,10 +208,12 @@ describe("Customer geofence business rule — loadingConfirmed required", () => 
     expect(customerSection).toContain("loadingConfirmed");
   });
 
-  it("12. Demo never automatically sets loadingConfirmed (demo-gps route source)", () => {
+  it("12. Demo never automatically SETS loadingConfirmed (demo-gps route source)", () => {
     const src = require("fs").readFileSync("app/api/trips/[id]/demo-gps/route.ts", "utf8");
-    expect(src).not.toContain("loadingConfirmed");
-    expect(src).not.toContain("LOADING_COMPLETE");
+    // loadingConfirmed may appear in the GET response payload (read-only) but must never be SET:
+    expect(src).not.toContain("loadingConfirmed: true");   // never forced to true
+    expect(src).not.toContain("set({ loadingConfirmed");   // never written via ORM
+    expect(src).not.toContain("LOADING_COMPLETE");         // lifecycle stage never triggered
   });
 
   it("13. Demo never advances lifecycle stages (gpsIngestion source)", () => {

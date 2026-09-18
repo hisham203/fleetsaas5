@@ -295,8 +295,12 @@ export default function ControlTowerPage() {
   const visualTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const routeTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const serverTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const routeTRef      = useRef<number>(0); // actual route position, ref to avoid stale closures
-  const visualTRef     = useRef<number>(0); // displayed position for smooth animation
+  const routeTRef         = useRef<number>(0); // actual route position, ref to avoid stale closures
+  const visualTRef        = useRef<number>(0); // displayed position for smooth animation
+  const resolvedTripIdRef = useRef<string>(""); // canonical internal trip.id after GET resolution
+  // Stale-closure safety: all demo POST calls use resolvedTripIdRef.current (not demoTripId state).
+  // demoTripId holds whatever the operator typed (trip.id UUID or business tripNumber).
+  // resolvedTripIdRef holds the canonical internal UUID returned by the GET endpoint.
   // 1× speed = 90 seconds total → 90 ticks at 1000ms, each advancing by 1/90 ≈ 0.0111
   const DEMO_DURATION_1X_SEC = 90;
   const SERVER_PERSIST_MS    = 6000; // one persisted GPS point every 6 seconds
@@ -373,24 +377,36 @@ export default function ControlTowerPage() {
 
     // ── Step 1: Fetch route coordinates ─────────────────────────────────────────
     const res = await fetch(`/api/trips/${demoTripId}/demo-gps`).catch(() => null);
-    if (!res?.ok) { alert("Demo GPS not available for this trip — ensure GPS_DEMO_ENABLED=true and ADMIN role"); return; }
+    if (!res) { alert("Network error — could not reach server. Check connection and try again."); return; }
+    if (!res.ok) {
+      // Distinguish error types so the operator knows what to fix:
+      if (res.status === 401) { alert("Authorization error — GPS Demo requires ADMIN role."); return; }
+      if (res.status === 403) { alert("GPS Demo is not enabled on this server — set GPS_DEMO_ENABLED=true in Railway environment variables."); return; }
+      if (res.status === 404) { alert(`Trip not found: "${demoTripId}"
+Check the Trip Number (e.g. TRIP-XXXXXXXX-XXX) and ensure it belongs to your organization.`); return; }
+      if (res.status === 422) { alert("Trip is not eligible for GPS Demo — it may be completed or missing operational prerequisites (Loading Point, Customer Site)."); return; }
+      alert(`GPS Demo error (${res.status}) — check server logs.`); return;
+    }
     const data = await res.json();
     if (!data.loadingPoint?.lat || !data.customerSite?.lat) {
       alert("Trip missing loading point or customer site coordinates — cannot start demo"); return;
     }
     const route = { loadingPoint: data.loadingPoint, customerSite: data.customerSite };
+    // Store canonical internal trip.id — use this for ALL subsequent POSTs, not demoTripId:
+    resolvedTripIdRef.current = data.tripId;
 
     // ── Step 2: Persist exact Loading Point as initial GPS position ──────────────
     // This is done BEFORE starting any movement clocks so that:
     //   (a) the vehicle starts visibly AT the Loading Point
     //   (b) processGpsGeofence() can fire GEOFENCE_LOADING_ARRIVAL on this ping
     // If this fails, we do NOT start the demo — no false DEMO GPS LIVE state.
-    const initRes = await fetch(`/api/trips/${demoTripId}/demo-gps`, {
+    const initRes = await fetch(`/api/trips/${resolvedTripIdRef.current}/demo-gps`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lat: route.loadingPoint.lat, lng: route.loadingPoint.lng, speed: 0, accuracy: 5 }),
     }).catch(() => null);
     if (!initRes?.ok) {
       alert("Demo initialization failed — could not persist initial Loading Point GPS. Check server logs.");
+      resolvedTripIdRef.current = ""; // clear resolved ID on failure
       return; // DO NOT start timers or show DEMO GPS LIVE
     }
 
@@ -431,7 +447,7 @@ export default function ControlTowerPage() {
         // 3. Persist final exact Customer Site coordinate through the normal pipeline.
         //    Clock C is already stopped, so no rate-limit window conflict.
         //    speed=0 signals vehicle has arrived and stopped.
-        fetch(`/api/trips/${demoTripId}/demo-gps`, {
+        fetch(`/api/trips/${resolvedTripIdRef.current}/demo-gps`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat: route.customerSite.lat, lng: route.customerSite.lng, speed: 0, accuracy: 5 }),
         }).catch(() => {});
@@ -449,7 +465,7 @@ export default function ControlTowerPage() {
       if (t >= 0.95) return; // stop intermediate pings near completion — Clock B sends the final
       const lat = lerp(route.loadingPoint.lat, route.customerSite.lat, t);
       const lng = lerp(route.loadingPoint.lng, route.customerSite.lng, t);
-      fetch(`/api/trips/${demoTripId}/demo-gps`, {
+      fetch(`/api/trips/${resolvedTripIdRef.current}/demo-gps`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lat, lng, speed: 8.3, accuracy: 5 }),
       }).catch(() => {});
@@ -489,7 +505,7 @@ export default function ControlTowerPage() {
         visualTRef.current = 1.0;
         setDemoProgress(1.0);
         setDemoStatus("completed");
-        fetch(`/api/trips/${demoTripId}/demo-gps`, {
+        fetch(`/api/trips/${resolvedTripIdRef.current}/demo-gps`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat: route.customerSite.lat, lng: route.customerSite.lng, speed: 0, accuracy: 5 }),
         }).catch(() => {});
@@ -502,7 +518,7 @@ export default function ControlTowerPage() {
       if (t >= 0.95) return;
       const lat = lerp(route.loadingPoint.lat, route.customerSite.lat, t);
       const lng = lerp(route.loadingPoint.lng, route.customerSite.lng, t);
-      fetch(`/api/trips/${demoTripId}/demo-gps`, {
+      fetch(`/api/trips/${resolvedTripIdRef.current}/demo-gps`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lat, lng, speed: 8.3, accuracy: 5 }),
       }).catch(() => {});
@@ -511,8 +527,9 @@ export default function ControlTowerPage() {
 
   function stopDemo() {
     clearAllDemoTimers();
-    routeTRef.current  = 0;
-    visualTRef.current = 0;
+    routeTRef.current        = 0;
+    visualTRef.current       = 0;
+    resolvedTripIdRef.current = "";
     setDemoStatus("idle");
     setDemoRoute(null);
     setDemoProgress(0);
@@ -692,14 +709,15 @@ export default function ControlTowerPage() {
               </div>
               <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
                 <div>
-                  <label className="text-xs font-medium text-steel block mb-1">Trip ID</label>
+                  <label className="text-xs font-medium text-steel block mb-1">Trip Number / ID</label>
                   <input
-                    type="text" placeholder="Enter trip ID…"
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    type="text" placeholder="e.g. TRIP-XXXXXXXX-XXX"
+                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
                     value={demoTripId}
-                    onChange={e => setDemoTripId(e.target.value)}
+                    onChange={e => setDemoTripId(e.target.value.trim())}
                     disabled={demoStatus !== "idle"}
                   />
+                  <p className="text-2xs text-steel mt-0.5">Enter the Trip Number shown in the trip list or the internal trip ID</p>
                 </div>
                 {demoRoute && (
                   <div className="space-y-1 text-2xs text-steel">
