@@ -55,7 +55,7 @@ function ContractPlannerPageInner() {
     }
     setError("");
     const data = await res.json();
-    setRows(data.contracts ?? []);
+    setRows(Array.isArray(data) ? data : (data.contracts ?? []));
     setCapacity(data.capacity ?? null);
     setDemand(data.demand ?? null);
     setLoading(false);

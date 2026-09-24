@@ -185,10 +185,10 @@ function DispatchPageInner() {
 
   const load = useCallback(async () => {
     const [ordRes, tripRes] = await Promise.all([fetch("/api/orders?status=PENDING"), fetch("/api/trips?status=PLANNED")]);
-    const queue = ordRes.ok ? (await ordRes.json()).orders ?? [] : [];
+    const _oJson = ordRes.ok ? await ordRes.json() : []; const queue = Array.isArray(_oJson) ? _oJson : (_oJson.orders ?? []);
     // Filter to assignable statuses:
     setOrders(queue.filter((o: Order) => o.status === "PENDING" || o.status === "VALIDATED"));
-    setTrips(tripRes.ok ? (await tripRes.json()).trips ?? [] : []);
+    if (tripRes.ok) { const _tJson = await tripRes.json(); setTrips(Array.isArray(_tJson) ? _tJson : (_tJson.trips ?? [])); } else { setTrips([]); }
   }, []);
 
   useEffect(() => { load(); }, [load]);

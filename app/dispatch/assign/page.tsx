@@ -39,7 +39,7 @@ export default function DispatchWorkspace() {
 
   const loadTrips = useCallback(async () => {
     const res = await fetch("/api/trips?status=PLANNED&limit=50");
-    if (res.ok) { const d = await res.json(); setTrips(d.trips ?? d.data ?? []); }
+    if (res.ok) { const d = await res.json(); setTrips(Array.isArray(d) ? d : (d.trips ?? d.data ?? [])); }
   }, []);
 
   useEffect(() => { loadTrips(); }, [loadTrips]);
@@ -56,8 +56,8 @@ export default function DispatchWorkspace() {
       ]);
       const vData = vRes.ok ? await vRes.json() : {};
       const dData = dRes.ok ? await dRes.json() : {};
-      const vList: VehicleCandidate[] = vData.candidates ?? vData.vehicles ?? [];
-      const dList: DriverCandidate[] = dData.candidates ?? dData.drivers ?? [];
+      const vList: VehicleCandidate[] = vData.results ?? vData.candidates ?? vData.vehicles ?? [];
+      const dList: DriverCandidate[] = dData.results ?? dData.candidates ?? dData.drivers ?? [];
       setVehicles(vList);
       setDrivers(dList);
       // Surface recommendation:
