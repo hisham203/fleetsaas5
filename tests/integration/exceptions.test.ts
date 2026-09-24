@@ -302,6 +302,6 @@ describe("delivery exception workflow (BR-11)", () => {
   it("a DRIVER cannot access the Exception Center or resolve exceptions (ADMIN/DISPATCHER only)", async () => {
     const { GET: exceptionsGet } = await import("@/app/api/exceptions/route");
     const res = await exceptionsGet(makeRequest("/api/exceptions", { cookie: driverCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 });

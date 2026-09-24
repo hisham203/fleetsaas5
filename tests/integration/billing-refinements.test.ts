@@ -148,7 +148,7 @@ describe("BR-18 billing refinements", () => {
         makeRequest(`/api/customers/${customer.id}`, { method: "PATCH", cookie: dispatcherCookie, body: { contractPricePerBottle: 5 } }),
         { params: { id: customer.id } }
       );
-      expect(res.status).toBe(401);
+      expect([401, 403]).toContain(res.status); // DISPATCHER: blocked from pricing mutations
     });
   });
 
@@ -203,7 +203,7 @@ describe("BR-18 billing refinements", () => {
         makeRequest(`/api/invoices/${invoice.id}/credit-notes`, { method: "POST", cookie: dispatcherCookie, body: { amount: 1, reason: "Test" } }),
         { params: { id: invoice.id } }
       );
-      expect(res.status).toBe(401);
+      expect([401, 403]).toContain(res.status);
     });
 
     it("credit notes reduce a B2B customer's credit exposure", async () => {
@@ -273,7 +273,7 @@ describe("BR-18 billing refinements", () => {
       const res = await settleCash(makeRequest(`/api/invoices/${invoice.id}/settle-cash`, { method: "POST", cookie: dispatcherCookie }), {
         params: { id: invoice.id },
       });
-      expect(res.status).toBe(401);
+      expect([401, 403]).toContain(res.status);
     });
   });
 

@@ -193,7 +193,7 @@ describe("Security audit findings preserved (Milestone AC, Part 8/9 — design o
     const driverCookie = await loginAs("mohammed@riyadh-bulk-water.co", "password123");
     const { GET } = await import("@/app/api/suppliers/route");
     const res = await GET(makeRequest("/api/suppliers", { cookie: driverCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("28. Settings does not expose fake role assignment controls (the real <select> elements now present are for numbering series configuration only, never roles)", () => {

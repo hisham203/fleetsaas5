@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { numberingSeries } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { genId } from "@/lib/helpers";
 import { NUMBERING_ENTITY_TYPES } from "@/lib/numbering";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const VALID_ENTITY_TYPES = NUMBERING_ENTITY_TYPES.map((e) => e.entityType) as [string, ...string[]];
 
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "settings"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ROLES_VIEW); if (_permDeny1) return _permDeny1;
   const status = req.nextUrl.searchParams.get("status");
 
   const conditions = [eq(numberingSeries.tenantId, tenantId), status ? eq(numberingSeries.status, status) : undefined].filter(Boolean) as any[];

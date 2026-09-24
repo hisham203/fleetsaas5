@@ -3,17 +3,15 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { invoices } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, desc } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "settings"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ROLES_VIEW); if (_permDeny1) return _permDeny1;
 
   const rows = await db.query.invoices.findMany({
     where: eq(invoices.tenantId, tenantId),

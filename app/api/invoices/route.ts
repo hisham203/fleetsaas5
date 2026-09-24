@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { invoices } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, desc } from "drizzle-orm";
 import { SAFE_CUSTOMER_COLUMNS, SAFE_USER_COLUMNS } from "@/lib/contractHelpers";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // S1 hotfix: two real, independent problems, both fixed here.
 //
@@ -27,11 +27,10 @@ import { SAFE_CUSTOMER_COLUMNS, SAFE_USER_COLUMNS } from "@/lib/contractHelpers"
 export async function GET(req: NextRequest) {
   try {
     const session = await getSessionFromRequest(req);
-    if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
     const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "expenses"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.BILLING_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.BILLING_VIEW); if (_permDeny2) return _permDeny2;
 
     const rows = await db.query.invoices.findMany({
       where: eq(invoices.tenantId, tenantId),

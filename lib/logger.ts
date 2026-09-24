@@ -138,3 +138,29 @@ export function logScriptEvent(fields: {
 }): void {
   emit(fields.phase === "failure" ? "error" : "info", `script.${fields.script}.${fields.phase}`, fields);
 }
+
+// ---------- GPS anomaly detection (P2-03) ----------
+// Logged only when analyzeGpsPing() flags an anomalous ping.
+// Normal pings are never logged here — anomaly-only to avoid noise.
+// Fields are typed narrowly to prevent accidentally logging credentials or PII.
+export function logGpsAnomaly(fields: {
+  anomalyType: string;
+  detail: string | null;
+  tenantId: string;
+  tripId: string;
+  vehicleId: string;
+  driverId: string;
+  lat: number;
+  lng: number;
+}): void {
+  emit("warn", "gps.anomaly", {
+    anomalyType: fields.anomalyType,
+    detail: fields.detail,
+    tenantId: fields.tenantId,
+    tripId: fields.tripId,
+    vehicleId: fields.vehicleId,
+    driverId: fields.driverId,
+    lat: fields.lat,
+    lng: fields.lng,
+  });
+}

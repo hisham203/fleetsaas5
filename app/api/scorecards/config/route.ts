@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { scorecardConfigs } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { getScorecardWeights, DEFAULT_SCORECARD_WEIGHTS } from "@/lib/scorecards";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const saveSchema = z.object({
   onTimeWeight: z.number().min(0),
@@ -22,11 +22,10 @@ const saveSchema = z.object({
 // lib/scorecards.ts computeDriverScore for the normalization.
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "reports"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.SCORECARDS_VIEW);
+  if (_permDeny1) return _permDeny1;
 
   const weights = await getScorecardWeights(tenantId);
   return NextResponse.json({ ...weights, isDefault: weights === DEFAULT_SCORECARD_WEIGHTS });
@@ -34,8 +33,17 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr3, getSessionTenantId: _gst3 } = await import("@/lib/auth");
+    if (!_hr3(session, ["ADMIN"])) {
+      const { checkPermission: _cp3, PERMISSIONS: _P3 } = await import("@/lib/requirePermission");
+      const _tenId3 = _gst3(session)!;
+      const _d3 = await _cp3(session, _tenId3, _P3.REPORTS_OPERATIONS_VIEW);
+      if (_d3) return _d3;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
 

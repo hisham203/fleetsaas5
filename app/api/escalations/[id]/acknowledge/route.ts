@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { escalations } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // BR-20: acknowledging an escalation records who's on it, without closing
 // the case — the underlying SLA situation may still need to actually be
@@ -13,11 +13,11 @@ import { eq, and } from "drizzle-orm";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "control_tower"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.CONTROL_TOWER_MANAGE_EVENTS);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.CONTROL_TOWER_MANAGE_EVENTS); if (_permDeny2) return _permDeny2;
   const userId = session!.type === "USER" ? session!.user.id : null;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

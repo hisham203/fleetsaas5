@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { contractPricingRules } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // PATCH policy — deliberately not free-form editing of every field:
 // pricingScope and contractId are never editable at all (changing either
@@ -42,11 +42,9 @@ const PRICE_AFFECTING_FIELDS = ["cityCode", "zoneCode", "distanceBandCode", "tan
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "contracts"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.CONTRACTS_VIEW); if (_permDeny1) return _permDeny1;
 
   const rule = await db.query.contractPricingRules.findFirst({
     where: and(eq(contractPricingRules.id, id), eq(contractPricingRules.tenantId, tenantId)),
@@ -58,8 +56,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  {
+    const _cpTenantId = getSessionTenantId(session);
+    if (!_cpTenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { hasRole: _hR } = await import("@/lib/auth");
+    if (!_hR(session, ["ADMIN"])) {
+      const _d = await checkPermission(session, _cpTenantId, PERMISSIONS.CONTRACTS_EDIT);
+      if (_d) return _d;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
 
@@ -125,8 +131,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  {
+    const _cpTenantId = getSessionTenantId(session);
+    if (!_cpTenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { hasRole: _hR } = await import("@/lib/auth");
+    if (!_hR(session, ["ADMIN"])) {
+      const _d = await checkPermission(session, _cpTenantId, PERMISSIONS.CONTRACTS_EDIT);
+      if (_d) return _d;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
 

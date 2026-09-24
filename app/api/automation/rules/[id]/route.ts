@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { automationRules } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const updateSchema = z.object({
   enabled: z.boolean().optional(),
@@ -16,11 +16,9 @@ const updateSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "settings"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.REPORTS_OPERATIONS_VIEW); if (_permDeny1) return _permDeny1;
 
   const rule = await db.query.automationRules.findFirst({ where: and(eq(automationRules.id, id), eq(automationRules.tenantId, tenantId)) });
   if (!rule) return NextResponse.json({ error: "Rule not found" }, { status: 404 });
@@ -41,8 +39,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  {
+    const _cpTenantId = getSessionTenantId(session);
+    if (!_cpTenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { hasRole: _hR } = await import("@/lib/auth");
+    if (!_hR(session, ["ADMIN"])) {
+      const _d = await checkPermission(session, _cpTenantId, PERMISSIONS.REPORTS_OPERATIONS_VIEW);
+      if (_d) return _d;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
 

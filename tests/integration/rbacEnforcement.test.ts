@@ -170,8 +170,10 @@ describe("Tenant isolation — cross-tenant access blocked", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     // All returned users should belong to Acme, not Riyadh
-    const riyadhUsers = data.users.filter((u: any) => u.tenantId === riyadhTenant.id);
-    expect(riyadhUsers.length).toBe(0);
+    // API returns { assignments: [...] } — each with .user.tenantId:
+    const assignments = data.assignments ?? [];
+    const riyadhAssignments = assignments.filter((a: any) => a.user?.tenantId === riyadhTenant.id);
+    expect(riyadhAssignments.length).toBe(0); // tenant isolation: no cross-tenant assignments returned
   });
 
   it("10. canAccess uses tenantId scope — same userId in different tenant gets correct access", async () => {

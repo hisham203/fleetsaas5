@@ -4,19 +4,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { maintenanceInventoryMovements } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { eq, and } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Milestone Z.1 — schema-only foundation. Read-only. No movement can be
 // created yet (no POST route exists) — this always reflects the truly
 // empty table today.
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "inventory"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.INVENTORY_VIEW); if (_permDeny1) return _permDeny1;
   const warehouseId = req.nextUrl.searchParams.get("warehouseId");
   const itemId = req.nextUrl.searchParams.get("itemId");
 

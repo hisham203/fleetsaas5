@@ -3,12 +3,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { items, itemCategories, itemSubcategories, itemGroups } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId, optionalUrlSchema } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
 import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const ITEM_TYPES = ["SPARE_PART", "TIRE", "LUBRICANT", "CONSUMABLE", "TOOL", "SAFETY", "OTHER"] as const;
 const UOMS = ["EA", "PCS", "LITER", "SET", "KG", "METER"] as const;
@@ -37,11 +37,9 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "master_items"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.INVENTORY_VIEW); if (_permDeny1) return _permDeny1;
   const categoryId = req.nextUrl.searchParams.get("categoryId");
   const status = req.nextUrl.searchParams.get("status");
 
@@ -56,8 +54,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  {
+    const _cpTenantId = getSessionTenantId(session);
+    if (!_cpTenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { hasRole: _hR } = await import("@/lib/auth");
+    if (!_hR(session, ["ADMIN"])) {
+      const _d = await checkPermission(session, _cpTenantId, PERMISSIONS.INVENTORY_RECEIVE);
+      if (_d) return _d;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
 

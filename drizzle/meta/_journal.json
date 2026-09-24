@@ -169,6 +169,13 @@
       "when": 1789576684765,
       "tag": "0023_p2_live_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789887805192,
+      "tag": "0024_p2_02_dispatch_rbac",
+      "breakpoints": true
     }
   ]
 }

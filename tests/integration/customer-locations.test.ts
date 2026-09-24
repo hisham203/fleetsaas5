@@ -77,6 +77,6 @@ describe("B2B customer locations (APP-06)", () => {
       cookie: jarirCookie,
       body: { label: "Malicious Add", address: "Nowhere" },
     }), { params: { id: rajhiId } });
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 });

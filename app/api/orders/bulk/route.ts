@@ -5,10 +5,10 @@ import { db } from "@/lib/db/client";
 import { orders, customers, customerLocations } from "@/lib/db/schema";
 import { genId, genNumber } from "@/lib/helpers";
 import { getCreditExposure } from "@/lib/creditCheck";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const itemSchema = z.object({
   locationId: z.string(),
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "orders"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ORDERS_VIEW); if (_permDeny1) return _permDeny1;
 
   const body = await req.json();
   const parsed = bulkSchema.safeParse(body);

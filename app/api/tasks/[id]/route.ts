@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { tasks, drivers } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const updateSchema = z.object({
   action: z.enum(["START", "COMPLETE", "CANCEL"]),
@@ -20,7 +20,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "dashboard"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW); if (_permDeny2) return _permDeny2;
 
   const task = await db.query.tasks.findFirst({ where: and(eq(tasks.id, id), eq(tasks.tenantId, tenantId)) });
   if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });

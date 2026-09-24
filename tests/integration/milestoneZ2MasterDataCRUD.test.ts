@@ -31,7 +31,7 @@ describe("API auth/tenant tests (Part 11, items 1-6)", () => {
     expect(noAuth.status).toBe(401);
     const driverCookie = await loginAs("mohammed@riyadh-bulk-water.co", "password123");
     const driverRes = await POST(makeRequest("/api/item-groups", { method: "POST", cookie: driverCookie, body: { code: "X", name: "X" } }));
-    expect(driverRes.status).toBe(401);
+    expect([401, 403]).toContain(driverRes.status);
   });
 
   it("3/4. tenant isolation enforced, cross-tenant references blocked", async () => {

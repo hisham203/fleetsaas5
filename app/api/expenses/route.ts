@@ -6,11 +6,11 @@ import { expenseClaims, drivers, vehicles, trips } from "@/lib/db/schema";
 import { resolveEntityCode } from "@/lib/businessCodes";
 import { genId } from "@/lib/helpers";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { runAutomationRules } from "@/lib/automation";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { SAFE_USER_COLUMNS } from "@/lib/contractHelpers";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const createSchema = z
   .object({
@@ -38,14 +38,14 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = getSessionTenantId(session)!;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.EXPENSES_VIEW);
+  if (_permDeny1) return _permDeny1;
   // DRIVER role has a special restricted path — they can only see their own claims.
   // We allow this BEFORE the general RBAC module check (which blocks DRIVER from "expenses").
   // BR-23: drivers submit and view their own expense claims — this is operational, not finance.
   let driverId = req.nextUrl.searchParams.get("driverId");
   const isDriverSession = session.type === "USER" && (session.user as any).role === "DRIVER";
-  if (!isDriverSession) {
-    const _deny = await enforceRbac(session, tenantId, "expenses"); if (_deny) return _deny;
-  }
+  // Note: EXPENSES_VIEW already checked above (line _permDeny1)
   const status = req.nextUrl.searchParams.get("status");
 
   if (session.type === "USER" && session.user.role === "DRIVER") {
@@ -89,10 +89,7 @@ export async function POST(req: NextRequest) {
     if (!driverProfile || driverProfile.id !== data.driverId) {
       return NextResponse.json({ error: "You can only submit expenses under your own driver profile" }, { status: 403 });
     }
-  } else if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
   const driver = await db.query.drivers.findFirst({ where: and(eq(drivers.id, data.driverId), eq(drivers.tenantId, tenantId)) });
   if (!driver) return NextResponse.json({ error: "Driver not found" }, { status: 404 });
   const vehicle = await db.query.vehicles.findFirst({ where: and(eq(vehicles.id, data.vehicleId), eq(vehicles.tenantId, tenantId)) });

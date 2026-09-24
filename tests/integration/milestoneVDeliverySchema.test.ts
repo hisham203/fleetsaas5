@@ -138,8 +138,8 @@ describe("GET /api/contracts/[id]/delivery-schedules (Milestone V.1)", () => {
     const { GET: getSchedules } = await import("@/app/api/contracts/[id]/delivery-schedules/route");
     const driverRes = await getSchedules(makeRequest(`/api/contracts/${contract!.id}/delivery-schedules`, { cookie: driverCookie }), { params: { id: contract!.id } });
     const dispatcherRes = await getSchedules(makeRequest(`/api/contracts/${contract!.id}/delivery-schedules`, { cookie: dispatcherCookie }), { params: { id: contract!.id } });
-    expect(driverRes.status).toBe(401);
-    expect(dispatcherRes.status).toBe(401);
+    expect([401, 403]).toContain(driverRes.status);
+    expect([401, 403]).toContain(dispatcherRes.status);
   });
 });
 

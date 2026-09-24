@@ -3,12 +3,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { items, itemCategories, itemSubcategories, itemGroups } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { rejectCodeChange } from "@/lib/businessCodes";
 import { z } from "zod";
 import { optionalUrlSchema } from "@/lib/helpers";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const ITEM_TYPES = ["SPARE_PART", "TIRE", "LUBRICANT", "CONSUMABLE", "TOOL", "SAFETY", "OTHER"] as const;
 const UOMS = ["EA", "PCS", "LITER", "SET", "KG", "METER"] as const;
@@ -38,11 +38,9 @@ const patchSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "master_items"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.INVENTORY_VIEW); if (_permDeny1) return _permDeny1;
 
   const row = await db.query.items.findFirst({ where: and(eq(items.id, id), eq(items.tenantId, tenantId)) });
   if (!row) {

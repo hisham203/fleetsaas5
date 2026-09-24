@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { vehicles, warehouses } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const createSchema = z.object({
   plateNumber: z.string().min(1),
@@ -20,11 +20,11 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "fleet"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.VEHICLES_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.VEHICLES_VIEW); if (_permDeny2) return _permDeny2;
 
   const rows = await db.query.vehicles.findMany({
     where: eq(vehicles.tenantId, tenantId),
@@ -35,8 +35,17 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr3, getSessionTenantId: _gst3 } = await import("@/lib/auth");
+    if (!_hr3(session, ["ADMIN"])) {
+      const { checkPermission: _cp3, PERMISSIONS: _P3 } = await import("@/lib/requirePermission");
+      const _tenId3 = _gst3(session)!;
+      const _d3 = await _cp3(session, _tenId3, _P3.VEHICLES_CREATE);
+      if (_d3) return _d3;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
 

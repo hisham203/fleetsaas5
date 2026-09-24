@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { contracts, contractDeliverySchedules } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Milestone V.1 — read-only. This route exists so future UI (V.2+) has
 // something real to query against; it does not create, generate, or
@@ -19,11 +19,9 @@ import { eq, and } from "drizzle-orm";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: contractId } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "contracts"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.CONTRACTS_ACTIVATE); if (_permDeny1) return _permDeny1;
 
   // Ownership check, matching the exact pattern every other nested
   // contract resource in this codebase already uses (e.g. contract site

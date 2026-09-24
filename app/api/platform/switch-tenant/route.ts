@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { tenants } from "@/lib/db/schema";
-import { getSessionFromRequest, isAuthorizedForTenant, SWITCH_TENANT_COOKIE } from "@/lib/auth";
+import { getSessionFromRequest, isAuthorizedForTenant, SWITCH_TENANT_COOKIE, getSessionTenantId} from "@/lib/auth";
 import { logTenantSwitchSuccess, logTenantSwitchFailure } from "@/lib/logger";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -18,6 +18,18 @@ const switchSchema = z.object({ tenantId: z.string() });
 // beyond what isAuthorizedForTenant actually allows at read time.
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
+
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr3, getSessionTenantId: _gst3 } = await import("@/lib/auth");
+    if (!_hr3(session, ["ADMIN"])) {
+      const { checkPermission: _cp3, PERMISSIONS: _P3 } = await import("@/lib/requirePermission");
+      const _tenId3 = _gst3(session)!;
+      const _d3 = await _cp3(session, _tenId3, _P3.ROLES_MANAGE);
+      if (_d3) return _d3;
+    }
+  }
   if (!session || session.type !== "USER") {
     logTenantSwitchFailure({ path: "/api/platform/switch-tenant", reason: "not_authenticated" });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

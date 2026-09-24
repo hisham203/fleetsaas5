@@ -52,7 +52,7 @@ describe("performance scorecards (BR-17)", () => {
     const driverCookie = await loginAs("khalid@demo-water.co", "password123");
     const { GET } = await import("@/app/api/scorecards/drivers/route");
     const res = await GET(makeRequest("/api/scorecards/drivers", { cookie: driverCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 });
 
@@ -93,7 +93,7 @@ describe("configurable scorecard weights (BR-17)", () => {
       cookie: dispatcherCookie,
       body: { onTimeWeight: 100, deliverySuccessWeight: 0, tripVolumeWeight: 0, tripVolumeCap: 20 },
     }));
-    expect(saveRes.status).toBe(401);
+    expect([401, 403]).toContain(saveRes.status); // DISPATCHER blocked from POST scorecard config
   });
 
   it("saving custom weights changes the driver rankings to match", async () => {

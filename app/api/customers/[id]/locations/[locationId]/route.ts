@@ -3,11 +3,11 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { customerLocations, customers, distanceBands, orders, invoices, invoiceLineItems } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { isAdminSession, pricingFieldsTouchedBy } from "@/lib/siteFieldGovernance";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Task K.2 audit finding — nothing in this schema ever snapshots a
 // location's cityCode/zoneCode/distanceBandCode onto an order or
@@ -55,6 +55,18 @@ export async function PATCH(
 ) {
   const { id: customerId, locationId } = await params;
   const session = await getSessionFromRequest(req);
+
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr3, getSessionTenantId: _gst3 } = await import("@/lib/auth");
+    if (!_hr3(session, ["ADMIN","DISPATCHER","CUSTOMER"])) {
+      const { checkPermission: _cp3, PERMISSIONS: _P3 } = await import("@/lib/requirePermission");
+      const _tenId3 = _gst3(session)!;
+      const _d3 = await _cp3(session, _tenId3, _P3.CUSTOMERS_EDIT);
+      if (_d3) return _d3;
+    }
+  }
   if (!(await canAccessCustomer(session, customerId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

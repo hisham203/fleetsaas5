@@ -182,7 +182,7 @@ describe("Fleet positions API (/api/fleet/positions)", () => {
   it("13. DRIVER cannot access fleet positions endpoint", async () => {
     const { GET } = await import("@/app/api/fleet/positions/route");
     const res = await GET(makeRequest("/api/fleet/positions", { cookie: await driverCk() }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("14. cross-tenant vehicles not included in response", async () => {

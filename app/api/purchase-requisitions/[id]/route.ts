@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { purchaseRequisitions } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const actionSchema = z.object({
   action: z.enum(["submit", "approve", "reject"]),
@@ -15,9 +15,11 @@ const actionSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "procurement"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.PR_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.PR_VIEW); if (_permDeny2) return _permDeny2;
   const userId = session!.type === "USER" ? session!.user.id : "";
   const pr = await db.query.purchaseRequisitions.findFirst({ where: and(eq(purchaseRequisitions.id, id), eq(purchaseRequisitions.tenantId, tenantId)) });
   if (!pr) return NextResponse.json({ error: "PR not found" }, { status: 404 });

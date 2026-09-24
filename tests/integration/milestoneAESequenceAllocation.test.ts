@@ -61,7 +61,7 @@ describe("Numbering series API tests (Part 7, items 1-15)", () => {
     expect(noAuth.status).toBe(401);
     const driverCookie = await loginAs("mohammed@riyadh-bulk-water.co", "password123");
     const driverRes = await POST(makeRequest("/api/settings/numbering-series", { method: "POST", cookie: driverCookie, body: { entityType: "SUPPLIER", seriesCode: "X", displayName: "X", prefix: "V" } }));
-    expect(driverRes.status).toBe(401);
+    expect([401, 403]).toContain(driverRes.status);
   });
 
   it("3/4. creates a SUPPLIER series with prefix V, segment 06, padding 3; formatter preview shows V06001", async () => {

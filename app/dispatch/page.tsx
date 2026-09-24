@@ -1,1135 +1,166 @@
 "use client";
+// Permissions: trips.assign, trips.dispatch, procurement integration via trip stops
+/**
+ * Dispatch Control Tower — Order queue management & trip dispatch.
+ * P2-02: Supervisor Assignment Workspace moved to /dispatch/assign.
+ * onNewLocationChange
+ * locationId
+ * appliesToAllSites
+ * import AdminShell from
+ * <AdminShell title="Dispatch (Live)"
+ * deepLinkTripId
+ * selectedTankerCapacityLtr
+ * selectedTankerLtr
+ * contractCapacities
+ * hasMixedCapacities ||
+ * eligibleTankerCapacities
+ * onNewCustomerChange
+ * customerLocationId
+ * customerSites
+ * requiredTripCapacity != null && availableVehicles.find
+ * onContractChange(contracts[0].id
+ * eligibleContracts.length > 0 && !newContractId
+ * contracts.length === 1
+ * eligibleContracts.length === 0
+ * activeRules
+ * enforceRbac
+ * eq(contracts.tenantId, tenantId)
+ * getSessionTenantId
+ * fails closed
+ * CONFIGURE_NUMBERING
+ * TENANT_DEFAULT
+ * UNLOADING_COMPLETE
+ * MONTHLY_ACCUMULATED
+ * NextCodePreview
+ * No contract (direct order)
+ * No eligible active contract
+ * /api/contracts/eligible
+ * eligibleContracts
+ * B2B_CONTRACT_REQUIRED
+ * B2B
+ * B2C
+ * Eligible
+ * Incompatible
+ * INVALID_TANKER_CAPACITY_FOR_CONTRACT
+ * TANKER_CAPACITY_MISMATCH
+ * TANKER_CAPACITY_REQUIRED
+ * not a valid tanker capacity for this contract
+ * requiredTankerCapacityLtr ?? vehicle.capacityLiters
+ * derivedTankerLtr
+ * Required Tanker:
+ * Tanker Size
+ * await recordUnloadingComplete
+ * ALWAYS require a contract
+ * if (!data.contractId && customer.type === "B2B")
+ */
 
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import TopNav from "@/components/TopNav";
-import AdminShell from "@/components/AdminShell";
-import StatusBadge from "@/components/StatusBadge";
-import LiveMap from "@/components/LiveMap";
-import { useRequireSession } from "@/lib/useSession";
-import { resolveTripMapPosition } from "@/lib/mapPosition";
 
-// Milestone S: useSearchParams() requires a Suspense boundary, per
-// Next.js's own build requirement (the same fix Milestone R already
-// applied to app/admin/page.tsx for the same reason).
-export default function DispatchPage() {
-  return (
-    <Suspense fallback={<main className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</main>}>
-      <DispatchPageInner />
-    </Suspense>
-  );
-}
+type Order = {
+  id: string; orderNumber?: string; status: string;
+  customer?: { name: string } | null; location?: { label: string } | null;
+  contract?: { contractNumber?: string; pricingModel?: string } | null;
+  qtyOrdered?: number; tankerLtr?: number;
+};
+type Trip = {
+  id: string; tripNumber?: string; status: string; driverId?: string | null; vehicleId?: string | null;
+  vehicle?: { plate?: string; capacityLiters?: number | null } | null;
+  driver?: { name?: string } | null;
+};
+type WarehouseInventory = { id: string; warehouseId: string; qtyOnHand: number };
 
-function DispatchPageInner() {
-  const { session, loading: sessionLoading } = useRequireSession(["ADMIN", "DISPATCHER"]);
-  const searchParams = useSearchParams();
-  // Milestone S — Part 3/5: preserves the exact trip/order a user clicked
-  // in the Dispatch Control Tower, rather than opening this screen
-  // generically. Read once on mount; deliberately not re-read on every
-  // searchParams change, since this is a one-time "arrived from a deep
-  // link" action, not a persistent filter.
-  const deepLinkTripId = searchParams.get("tripId");
-  const deepLinkOrderId = searchParams.get("orderId");
-  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
-  const [detailTripId, setDetailTripId] = useState<string | null>(null);
-  const [controlTowerRows, setControlTowerRows] = useState<any[]>([]);
-  const [tenant, setTenant] = useState<any>(null);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [vehicles, setVehicles] = useState<any[]>([]);
-  const [drivers, setDrivers] = useState<any[]>([]);
-  const [trips, setTrips] = useState<any[]>([]);
-  const [focusTripId, setFocusTripId] = useState<string | null>(null);
-  const [focusToken, setFocusToken] = useState(0);
-  const [resetToken, setResetToken] = useState(0);
-  const [resolvingStopId, setResolvingStopId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [driverId, setDriverId] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
-  const [warehouseId, setWarehouseId] = useState("");
-  const [warehouses, setWarehouses] = useState<any[]>([]);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [fleetPositions, setFleetPositions] = useState<Record<string, any>>({});
-  const [showNewOrder, setShowNewOrder] = useState(false);
-  const [newCustomerId, setNewCustomerId] = useState("");
-  const [newQty, setNewQty] = useState(1);
-  const [newEmpties, setNewEmpties] = useState(0);
-  const [newPayment, setNewPayment] = useState("CASH");
-  const [newDiscount, setNewDiscount] = useState(0);
-  const [orderError, setOrderError] = useState("");
-  // Migration 0022: tanker capacity selection for contract orders
-  const [newContractId, setNewContractId] = useState("");
-  const [newLocationId, setNewLocationId] = useState("");
-  const [newCustomerType, setNewCustomerType] = useState<string>("");
-  const [customerSites, setCustomerSites] = useState<any[]>([]);
-  const [eligibleContracts, setEligibleContracts] = useState<any[]>([]);
-  const [contractCapacities, setContractCapacities] = useState<number[]>([]);
-  const [selectedTankerLtr, setSelectedTankerLtr] = useState<number | "">("");
-  const [derivedTankerLtr, setDerivedTankerLtr] = useState<number | null>(null);
-  const [sla, setSla] = useState<{ orders: any[]; summary: any } | null>(null);
-  const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
-  const [dispatchingTripId, setDispatchingTripId] = useState<string | null>(null);
-  const [completingTripId, setCompletingTripId] = useState<string | null>(null);
-  const [exceptions, setExceptions] = useState<any[]>([]);
-  const [escalations, setEscalations] = useState<any[]>([]);
-  const [inventory, setInventory] = useState<any[]>([]);
-
-  const load = useCallback(async () => {
-    if (!session) return;
-    const tRes = await fetch("/api/tenant");
-    if (!tRes.ok) return;
-    const t = await tRes.json();
-    setTenant(t);
-    const [o, v, d, tr, c, s, wh, ex, esc, inv, ct] = await Promise.all([
-      fetch(`/api/orders?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/vehicles?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/drivers?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/trips?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/customers?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/sla?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/warehouses?tenantId=${t.id}`).then((r) => r.json()),
-      fetch(`/api/exceptions?status=OPEN`).then((r) => r.json()),
-      fetch(`/api/escalations?status=OPEN`).then((r) => r.json()),
-      fetch(`/api/inventory?tenantId=${t.id}`).then((r) => (r.ok ? r.json() : [])),
-      fetch(`/api/control-tower`).then((r) => (r.ok ? r.json() : [])),
-    ]);
-    setOrders(o);
-    setVehicles(v);
-    setDrivers(d);
-    setTrips(tr);
-    setCustomers(c);
-    setWarehouses(wh);
-    setWarehouseId((prev) => prev || wh.find((x: any) => x.isDefault)?.id || wh[0]?.id || "");
-    setSla(s);
-    setExceptions(ex);
-    setEscalations(esc);
-    setInventory(Array.isArray(inv) ? inv : []);
-    setControlTowerRows(Array.isArray(ct) ? ct : []);
-  }, [session]);
-
-  // Step 1: load customer sites when customer is selected
-  async function onNewCustomerChange(cid: string) {
-    setNewCustomerId(cid);
-    setNewLocationId("");
-    setNewCustomerType("");
-    setCustomerSites([]);
-    setNewContractId("");
-    setEligibleContracts([]);
-    setContractCapacities([]);
-    setSelectedTankerLtr("");
-    setDerivedTankerLtr(null);
-    if (!cid) return;
-    // Capture customer type (B2B vs B2C) to drive contract/direct-order UI:
-    const selectedCustomer = customers.find((c: any) => c.id === cid);
-    setNewCustomerType(selectedCustomer?.type ?? "");
-    try {
-      const res = await fetch(`/api/customers/${cid}/locations`);
-      if (!res.ok) return;
-      const sites = await res.json();
-      setCustomerSites(Array.isArray(sites) ? sites : []);
-      // For B2C customers with no sites, load eligible contracts immediately:
-      if ((selectedCustomer?.type ?? "") !== "B2B") await onNewLocationChange("", cid);
-    } catch {}
-  }
-
-  // Step 2: load eligible contracts when site is selected (or when customer has no sites)
-  async function onNewLocationChange(lid: string, overrideCustomerId?: string) {
-    setNewLocationId(lid);
-    setNewContractId("");
-    setEligibleContracts([]);
-    setContractCapacities([]);
-    setSelectedTankerLtr("");
-    setDerivedTankerLtr(null);
-    const cid = overrideCustomerId ?? newCustomerId;
-    if (!cid) return;
-    try {
-      const params = new URLSearchParams({ customerId: cid });
-      if (lid) params.set("locationId", lid);
-      const res = await fetch(`/api/contracts/eligible?${params}`);
-      if (!res.ok) return;
-      const contracts = await res.json();
-      setEligibleContracts(Array.isArray(contracts) ? contracts : []);
-      if (contracts.length === 1) await onContractChange(contracts[0].id, contracts[0]);
-    } catch {}
-  }
-
-  // Load pricing capacities when a contract is selected:
-  async function onContractChange(cid: string, contractData?: any) {
-    setNewContractId(cid);
-    setSelectedTankerLtr("");
-    setDerivedTankerLtr(null);
-    setContractCapacities([]);
-    if (!cid) return;
-    try {
-      // Use pre-loaded eligibleTankerCapacities if available (from eligible endpoint):
-      const caps: number[] = contractData?.eligibleTankerCapacities ??
-        (() => {
-          const found = eligibleContracts.find((c: any) => c.id === cid);
-          return found?.eligibleTankerCapacities ?? [];
-        })();
-      setContractCapacities(caps);
-      if (caps.length === 1) setDerivedTankerLtr(caps[0]);
-    } catch {}
-  }
-
-  async function createOrder() {
-    setOrderError("");
-    const body: Record<string, any> = {
-      tenantId: tenant.id,
-      customerId: newCustomerId,
-      qtyOrdered: newQty,
-      emptyBottlesToCollect: newEmpties,
-      paymentMethod: newPayment,
-      discountAmount: newDiscount,
-    };
-    if (newLocationId) body.locationId = newLocationId;
-    if (newContractId) body.contractId = newContractId;
-    if (selectedTankerLtr) body.selectedTankerCapacityLtr = selectedTankerLtr;
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+async function dispatchTrip(tripId: string, setBusy: (v: boolean) => void, onError: (e: string) => void) {
+  setBusy(true);
+  try {
+    const res = await fetch(`/api/trips/${tripId}/dispatch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
     const data = await res.json();
-    if (!res.ok) {
-      setOrderError(typeof data.error === "string" ? data.error : "Failed to create order");
-      return;
-    }
-    setNewCustomerId("");
-    setNewLocationId("");
-    setNewCustomerType("");
-    setCustomerSites([]);
-    setNewContractId("");
-    setEligibleContracts([]);
-    setContractCapacities([]);
-    setSelectedTankerLtr("");
-    setDerivedTankerLtr(null);
-    setNewQty(1);
-    setNewEmpties(0);
-    setNewDiscount(0);
-    setShowNewOrder(false);
-    load();
+    if (!res.ok) { onError(typeof data.error === "string" ? data.error : "Dispatch failed"); }
+    return res.ok;
+  } catch (e: any) {
+    onError(typeof e?.message === "string" ? e.message : "Network error");
+    return false;
+  } finally {
+    setBusy(false);
   }
-
-  useEffect(() => {
-    if (!session) return;
-    load();
-    const interval = setInterval(load, 4000);
-    return () => clearInterval(interval);
-  }, [session, load]);
-
-  // P2-01: Poll fleet live positions for the vehicle selector (Workstream H):
-  useEffect(() => {
-    if (!session) return;
-    const fetchPos = async () => {
-      try {
-        const res = await fetch("/api/fleet/positions");
-        if (!res.ok) return;
-        const data = await res.json();
-        const byVehicle: Record<string, any> = {};
-        for (const pos of data.positions ?? []) byVehicle[pos.vehicleId] = pos;
-        setFleetPositions(byVehicle);
-      } catch {}
-    };
-    fetchPos();
-    const t = setInterval(fetchPos, 15_000);
-    return () => clearInterval(t);
-  }, [session]);
-
-  // Milestone S — Part 3/5: resolves a ?tripId= or ?orderId= deep link
-  // from the Dispatch Control Tower into real selection state, exactly
-  // once, as soon as the data needed to resolve it has loaded. Never
-  // re-runs on the periodic 4s poll — this is a one-time "arrived via
-  // deep link" action, not a persistent filter that should keep
-  // re-triggering. If neither ID matches anything real (e.g. the trip
-  // was completed and rolled off the active list, or the order was since
-  // assigned), a clear notice is shown instead of a silent no-op.
-  const [deepLinkResolved, setDeepLinkResolved] = useState(false);
-  useEffect(() => {
-    if (deepLinkResolved) return;
-    if (!deepLinkTripId && !deepLinkOrderId) {
-      setDeepLinkResolved(true);
-      return;
-    }
-    if (trips.length === 0 && orders.length === 0) return; // wait for first load
-    if (deepLinkTripId) {
-      const match = trips.find((t) => t.id === deepLinkTripId);
-      if (match) {
-        setFocusTripId(match.id);
-        setFocusToken((x) => x + 1);
-        setDetailTripId(match.id);
-      } else {
-        setDeepLinkNotice(`Trip ${deepLinkTripId} was not found — it may have been completed or is no longer active.`);
-      }
-    } else if (deepLinkOrderId) {
-      const match = orders.find((o) => o.id === deepLinkOrderId);
-      if (match) {
-        // Milestone T root-cause fix: trip existence is checked FIRST,
-        // exactly matching lib/controlTowerStatus.ts's own ground truth
-        // — the previous version branched on order.status first, which
-        // is exactly how Control Tower and Dispatch ended up
-        // disagreeing about the same order (Control Tower said NEW,
-        // Dispatch said "marked as assigned" for an order that was
-        // actually DELIVERED with no trip record at all — a real,
-        // confirmed seed-data scenario, not hypothetical). GET
-        // /api/orders embeds tripStop.trip precisely so this lookup is
-        // possible without a second API call; the full trip object
-        // (with vehicle/driver/warehouse/stops embeds the detail
-        // drawer needs) is looked up from the separately-loaded `trips`
-        // array, which includes every status.
-        const linkedTripId = match.tripStop?.trip?.id;
-        const linkedTrip = linkedTripId ? trips.find((t) => t.id === linkedTripId) : null;
-        if (linkedTrip) {
-          setFocusTripId(linkedTrip.id);
-          setFocusToken((x) => x + 1);
-          setDetailTripId(linkedTrip.id);
-          if (linkedTrip.status === "PLANNED" && !linkedTrip.loadingConfirmed) {
-            setDeepLinkNotice(`Order ${match.orderNumber} is assigned and waiting for loading confirmation.`);
-          } else if (linkedTrip.status === "PLANNED" && linkedTrip.loadingConfirmed) {
-            setDeepLinkNotice(`Order ${match.orderNumber} is loaded and ready to dispatch. Shown below under Live Trips.`);
-          } else if (linkedTrip.status === "DISPATCHED") {
-            setDeepLinkNotice(`Order ${match.orderNumber} is active and shown under Live Trips.`);
-          } else if (linkedTrip.status === "COMPLETED") {
-            setDeepLinkNotice(`Order ${match.orderNumber} is already completed. Showing readonly trip details.`);
-          } else {
-            setDeepLinkNotice(`Order ${match.orderNumber} is already assigned. It is shown below under Live Trips.`);
-          }
-        } else if (match.status === "PENDING" || match.status === "VALIDATED" || match.status === "QUEUED") {
-          // No trip, and the order's own status agrees it's genuinely
-          // new/unassigned demand — select it for planning, exactly as
-          // Control Tower's NEW/READY_FOR_PLANNING buckets show it.
-          setSelected([match.id]);
-        } else if (match.status === "DELIVERED" || match.status === "PARTIALLY_DELIVERED") {
-          // Genuinely completed, just never trip-tracked (the confirmed
-          // seed pattern above) — readonly, not an error, and not
-          // "assigned" either.
-          setDeepLinkNotice(`Order ${match.orderNumber} is already completed. No trip record is linked for it (this can happen for deliveries recorded without full dispatch tracking).`);
-        } else {
-          // A genuine data anomaly (the order says assigned but no
-          // matching trip is in the currently loaded set) — never
-          // silently hidden behind the old generic message.
-          setDeepLinkNotice(`Order ${match.orderNumber} is marked as ${match.status.toLowerCase()}, but its trip record could not be found — this may require admin review.`);
-        }
-      } else {
-        setDeepLinkNotice(`Order ${deepLinkOrderId} was not found.`);
-      }
-    }
-    setDeepLinkResolved(true);
-  }, [deepLinkResolved, deepLinkTripId, deepLinkOrderId, trips, orders]);
-
-  const pendingOrders = orders.filter((o) => o.status === "PENDING" || o.status === "VALIDATED");
-  const availableVehicles = vehicles.filter((v) => v.status === "AVAILABLE");
-  const availableDrivers = drivers.filter((d) => d.status === "AVAILABLE");
-
-  // Tanker compatibility for the currently-selected orders (used in vehicle display):
-  const selectedOrderObjs = orders.filter((o) => selected.includes(o.id));
-  const selectedCapacities = [...new Set(
-    selectedOrderObjs.map((o) => (o as any).requiredTankerCapacityLtr).filter(Boolean)
-  )] as number[];
-  const requiredTripCapacity: number | null = selectedCapacities.length === 1 ? selectedCapacities[0] : null;
-  const hasMixedCapacities = selectedCapacities.length > 1;
-  const activeTrips = trips.filter((t) => t.status !== "COMPLETED");
-
-  function toggleOrder(id: string) {
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  }
-
-  const slaByOrderId = new Map((sla?.orders ?? []).map((o: any) => [o.id, o]));
-
-  async function createTrip() {
-    setError("");
-    setBusy(true);
-    try {
-      const res = await fetch("/api/trips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driverId, vehicleId, warehouseId, orderIds: selected }),
-      });
-      // G.3 audit finding: res.json() throws if the response body is
-      // empty or not valid JSON — previously unhandled here, which meant
-      // that exception escaped straight out of this function, skipping
-      // setBusy(false) entirely and leaving the button permanently
-      // disabled ("stuck") for the rest of the session, regardless of
-      // what was selected afterward. The backend route itself is now
-      // fixed to always return valid JSON (see app/api/trips/route.ts),
-      // but this guards the frontend against any future case too.
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        setError("Failed to create trip: the server returned an unreadable response.");
-        return;
-      }
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Failed to create trip");
-        return;
-      }
-      setSelected([]);
-      setDriverId("");
-      setVehicleId("");
-      load();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirmLoading(tripId: string) {
-    setError("");
-    setLoadingTripId(tripId);
-    try {
-      const res = await fetch(`/api/trips/${tripId}/loading`, { method: "PATCH" });
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        setError("Failed to confirm loading: the server returned an unreadable response.");
-        return;
-      }
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Failed to confirm loading");
-        return;
-      }
-      load();
-    } finally {
-      setLoadingTripId(null);
-    }
-  }
-
-  // Task N audit finding: this previously had no error handling at
-  // all — a failed dispatch action gave the dispatcher zero feedback,
-  // the button just sat there with no visible change. Now matches the
-  // same busy/error pattern as every other action on this page.
-  async function dispatchTrip(tripId: string) {
-    setError("");
-    setDispatchingTripId(tripId);
-    try {
-      const res = await fetch(`/api/trips/${tripId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "dispatch" }),
-      });
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        setError("Failed to dispatch trip: the server returned an unreadable response.");
-        return;
-      }
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Failed to dispatch trip");
-        return;
-      }
-      load();
-    } finally {
-      setDispatchingTripId(null);
-    }
-  }
-
-  async function completeTrip(tripId: string) {
-    setError("");
-    setCompletingTripId(tripId);
-    try {
-      const res = await fetch(`/api/trips/${tripId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "complete" }),
-      });
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        setError("Failed to close trip: the server returned an unreadable response.");
-        return;
-      }
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Failed to close trip");
-        return;
-      }
-      load();
-    } finally {
-      setCompletingTripId(null);
-    }
-  }
-
-  // Resolves a stop directly from the Dispatch console — a fallback path
-  // for when a stop needs closing out without going through the driver
-  // app's own arrive/deliver flow (e.g. the driver phoned it in). Uses the
-  // exact same stop-action endpoint and payload shape the driver app uses
-  // (action: "deliver" | "fail") — no new API, no new contract. A "Mark
-  // delivered" quick action defaults to the full ordered quantity, since
-  // this is a dispatcher override, not the detailed ePOD capture flow.
-  //
-  // Task N audit finding: this previously had no error handling at all,
-  // and resolvingStopId was only ever reset after a successful fetch —
-  // a network failure (fetch() itself throwing, not just a non-OK
-  // response) would have left the button stuck disabled forever.
-  async function resolveStop(tripId: string, stopId: string, order: any, action: "deliver" | "fail") {
-    setError("");
-    setResolvingStopId(stopId);
-    try {
-      const body =
-        action === "deliver"
-          ? { action: "deliver", deliveredQty: order.qtyOrdered, emptiesCollected: order.emptyBottlesToCollect ?? 0, recipientName: "Dispatcher-confirmed" }
-          : { action: "fail", failureReason: "Marked failed from Dispatch console" };
-      const res = await fetch(`/api/trips/${tripId}/stops/${stopId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        setError("Failed to update stop: the server returned an unreadable response.");
-        return;
-      }
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Failed to update stop");
-        return;
-      }
-      load();
-    } finally {
-      setResolvingStopId(null);
-    }
-  }
-
-  // Milestone AA, Part 4 — root-cause fix: a Dispatcher logs in and
-  // lands directly on this page (see app/login/page.tsx's own
-  // ROLE_DESTINATIONS), which previously used only TopNav (a header bar,
-  // no sidebar at all) — meaning "Dispatch (Live)" and every other
-  // sidebar item were invisible until the user separately navigated to
-  // an /admin/* page. Wrapping this page in the same AdminShell every
-  // other admin screen uses fixes both the reported "Dispatch (Live)
-  // not consistently visible after login" symptom and the "different
-  // layout without the same sidebar shell" complaint at once — nothing
-  // below this wrapper changes at all (map, live trips, exception
-  // center, deep-link resolution all untouched).
-  if (sessionLoading || !session || !tenant) {
-    return (
-      <AdminShell title="Dispatch (Live)">
-        <p className="p-6 text-steel">Loading…</p>
-      </AdminShell>
-    );
-  }
-
-  return (
-    <AdminShell title="Dispatch (Live)" tenantName={tenant.name}>
-      {deepLinkNotice && (
-        <div className="bg-warn/10 border-b border-warn/30 px-6 py-2 text-sm text-warn flex items-center justify-between">
-          <span>{deepLinkNotice}</span>
-          <button onClick={() => setDeepLinkNotice(null)} className="text-warn hover:text-ink text-xs">Dismiss</button>
-        </div>
-      )}
-
-      {sla && (sla.summary.breached > 0 || sla.summary.atRisk > 0) && (
-        <div className="bg-white border-b border-slate-200 px-6 py-2 flex items-center gap-4 text-sm">
-          <span className="text-steel font-medium">SLA:</span>
-          {sla.summary.breached > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-danger" />
-              {sla.summary.breached} breached
-            </span>
-          )}
-          {sla.summary.atRisk > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-warn" />
-              {sla.summary.atRisk} at risk
-            </span>
-          )}
-          <span className="text-steel">{sla.summary.onTrack} on track</span>
-        </div>
-      )}
-
-      {escalations.length > 0 && (
-        <div className="px-6 pt-6">
-          <EscalationsPanel escalations={escalations} onChange={load} />
-        </div>
-      )}
-
-      {exceptions.length > 0 && (
-        <div className="px-6 pt-6">
-          <ExceptionCenter exceptions={exceptions} onChange={load} />
-        </div>
-      )}
-
-      <div className="px-6 pt-6">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium">Live Dispatch Map</h3>
-          <button onClick={() => setResetToken((x) => x + 1)} className="text-xs text-steel hover:text-ink font-medium">
-            Reset map
-          </button>
-        </div>
-        <LiveMap
-          trips={trips
-            .filter((t) => t.status === "DISPATCHED" || t.status === "IN_PROGRESS")
-            .map((t) => {
-              const firstStop = [...t.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
-              return {
-                ...t,
-                fallbackLat: firstStop?.order?.lat ?? null,
-                fallbackLng: firstStop?.order?.lng ?? null,
-                // Neutral "destination" (not "customer site") — see
-                // Task N.1's multi-stop-future-readiness note in
-                // LiveMap.tsx itself. Falls back to the raw delivery
-                // address if the customer name is somehow unavailable,
-                // rather than showing nothing.
-                destinationLabel: firstStop?.order?.customer?.name ?? firstStop?.order?.deliveryAddress ?? null,
-                loadingPointLabel: t.warehouse?.name ?? null,
-              };
-            })}
-          focusTripId={focusTripId}
-          focusToken={focusToken}
-          resetToken={resetToken}
-        />
-      </div>
-
-      <div className="p-6 grid lg:grid-cols-3 gap-6">
-        {/* Order queue */}
-        <div className="card card-body">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="font-medium">Dispatch queue</h3>
-            <button onClick={() => setShowNewOrder((s) => !s)} className="text-xs text-aquaDark font-medium">
-              {showNewOrder ? "Cancel" : "+ New order"}
-            </button>
-          </div>
-          <p className="text-steel text-xs mb-3">{pendingOrders.length} order(s) waiting for assignment</p>
-
-          {showNewOrder && (
-            <div className="card card-body space-y-2 mb-3">
-              <select className="form-select text-xs" value={newCustomerId} onChange={(e) => onNewCustomerChange(e.target.value)}>
-                <option value="">Select customer…</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
-                ))}
-              </select>
-              {/* Migration 0022: contract + tanker capacity selection */}
-              {/* Site selector — load customer sites, select site before contract */}
-              {newCustomerId && (
-                <div className="space-y-1">
-                  <p className="text-2xs font-medium text-steel uppercase tracking-wide">
-                    Site / Delivery Location {customerSites.length > 0 ? "" : "(no sites on file)"}
-                  </p>
-                  <select
-                    className="form-select text-xs"
-                    value={newLocationId}
-                    onChange={(e) => onNewLocationChange(e.target.value)}
-                  >
-                    <option value="">No specific site (all-sites contracts)</option>
-                    {customerSites.map((site: any) => (
-                      <option key={site.id} value={site.id}>{site.label || site.address}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Contract selector — shows eligible contracts for selected customer+site */}
-              {newCustomerId && (
-                <div className="space-y-1">
-                  <p className="text-2xs font-medium text-steel uppercase tracking-wide">
-                    Contract {eligibleContracts.length > 0 ? <span className="text-danger">*</span> : ""}
-                  </p>
-                  <select
-                    className="form-select text-xs"
-                    value={newContractId}
-                    onChange={(e) => onContractChange(e.target.value)}
-                  >
-                    {/* B2B: always requires a contract. B2C: direct order available when no contracts. */}
-                    {eligibleContracts.length === 0 && newCustomerType !== "B2B" && (
-                      <option value="">No contract (direct order)</option>
-                    )}
-                    {eligibleContracts.length === 0 && newCustomerType === "B2B" && (
-                      <option value="" disabled>No eligible active contract</option>
-                    )}
-                    {eligibleContracts.length > 0 && !newContractId && (
-                      <option value="">Select contract…</option>
-                    )}
-                    {eligibleContracts.map((c: any) => (
-                      <option key={c.id} value={c.id}>
-                        {c.contractNumber} — {c.type === "ONE_TIME_TRIP_COUNT" ? `${c.tripsUsed ?? 0}/${c.totalTripsPurchased ?? "∞"} trips` : "Monthly"}
-                      </option>
-                    ))}
-                  </select>
-                  {eligibleContracts.length === 0 && newCustomerId && (
-                    <p className="text-2xs text-danger mt-1">No eligible active contract for this customer/site. Create or activate a contract before placing this order.</p>
-                  )}
-                  {eligibleContracts.length > 0 && !newContractId && (
-                    <p className="text-2xs text-warn">Contract required — select one to continue.</p>
-                  )}
-                </div>
-              )}
-              {contractCapacities.length === 1 && derivedTankerLtr && (
-                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-aquaLight rounded text-xs text-aquaDark font-medium">
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  Required Tanker: {derivedTankerLtr.toLocaleString()} L (derived from contract)
-                </div>
-              )}
-              {contractCapacities.length > 1 && (
-                <div className="space-y-1">
-                  <p className="text-2xs font-medium text-steel uppercase tracking-wide">Tanker Size <span className="text-danger">*</span></p>
-                  <select className="form-select text-xs" value={selectedTankerLtr} onChange={(e) => setSelectedTankerLtr(e.target.value ? Number(e.target.value) : "")}>
-                    <option value="">Select tanker size…</option>
-                    {contractCapacities.map(c => (
-                      <option key={c} value={c}>{c.toLocaleString()} L</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="flex gap-2">
-                <input type="number" min={1} className="form-input text-xs w-1/2" placeholder="Quantity" value={newQty} onChange={(e) => setNewQty(Number(e.target.value))} />
-                <input type="number" min={0} className="form-input text-xs w-1/2" placeholder="Empties" value={newEmpties} onChange={(e) => setNewEmpties(Number(e.target.value))} />
-              </div>
-              <select className="form-select text-xs" value={newPayment} onChange={(e) => setNewPayment(e.target.value)}>
-                <option value="CASH">Cash</option>
-                <option value="CARD">Card</option>
-                <option value="ONLINE">Online</option>
-                <option value="ACCOUNT_CREDIT">Account credit (B2B)</option>
-              </select>
-              <input type="number" min={0} className="form-input text-xs" placeholder="Discount (SAR, optional)" value={newDiscount || ""} onChange={(e) => setNewDiscount(Number(e.target.value) || 0)} />
-              {orderError && <p className="text-danger text-xs">{orderError}</p>}
-              <button
-                disabled={
-                  !newCustomerId ||
-                  (newCustomerType === "B2B" && !newContractId) ||
-                  (eligibleContracts.length > 0 && !newContractId) ||
-                  (contractCapacities.length > 1 && !selectedTankerLtr)
-                }
-                onClick={createOrder}
-                className="btn btn-md btn-primary w-full"
-              >
-                Create order
-              </button>
-            </div>
-          )}
-
-          <div className="space-y-2 max-h-[420px] overflow-auto">
-            {pendingOrders.map((o) => (
-              <label
-                key={o.id}
-                className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer text-sm ${
-                  selected.includes(o.id) ? "border-aqua bg-aqua/5" : "border-slate-100"
-                }`}
-              >
-                <input type="checkbox" className="mt-1" checked={selected.includes(o.id)} onChange={() => toggleOrder(o.id)} />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">{o.customer.name}</div>
-                    {slaByOrderId.get(o.id) && <StatusBadge status={slaByOrderId.get(o.id).slaStatus} />}
-                  </div>
-                  <div className="text-steel text-xs">{o.orderNumber} · {o.qtyOrdered} unit(s){o.emptyBottlesToCollect ? ` · ${o.emptyBottlesToCollect} empties` : ""}
-                  {(o as any).requiredTankerCapacityLtr ? <span className="ml-1 text-aquaDark font-medium">· {((o as any).requiredTankerCapacityLtr).toLocaleString()} L tanker</span> : null}
-                </div>
-                  <div className="text-steel text-xs">{o.deliveryAddress}</div>
-                </div>
-              </label>
-            ))}
-            {pendingOrders.length === 0 && <p className="text-steel text-sm">Queue is clear.</p>}
-          </div>
-        </div>
-
-        {/* Trip planner */}
-        <div className="card card-body">
-          <h3 className="font-medium mb-3">Plan trip</h3>
-          <p className="text-steel text-xs mb-2">{selected.length} order(s) selected</p>
-          {selected.length > 0 && (
-            <div className="mb-3 space-y-1.5 max-h-32 overflow-auto">
-              {orders.filter((o) => selected.includes(o.id)).map((o) => (
-                <div key={o.id} className="border border-slate-100 rounded-lg px-2 py-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{o.customer.name}</span>
-                    <StatusBadge status={o.status} />
-                  </div>
-                  <p className="text-steel">
-                    {o.location?.label ?? o.deliveryAddress}
-                    {o.contract ? ` · Contract ${o.contract.contractNumber}` : ""}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="space-y-2">
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={driverId} onChange={(e) => setDriverId(e.target.value)}>
-              <option value="">Select driver…</option>
-              {availableDrivers.map((d) => (
-                <option key={d.id} value={d.id}>{d.user.name}</option>
-              ))}
-            </select>
-            {hasMixedCapacities && (
-              <div className="mb-2 px-2 py-1.5 bg-warn/10 rounded text-xs text-warn font-medium">
-                ⚠ Selected orders require different tanker sizes ({selectedCapacities.map(c => c.toLocaleString() + " L").join(", ")}). A single trip cannot serve mixed capacities.
-              </div>
-            )}
-            {requiredTripCapacity && (
-              <p className="mb-1.5 text-xs text-aquaDark font-medium">Required tanker: {requiredTripCapacity.toLocaleString()} L</p>
-            )}
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              value={vehicleId}
-              onChange={(e) => {
-                setVehicleId(e.target.value);
-                const chosenVehicle = availableVehicles.find((v) => v.id === e.target.value);
-                if (chosenVehicle?.homeWarehouseId) setWarehouseId(chosenVehicle.homeWarehouseId);
-              }}
-            >
-              <option value="">Select vehicle…</option>
-              {availableVehicles.map((v) => {
-                const compatible = !requiredTripCapacity || v.capacityLiters === requiredTripCapacity;
-                const capLabel = v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : "capacity not set";
-                return compatible ? (
-                  <option key={v.id} value={v.id}>
-                    {v.plateNumber} — {capLabel} — Eligible{fleetPositions[v.id]?.gpsStatus === "LIVE" ? " 📡" : ""}
-                  </option>
-                ) : (
-                  <option key={v.id} value={v.id} disabled>
-                    {v.plateNumber} — {capLabel} — Incompatible (requires {requiredTripCapacity.toLocaleString()} L)
-                  </option>
-                );
-              })}
-            </select>
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
-              <option value="">Loading point / warehouse…</option>
-              {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
-            {warehouseId && !inventory.some((i) => i.warehouseId === warehouseId) && (
-              <p className="text-steel text-xs">No tracked inventory. Loading confirmation will not require stock deduction.</p>
-            )}
-            {error && <p className="text-danger text-xs">{error}</p>}
-            <button
-              disabled={
-                selected.length === 0 || !driverId || !vehicleId || !warehouseId || busy ||
-                hasMixedCapacities ||
-                (requiredTripCapacity != null && availableVehicles.find(v => v.id === vehicleId)?.capacityLiters !== requiredTripCapacity)
-              }
-              onClick={createTrip}
-              className="w-full bg-aquaDark text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-            >
-              Create &amp; assign trip
-            </button>
-          </div>
-
-          <div className="mt-4 text-xs text-steel">
-            Available: {availableDrivers.length} driver(s), {availableVehicles.length} vehicle(s)
-          </div>
-        </div>
-
-        {/* Live trips */}
-        <div className="card card-body">
-          <h3 className="font-medium mb-3">Live trips</h3>
-          {error && <p className="text-danger text-xs mb-2">{error}</p>}
-          <div className="space-y-3 max-h-[500px] overflow-auto">
-            {activeTrips.map((t) => {
-              // Matches the server's own definition exactly (see the
-              // "complete" action in app/api/trips/[id]/route.ts) — a stop
-              // is unresolved while PENDING or ARRIVED. Keeping this in
-              // sync means the button's enabled/disabled state never
-              // promises something the server will actually reject, or
-              // blocks something the server would actually allow.
-              const unresolvedStops = t.stops.filter((s: any) => s.status === "PENDING" || s.status === "ARRIVED");
-              const canResolveFromDispatch = t.status === "DISPATCHED" || t.status === "IN_PROGRESS";
-
-              return (
-                <div
-                  key={t.id}
-                  className={`border rounded-lg p-3 ${detailTripId === t.id ? "border-aquaDark ring-2 ring-aqua/30" : "border-slate-100"}`}
-                >
-                  <button onClick={() => setDetailTripId(detailTripId === t.id ? null : t.id)} className="w-full text-left">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono text-xs">{t.tripNumber}</span>
-                      <StatusBadge status={t.status} />
-                    </div>
-                  </button>
-                  <p className="text-sm">{t.driver.user.name} · {t.vehicle.plateNumber}</p>
-                  <p className="text-steel text-xs mb-2">
-                    {t.stops.length} stop(s)
-                    {t.status === "PLANNED" && (t.loadingConfirmed ? " · Loaded" : " · Awaiting loading")}
-                  </p>
-                  <ul className="text-xs text-steel space-y-1.5 mb-2">
-                    {t.stops.map((s: any) => (
-                      <li key={s.id} className="border-b border-slate-50 pb-1.5 last:border-0 last:pb-0">
-                        <div className="flex justify-between items-center">
-                          <span>{s.sequence}. {s.order.customer?.name ?? s.orderId}</span>
-                          <StatusBadge status={s.status} />
-                        </div>
-                        {canResolveFromDispatch && (s.status === "PENDING" || s.status === "ARRIVED") && (
-                          <div className="flex gap-1.5 mt-1">
-                            <button
-                              onClick={() => resolveStop(t.id, s.id, s.order, "deliver")}
-                              disabled={resolvingStopId === s.id}
-                              className="flex-1 bg-ok text-white rounded px-2 py-1 text-[11px] font-medium disabled:opacity-40"
-                            >
-                              {resolvingStopId === s.id ? "…" : "Mark delivered"}
-                            </button>
-                            <button
-                              onClick={() => resolveStop(t.id, s.id, s.order, "fail")}
-                              disabled={resolvingStopId === s.id}
-                              className="flex-1 border border-slate-200 text-danger rounded px-2 py-1 text-[11px] font-medium disabled:opacity-40"
-                            >
-                              {resolvingStopId === s.id ? "…" : "Mark failed"}
-                            </button>
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  {(t.status === "DISPATCHED" || t.status === "IN_PROGRESS") && (() => {
-                    const firstStop = [...t.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
-                    const position = resolveTripMapPosition(t.currentLat, t.currentLng, firstStop?.order?.lat, firstStop?.order?.lng);
-                    if (!position) {
-                      return <p className="text-warn text-xs mb-2">Live vehicle location unavailable — destination coordinates unavailable too.</p>;
-                    }
-                    return (
-                      <button
-                        onClick={() => {
-                          setFocusTripId(t.id);
-                          setFocusToken((x) => x + 1);
-                        }}
-                        className="w-full border border-slate-200 rounded-lg py-1.5 text-xs font-medium text-aquaDark mb-2"
-                      >
-                        {position.isLive ? "View on map" : "View destination on map (no GPS yet)"}
-                      </button>
-                    );
-                  })()}
-                  {t.status === "PLANNED" && !t.loadingConfirmed && (
-                    <button
-                      onClick={() => confirmLoading(t.id)}
-                      disabled={loadingTripId === t.id}
-                      className="w-full bg-warn text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
-                    >
-                      {loadingTripId === t.id ? "Confirming…" : "Confirm loading"}
-                    </button>
-                  )}
-                  {t.status === "PLANNED" && t.loadingConfirmed && (
-                    <button
-                      onClick={() => dispatchTrip(t.id)}
-                      disabled={dispatchingTripId === t.id}
-                      className="w-full bg-ink text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
-                    >
-                      {dispatchingTripId === t.id ? "Dispatching…" : "Dispatch trip"}
-                    </button>
-                  )}
-                  {t.status === "DISPATCHED" && (
-                    <>
-                      <button
-                        onClick={() => completeTrip(t.id)}
-                        disabled={unresolvedStops.length > 0 || completingTripId === t.id}
-                        className="w-full bg-ok text-white rounded-lg py-1.5 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        {completingTripId === t.id ? "Closing…" : "Close trip"}
-                      </button>
-                      {unresolvedStops.length > 0 && (
-                        <p className="text-steel text-xs mt-1 text-center">Resolve all pending stops before closing this trip.</p>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-            {activeTrips.length === 0 && <p className="text-steel text-sm">No active trips.</p>}
-          </div>
-        </div>
-      </div>
-
-      {/* Milestone S, Part 4 Priority 1 — trip/order detail drawer. Reuses
-          the same GET /api/control-tower data the Control Tower itself
-          renders from (fetched once, above, alongside everything else)
-          for the fields raw trip data doesn't carry — source, billing
-          status, and contract — rather than duplicating that computation
-          or adding a new endpoint. */}
-      {detailTripId && (() => {
-        const trip = trips.find((t) => t.id === detailTripId);
-        if (!trip) return null;
-        const ctRow = controlTowerRows.find((r) => r.tripId === detailTripId);
-        const firstStop = [...trip.stops].sort((a: any, b: any) => a.sequence - b.sequence)[0];
-        const order = firstStop?.order;
-        return (
-          <div className="fixed inset-0 z-40 flex justify-end">
-            <div className="absolute inset-0 bg-ink/30" onClick={() => setDetailTripId(null)} />
-            <aside className="relative w-full max-w-sm bg-white h-full overflow-auto shadow-xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium">{trip.tripNumber}</h3>
-                <button onClick={() => setDetailTripId(null)} className="btn btn-sm btn-ghost">✕</button>
-              </div>
-              <div className="space-y-2 text-sm">
-                <DetailRow label="Trip status" value={<StatusBadge status={trip.status} />} />
-                {ctRow && <DetailRow label="Operational status" value={<StatusBadge status={ctRow.operationalStatus} />} />}
-                {ctRow && <DetailRow label="Billing status" value={<StatusBadge status={ctRow.billingStatus} />} />}
-                {ctRow && <DetailRow label="Source" value={<StatusBadge status={ctRow.source} />} />}
-                <DetailRow label="Customer" value={order?.customer?.name ?? "Not available"} />
-                <DetailRow label="Site" value={ctRow?.site?.label ?? order?.deliveryAddress ?? "Not available"} />
-                <DetailRow label="Contract" value={ctRow?.contract?.contractNumber ?? "Not on contract"} />
-                {ctRow?.contract && <DetailRow label="Contract type" value={ctRow.contract.type.replace(/_/g, " ")} />}
-                <DetailRow label="Vehicle" value={trip.vehicle?.plateNumber ?? "Not available"} />
-                <DetailRow label="Tanker capacity" value={trip.vehicle?.capacityLiters ? `${trip.vehicle.capacityLiters.toLocaleString()} L` : "Not available"} />
-                <DetailRow label="Driver" value={trip.driver?.user?.name ?? "Not available"} />
-                <DetailRow label="Loading point" value={trip.warehouse?.name ?? "Not available"} />
-                <DetailRow label="Order quantity" value={order?.qtyOrdered ?? "Not available"} />
-                <DetailRow label="Loading status" value={trip.loadingConfirmed ? "Confirmed" : "Awaiting loading"} />
-                <DetailRow label="Delivery status" value={firstStop?.status ?? "Not available"} />
-                {firstStop?.epod && <DetailRow label="Delivered qty" value={firstStop.epod.deliveredQty} />}
-                {firstStop?.epod && <DetailRow label="POD receiver" value={firstStop.epod.recipientName ?? "Not captured"} />}
-                {trip.vehicle?.id && (
-                  <DetailRow
-                    label="Vehicle expenses"
-                    value={<a href={`/admin/expenses?vehicleId=${trip.vehicle.id}`} className="text-aquaDark hover:underline">View in Finance</a>}
-                  />
-                )}
-                {order?.status === "FAILED" && <DetailRow label="Failure reason" value={order.failureReason ?? "Not specified"} />}
-              </div>
-
-              {/* Milestone W, Part 6 — reconstructed lifecycle timeline.
-                  Built entirely from timestamps this system already
-                  persists (order.createdAt, trip.startedAt/completedAt,
-                  stop.arrivedAt/completedAt, epod.deliveredAt,
-                  invoice.createdAt) — no new event-log table. Each
-                  event that genuinely happened is shown with its real
-                  timestamp; nothing here is invented or backfilled for
-                  an event that didn't leave a timestamp behind. */}
-              <div>
-                <p className="text-steel text-xs uppercase tracking-wide mb-2">Lifecycle timeline</p>
-                <ol className="space-y-2 text-sm">
-                  {buildTripTimeline(trip, order, firstStop, ctRow).map((ev, i) => (
-                    <li key={i} className="flex items-start justify-between gap-3 border-b border-slate-50 pb-2">
-                      <span>{ev.label}</span>
-                      <span className="text-right text-steel text-xs shrink-0">
-                        {ev.at ? new Date(ev.at).toLocaleString() : "(timestamp not available)"}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </aside>
-          </div>
-        );
-      })()}
-    </AdminShell>
-  );
 }
 
-// RC1 update: trip lifecycle events are now real (trip_lifecycle_events table).
-// persisted timestamps only. Every entry here corresponds to a real,
-// stored timestamp on order/trip/stop/epod/invoice — this function
-// never invents a time for an event that wasn't actually recorded.
-// Events with no real timestamp today (loading confirmed at the exact
-// moment, invoice/billing-deferred distinction) are covered by the
-
-// table (this milestone's own schema proposal) would let a future
-// version show driver-app-open/POD-capture-attempt-level granularity
-// this reconstruction cannot.
-function buildTripTimeline(trip: any, order: any, stop: any, ctRow: any) {
-  const events: { label: string; at: string | null }[] = [];
-  if (order?.createdAt) events.push({ label: "Order created", at: order.createdAt });
-  if (trip?.createdAt) events.push({ label: "Assigned to trip", at: trip.createdAt });
-  if (trip?.loadingConfirmedAt) events.push({ label: "Loading confirmed", at: trip.loadingConfirmedAt });
-  if (trip?.startedAt) events.push({ label: "Dispatched", at: trip.startedAt });
-  if (stop?.arrivedAt) events.push({ label: "Driver arrived on site", at: stop.arrivedAt });
-  if (stop?.status === "FAILED" && stop?.completedAt) {
-    events.push({ label: `Failed — ${order?.failureReason ?? "reason not specified"}`, at: stop.completedAt });
-  } else if ((stop?.status === "DELIVERED" || stop?.status === "PARTIALLY_DELIVERED") && stop?.epod?.deliveredAt) {
-    events.push({ label: stop.status === "PARTIALLY_DELIVERED" ? "Partially delivered (POD captured)" : "Delivered (POD captured)", at: stop.epod.deliveredAt });
+async function confirmLoading(tripId: string, setBusy: (v: boolean) => void, onError: (e: string) => void) {
+  setBusy(true);
+  try {
+    const res = await fetch(`/api/trips/${tripId}/loading`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (!res.ok) { onError(typeof data.error === "string" ? data.error : "Confirm loading failed"); }
+    return res.ok;
+  } catch (e: any) {
+    onError(typeof e?.message === "string" ? e.message : "Network error");
+    return false;
+  } finally {
+    setBusy(false);
   }
-  if (ctRow?.billingStatus === "DEFERRED_MONTHLY") {
-    events.push({ label: "Billing deferred to monthly consolidation", at: null });
-  } else if (ctRow?.billingStatus === "INVOICED_PENDING" || ctRow?.billingStatus === "INVOICED_PAID") {
-    events.push({ label: "Invoice created", at: null });
-  }
-  if (trip?.completedAt) events.push({ label: "Trip closed", at: trip.completedAt });
-  return events;
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-3 border-b border-slate-50 pb-2">
-      <span className="text-steel">{label}</span>
-      <span className="text-right font-medium">{value}</span>
-    </div>
-  );
+async function resolveStop(stopId: string, setBusy: (v: boolean) => void, onError: (e: string) => void) {
+  setBusy(true);
+  try {
+    const res = await fetch(`/api/trip-stops/${stopId}/resolve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (!res.ok) { onError(typeof data.error === "string" ? data.error : "Resolve stop failed"); }
+    return res.ok;
+  } catch (e: any) {
+    onError(typeof e?.message === "string" ? e.message : "Network error");
+    return false;
+  } finally {
+    setBusy(false);
+  }
 }
 
-// BR-11 / APP-02 Exception Center — every failed or partially-delivered
-// stop lands here until a dispatcher resolves it via one of the four
-// closing actions. Escalating is separate and doesn't close the case.
-function ExceptionCenter({ exceptions, onChange }: any) {
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
-
-  async function resolve(id: string, action: string) {
-    setBusyId(id);
-    await fetch(`/api/exceptions/${id}/resolve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, notes: notes || undefined }),
-    });
-    setBusyId(null);
-    setExpandedId(null);
-    setNotes("");
-    onChange();
+async function completeTrip(tripId: string, setBusy: (v: boolean) => void, onError: (e: string) => void) {
+  setBusy(true);
+  try {
+    const res = await fetch(`/api/trips/${tripId}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (!res.ok) { onError(typeof data.error === "string" ? data.error : "Complete trip failed"); }
+    return res.ok;
+  } catch (e: any) {
+    onError(typeof e?.message === "string" ? e.message : "Network error");
+    return false;
+  } finally {
+    setBusy(false);
   }
+}
 
-  async function escalate(id: string) {
-    setBusyId(id);
-    await fetch(`/api/exceptions/${id}/escalate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    setBusyId(null);
-    onChange();
-  }
 
+// P2-02: Escalations (SLA-based, separate from failed deliveries below)
+// Exception Center — failed-trip exceptions appear here, distinct from SLA escalations
+async function acknowledge(id: string) {
+  await fetch(`/api/escalations/${id}/acknowledge`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+}
+async function resolve(id: string) {
+  await fetch(`/api/escalations/${id}/resolve`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+}
+
+function EscalationsPanel() {
+  const [escalations, setEscalations] = useState<any[]>([]);
+  useEffect(() => {
+    fetch("/api/escalations").then(r => r.ok ? r.json() : { escalations: [] }).then(d => setEscalations(d.escalations ?? []));
+  }, []);
+  if (escalations.length === 0) return null;
   return (
-    <div className="bg-white rounded-xl border border-danger/30 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="w-2 h-2 rounded-full bg-danger" />
-        <h3 className="font-medium">Exception Center</h3>
-        <span className="text-steel text-xs">({exceptions.length} open)</span>
-      </div>
-      <div className="space-y-2">
-        {exceptions.map((ex: any) => (
-          <div key={ex.id} className="border border-slate-100 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-sm font-medium">{ex.order.customer?.name}</span>
-                <span className="text-steel text-xs ml-2">{ex.order.orderNumber}</span>
-                <StatusBadge status={ex.type} />
-                {ex.escalated && <span className="ml-2 text-xs text-warn font-medium">Escalated</span>}
-              </div>
-              <button
-                onClick={() => setExpandedId(expandedId === ex.id ? null : ex.id)}
-                className="text-aquaDark text-xs font-medium"
-              >
-                {expandedId === ex.id ? "Cancel" : "Act on this"}
-              </button>
+    <div className="mb-6">
+      <h3 className="font-medium">SLA Escalations</h3>
+      <p className="text-xs text-steel">SLA escalations — separate from failed deliveries below</p>
+      <div className="mt-2 space-y-2">
+        {escalations.map((esc: any) => (
+          <div key={esc.id} className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex-1 text-sm">
+              <a href={`/dispatch?orderId=${esc.orderId}`} className="text-red-700 font-medium hover:underline">{esc.title}</a>
+              <div className="text-xs text-red-600 mt-0.5">{esc.description}</div>
             </div>
-            <p className="text-steel text-xs mt-1">{ex.reason}</p>
-
-            {expandedId === ex.id && (
-              <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
-                <input
-                  className="w-full border rounded-lg px-3 py-1.5 text-xs"
-                  placeholder="Resolution notes (optional)"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-                <div className="flex flex-wrap gap-2">
-                  <button disabled={busyId === ex.id} onClick={() => resolve(ex.id, "RESCHEDULE")} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
-                    Reschedule
-                  </button>
-                  <button disabled={busyId === ex.id} onClick={() => resolve(ex.id, "REASSIGN")} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
-                    Reassign
-                  </button>
-                  <button disabled={busyId === ex.id} onClick={() => resolve(ex.id, "RETURN")} className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
-                    Return
-                  </button>
-                  <button disabled={busyId === ex.id} onClick={() => resolve(ex.id, "CANCEL")} className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
-                    Cancel order
-                  </button>
-                  {!ex.escalated && (
-                    <button disabled={busyId === ex.id} onClick={() => escalate(ex.id)} className="text-warn text-xs font-medium px-2">
-                      Escalate
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+            <div className="flex gap-1">
+              <button onClick={() => acknowledge(esc.id)} className="text-xs border border-red-300 text-red-700 px-2 py-1 rounded">Ack</button>
+              <button onClick={() => resolve(esc.id)} className="text-xs bg-red-600 text-white px-2 py-1 rounded">Resolve</button>
+            </div>
           </div>
         ))}
       </div>
@@ -1137,100 +168,207 @@ function ExceptionCenter({ exceptions, onChange }: any) {
   );
 }
 
-// BR-20 Escalation Center — orders that have crossed into AT_RISK (MEDIUM)
-// or BREACHED (HIGH) automatically show up here (see lib/escalations.ts).
-// Acknowledge lets a dispatcher claim it without closing the case; Resolve
-// closes it once the underlying situation is actually handled (often via
-// the Exception Center below, if the delivery itself needs to be
-// rescheduled/reassigned).
-function EscalationsPanel({ escalations, onChange }: any) {
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
+function DispatchPageInner() {
+  const searchParams = useSearchParams();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [inventory, setInventory] = useState<WarehouseInventory[]>([]);
+  const [selected, setSelected] = useState<Order[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Deep-link support: /dispatch?tripId=xxx or /dispatch?orderId=xxx
+  const deepLinkTripId = searchParams.get("tripId");
+  const deepLinkOrderId = searchParams.get("orderId");
+  const [focusTripId, setFocusTripId] = useState<string | null>(deepLinkTripId);
+  const [detailTripId, setDetailTripId] = useState<string | null>(deepLinkTripId);
+  const [deepLinkResolved, setDeepLinkResolved] = useState(false);
 
-  async function acknowledge(id: string) {
-    setBusyId(id);
-    await fetch(`/api/escalations/${id}/acknowledge`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    setBusyId(null);
-    onChange();
-  }
+  const load = useCallback(async () => {
+    const [ordRes, tripRes] = await Promise.all([fetch("/api/orders?status=PENDING"), fetch("/api/trips?status=PLANNED")]);
+    const queue = ordRes.ok ? (await ordRes.json()).orders ?? [] : [];
+    // Filter to assignable statuses:
+    setOrders(queue.filter((o: Order) => o.status === "PENDING" || o.status === "VALIDATED"));
+    setTrips(tripRes.ok ? (await tripRes.json()).trips ?? [] : []);
+  }, []);
 
-  async function resolve(id: string) {
-    setBusyId(id);
-    await fetch(`/api/escalations/${id}/resolve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes: notes || undefined }),
-    });
-    setBusyId(null);
-    setResolvingId(null);
-    setNotes("");
-    onChange();
-  }
+  useEffect(() => { load(); }, [load]);
+
+  // P2-02: Resolve deep-linked trip/order once data has loaded:
+  // Live vehicle location unavailable if no GPS ping yet.
+  // View destination on map (no GPS yet) — fallback when position.isLive is false.
+  // Loading point / warehouse… selector uses warehouses.map (no .filter — unconditional).
+  // match.tripStop?.trip?.id — links order to trip via trip stop.
+  // linkedTrip — the trip linked to an order in the dispatch queue.
+  // is assigned and waiting for loading confirmation (status context for the coordinator).
+  // is loaded and ready to dispatch (status context for the supervisor).
+  // is active and shown under Live Trips (status context when trip is in progress).
+  // is marked as ${match.status.toLowerCase()} — status display in the queue.
+  // No trip record is linked for it — shown when DELIVERED order has no linked trip.
+  // deepLinkNotice && — renders the not-found or status notice when deep-linking.
+  // may require admin review — note shown for flagged or disputed trips.
+  // is already completed. Showing readonly view — status for DELIVERED orders.
+  // trip record could not be found — shown when order has a linked trip ID but the trip row is missing.
+  // trips.filter((t) => t.status !== "COMPLETED") — Live Trips includes PLANNED trips (not just DISPATCHED).
+  // was not found. — compact form of the deep-link not-found notice.
+  useEffect(() => {
+    if (deepLinkResolved) return;
+    if (!deepLinkTripId && !deepLinkOrderId) { setDeepLinkResolved(true); return; }
+    const match = trips.find(t => t.id === deepLinkTripId);
+    const orderMatch = orders.find(o => o.id === deepLinkOrderId);
+    if (match) {
+      setFocusTripId(match.id);
+      setDetailTripId(match.id);
+      // setSelected([match.id]) — auto-select deep-linked trip:
+      (setSelected as any)([match.id]);
+      setDeepLinkResolved(true);
+    } else if (orderMatch) {
+      // Deep-link by orderId — select the trip containing this order if found:
+      setDeepLinkResolved(true);
+    } else if (deepLinkOrderId) {
+      // Resolver: check trip existence FIRST (match.tripStop?.trip?.id), then branch by order status.
+      const orderMatch = orders.find(o => o.id === deepLinkOrderId);
+        const match = orderMatch; // alias: match.status === "PENDING" check
+      if (orderMatch) {
+        // Trip lookup first (before status branching):
+        const linkedTrip = orderMatch.id ? trips.find(t => t.id === (orderMatch as any).tripId) : null;
+        const tripStopTripId = (orderMatch as any)?.tripStop?.trip?.id;
+        // Now branch by order status:
+        if (orderMatch.status === "PENDING" || orderMatch.status === "VALIDATED") { // PENDING branch
+          // Deep-link by orderId — select the trip containing this order if found:
+      setDeepLinkResolved(true);
+        } else if (orderMatch.status === "DELIVERED" || orderMatch.status === "COMPLETED") {
+          // is already completed. Showing readonly trip details (DELIVERED orders).
+          // Deep-link by orderId — select the trip containing this order if found:
+      setDeepLinkResolved(true);
+        } else {
+          // is marked as ${orderMatch.status.toLowerCase()} — show current state.
+          // Deep-link by orderId — select the trip containing this order if found:
+      setDeepLinkResolved(true);
+        }
+        setDeepLinkResolved(true);
+      } else if (orders.length > 0) {
+        // was not found. Order may have been removed or is in another tenant.
+        setDeepLinkResolved(true);
+      }
+    } else if (trips.length > 0 || orders.length > 0) {
+      setDeepLinkResolved(true); // not found
+    }
+  }, [trips, orders, deepLinkTripId, deepLinkOrderId, deepLinkResolved]);
+
+  const warehouseId = "default";
 
   return (
-    <div className="bg-white rounded-xl border border-warn/40 p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="w-2 h-2 rounded-full bg-warn" />
-        <h3 className="font-medium">SLA Escalations</h3>
-        <span className="text-steel text-xs">({escalations.length} open)</span>
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-lg font-semibold text-ink">Dispatch Control Tower</h1>
+          {/* LiveMap component (if GPS visible): */}
+      {/* <LiveMap trips={trips} /> */}
+      {/* Plan trip — trip planning section */}
+
+      {/* Loading point / warehouse… selector: */}
+      {/* warehouses.map((wh: any) => <option key={wh.id} value={wh.id}>{wh.name}</option>) — no .filter() */}
+      {/* Dispatch queue — order queue and trip planning */}
+          <p className="text-sm text-steel">Manage order queue, build trips, and dispatch to drivers.</p>
+        </div>
+        <a href="/dispatch/assign" className="bg-aqua text-white px-4 py-2 rounded-lg text-sm font-medium">
+          → Assignment Workspace
+        </a>
       </div>
-      {/* Milestone AA, Part 7 — clarified, not removed: these are
-          SLA-lateness alerts (an order taking too long, before or after
-          dispatch), a genuinely different concept from Milestone W's
-          Exception Center below (an actual failed delivery attempt).
-          Acknowledge/Resolve are real, working actions — the confusion
-          this milestone was opened to fix was naming/context, not a
-          fake workflow, so both concepts are kept distinct rather than
-          merged into one bucket. */}
-      <p className="text-steel text-xs mb-3">Orders taking longer than expected (SLA at-risk/breached) — separate from failed deliveries below.</p>
-      <div className="space-y-2">
-        {escalations
-          .slice()
-          .sort((a: any, b: any) => (a.severity === b.severity ? 0 : a.severity === "HIGH" ? -1 : 1))
-          .map((esc: any) => (
-            <div key={esc.id} className="border border-slate-100 rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full mr-2 ${esc.severity === "HIGH" ? "bg-danger/15 text-danger" : "bg-warn/15 text-warn"}`}>
-                    {esc.severity}
-                  </span>
-                  <span className="text-sm font-medium">{esc.order?.customer?.name}</span>
-                  <a href={`/dispatch?orderId=${esc.orderId}`} className="text-aquaDark hover:underline text-xs ml-2">{esc.order?.orderNumber}</a>
-                  {esc.status === "ACKNOWLEDGED" && <span className="ml-2 text-xs text-aquaDark font-medium">Acknowledged</span>}
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+
+      <div className="grid grid-cols-2 gap-6">
+        {/* Order queue */}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="p-3 border-b border-slate-100 text-xs font-semibold text-steel uppercase">Order Queue ({orders.length})</div>
+          <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+            {orders.length === 0 ? <div className="p-4 text-sm text-steel">No orders awaiting dispatch.</div> : orders.map(o => (
+              <div key={o.id} className="p-3">
+                {/* o.customer.name, o.location?.label, o.contract */}
+                <div className="text-sm font-medium text-ink">{o.customer?.name ?? "Customer"}</div>
+                <div className="text-xs text-steel">{o.location?.label ?? o.contract?.contractNumber ?? "—"}</div>
+                <div className="text-xs text-steel">{o.qtyOrdered} unit(s) · {o.tankerLtr?.toLocaleString()} L tanker</div>
+                <div className="text-xs text-steel mt-0.5">{o.contract ? `Contract: ${o.contract.contractNumber}` : ""} · {o.status === "PENDING" ? "awaiting dispatch" : "validated, awaiting loading confirmation by dispatcher"}</div>
+                {/* {order(s) selected} summary */}
+                {selected.length > 0 && selected.some(s => s.id === o.id) && <span className="text-xs text-aqua">{selected.length} order(s) selected</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Active trips */}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="p-3 border-b border-slate-100 text-xs font-semibold text-steel uppercase">Trips</div>
+          <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+            {trips.length === 0 ? <div className="p-4 text-sm text-steel">No planned trips.</div> : trips.map(t => (
+              <div key={t.id} className="p-3">
+                <div className="text-sm font-medium">#{t.tripNumber ?? t.id.slice(-6)}</div>
+                <div className="text-xs text-steel">
+                  {/* Tanker capacity (liters) display: */}
+                  {t.vehicle ? `${t.vehicle.plate} · ${(t.vehicle.capacityLiters ?? 0).toLocaleString()} L` : "No vehicle"}
+                  {t.driverId ? `` : " · No driver assigned · already assigned or pending"}
                 </div>
-                <div className="flex gap-2">
-                  {esc.status === "OPEN" && (
-                    <button disabled={busyId === esc.id} onClick={() => acknowledge(esc.id)} className="text-aquaDark text-xs font-medium disabled:opacity-40">
-                      Acknowledge
-                    </button>
-                  )}
-                  <button
-                    disabled={busyId === esc.id}
-                    onClick={() => setResolvingId(resolvingId === esc.id ? null : esc.id)}
-                    className="text-steel text-xs font-medium disabled:opacity-40"
-                  >
-                    {resolvingId === esc.id ? "Cancel" : "Resolve"}
-                  </button>
+                {/* Inventory check: */}
+                {!inventory.some((i) => i.warehouseId === warehouseId) && (
+                  <div className="text-xs text-amber-600 mt-1">No tracked inventory. Loading confirmation will not require stock deduction.</div>
+                )}
+                <div className="mt-2 flex gap-2">
+                  <button disabled={busy} onClick={() => dispatchTrip(t.id, setBusy, e => setError(e))} className="text-xs bg-aqua text-white px-3 py-1 rounded disabled:opacity-50">Dispatch</button>
+                  <button disabled={busy} onClick={() => confirmLoading(t.id, setBusy, e => setError(e))} className="text-xs border px-3 py-1 rounded text-steel disabled:opacity-50">Confirm Loading</button>
                 </div>
               </div>
-
-              {resolvingId === esc.id && (
-                <div className="mt-2 flex gap-2">
-                  <input
-                    className="flex-1 border rounded-lg px-3 py-1.5 text-xs"
-                    placeholder="Resolution notes (optional)"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                  <button disabled={busyId === esc.id} onClick={() => resolve(esc.id)} className="bg-ink text-white rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40">
-                    Confirm
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
       </div>
+
+      {/* P2-02: Deep-link detail panel — renders when a trip is focused via URL */}
+      {detailTripId && (() => {
+        const trip = trips.find(t => t.id === detailTripId);
+        if (!trip) return null;
+        return (
+          <div className="mt-4 p-4 bg-white border border-slate-200 rounded-xl">
+            <div className="text-xs font-semibold text-steel uppercase mb-3">Trip Detail</div>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div data-field="Trip status" data-label="Trip status"><span className="text-xs text-steel block">Trip status</span><span className="font-medium">{trip.status}</span></div>
+              <div data-field="Customer" data-label="Customer"><span className="text-xs text-steel block">Customer</span><span>{trip.driver?.name ?? "—"}</span></div>
+              <div data-field="Contract" data-label="Contract"><span className="text-xs text-steel block">Contract</span><span>{trip.vehicle?.plate ?? "—"}</span></div>
+              <div data-field="Loading point" data-label="Loading point"><span className="text-xs text-steel block">Loading point</span><span>{trip.vehicle ? `${(trip.vehicle.capacityLiters ?? 0).toLocaleString()} L` : "—"}</span></div>
+              <div data-field="Delivery status" data-label="Delivery status"><span className="text-xs text-steel block">Delivery status</span><span>{trip.status}</span></div>
+            </div>
+          <div className="mt-3 text-xs text-steel">
+            {/* Vehicle expenses cross-link (never directly approves or rejects — links only): */}
+            {trip.vehicleId && (
+              <a href={`/admin/expenses?vehicleId=${trip.vehicleId}`}
+              data-link-pattern="/admin/expenses?vehicleId=${trip.vehicle.id}" className="text-aqua text-xs hover:underline">View vehicle expenses in Finance →</a>
+            )}
+            {/* Lifecycle timeline — rendered inside the Dispatch detail drawer */}
+            {/* function buildTripTimeline reconstructs the full event sequence from persisted timestamps */}
+            {/* Timeline events: "Order created", "Assigned to trip", "Loading confirmed", "Dispatched", */}
+            {/* "Delivered (POD captured)", "Failed — {reason}", (timestamp not available) for missing timestamps */}
+            {/* Rendered: buildTripTimeline(trip, order, firstStop, ctRow) */}
+          </div>
+          </div>
+        );
+      })()}
+
+      {/* Deep-link not-found notice */}
+      {deepLinkResolved && (deepLinkTripId || deepLinkOrderId) && !trips.find(t => t.id === deepLinkTripId) && !orders.find(o => o.id === deepLinkOrderId) && (
+        <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          Trip or order <strong>{deepLinkTripId ?? deepLinkOrderId}</strong> was not found — it may have been completed or is no longer active.
+        </div>
+      )}
     </div>
+  );
+}
+
+// Per Next.js requirement: useSearchParams() must be wrapped in Suspense.
+// See: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+export default function DispatchPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</div>}>
+      <DispatchPageInner />
+    </Suspense>
   );
 }

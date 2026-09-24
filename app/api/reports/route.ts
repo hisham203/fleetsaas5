@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { savedReports } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { getDataset, isValidColumn } from "@/lib/reportDatasets";
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const filterSchema = z.object({
   column: z.string(),
@@ -29,11 +29,17 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "reports"); if (_deny) return _deny;
+  // DRIVER sessions are blocked from reports (operational, not a driver function):
+  const { hasRole: _hrRep } = await import("@/lib/auth");
+  if (_hrRep(session, ["ADMIN"])) { /* platform bypass */ }
+  else if (session && (session as any)?.user?.role === "DRIVER") {
+    return NextResponse.json({ error: "Unauthorized", errorCode: "PERMISSION_DENIED" }, { status: 403 });
+  } else {
+    const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW);
+    if (_permDeny1) return _permDeny1;
+  }
 
   const rows = await db.query.savedReports.findMany({
     where: eq(savedReports.tenantId, tenantId),
@@ -44,11 +50,23 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr3, getSessionTenantId: _gst3 } = await import("@/lib/auth");
+    if (!_hr3(session, ["ADMIN"])) {
+      if ((session as any)?.user?.role === "DRIVER") {
+        return NextResponse.json({ error: "Unauthorized", errorCode: "PERMISSION_DENIED" }, { status: 403 });
+      }
+      const { checkPermission: _cp3, PERMISSIONS: _P3 } = await import("@/lib/requirePermission");
+      const _tenId3 = _gst3(session)!;
+      const _d3 = await _cp3(session, _tenId3, _P3.TRIPS_VIEW);
+      if (_d3) return _d3;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
-  const userId = session!.type === "USER" ? session!.user.id : null;
+  const userId = (session as any)?.user?.id ?? null;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();

@@ -5,13 +5,13 @@ import { db } from "@/lib/db/client";
 import { orders, customers, customerLocations, contractPricingRules, contracts } from "@/lib/db/schema";
 import { genId, genNumber } from "@/lib/helpers";
 import { getCreditExposure } from "@/lib/creditCheck";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { runAutomationRules } from "@/lib/automation";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { validateContractEligibility, determineRateType, buildPricingPreview, ContractEligibilityError } from "@/lib/contractEligibility";
 import { SAFE_CUSTOMER_COLUMNS } from "@/lib/contractHelpers";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const createSchema = z.object({
   customerId: z.string(),
@@ -83,11 +83,9 @@ export async function GET(req: NextRequest) {
 // the dispatch queue as PENDING.
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "orders"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ORDERS_VIEW); if (_permDeny1) return _permDeny1;
 
   const body = await req.json();
   const parsed = createSchema.safeParse(body);

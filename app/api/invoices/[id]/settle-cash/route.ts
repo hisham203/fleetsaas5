@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { invoices, orders } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // BR-18 rule: "cash collection must be linked to driver and trip" — this is
 // the reconciliation step where an Admin confirms a driver has physically
@@ -14,11 +14,9 @@ import { eq, and } from "drizzle-orm";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "expenses"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.BILLING_SETTLE); if (_permDeny1) return _permDeny1;
   const userId = session!.type === "USER" ? session!.user.id : null;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

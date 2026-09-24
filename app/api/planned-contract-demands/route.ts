@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { plannedContractDemands } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Milestone V.1 — read-only, tenant-wide list with optional filters,
 // matching the same query-param filtering convention already used by
@@ -17,11 +17,9 @@ import { eq, and } from "drizzle-orm";
 // today, so every response from this route is currently `[]`.
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.CONTRACTS_VIEW); if (_permDeny1) return _permDeny1;
 
   const contractId = req.nextUrl.searchParams.get("contractId");
   const customerId = req.nextUrl.searchParams.get("customerId");

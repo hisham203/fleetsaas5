@@ -3,10 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { maintenanceInventoryBalances, maintenanceInventoryMovements } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { genId } from "@/lib/helpers";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // RC1 — Inventory Adjustment: positive = receiving/gain, negative = loss/write-off.
 // Issue to maintenance work order uses movementType = "MAINTENANCE_ISSUE".
@@ -23,10 +23,12 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!session || !hasRole(session, ["ADMIN", "DISPATCHER"])) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.INVENTORY_ADJUST);
+  if (_permDeny1) return _permDeny1;
   const userId = session.type === "USER" ? session.user.id : "";
-  const _deny = await enforceRbac(session, tenantId, "inventory"); if (_deny) return _deny;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.INVENTORY_VIEW); if (_permDeny2) return _permDeny2;
   const body = await req.json();
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

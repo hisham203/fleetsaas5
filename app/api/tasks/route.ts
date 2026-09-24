@@ -4,11 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { tasks, drivers, vehicles, trips } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { SAFE_USER_COLUMNS } from "@/lib/contractHelpers";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const createSchema = z.object({
   driverId: z.string(),
@@ -30,7 +30,9 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "dashboard"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW); if (_permDeny2) return _permDeny2;
   const status = req.nextUrl.searchParams.get("status");
   let driverId = req.nextUrl.searchParams.get("driverId");
 
@@ -58,8 +60,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  {
+    const _cpTenantId = getSessionTenantId(session);
+    if (!_cpTenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { hasRole: _hR } = await import("@/lib/auth");
+    if (!_hR(session, ["ADMIN"])) {
+      const _d = await checkPermission(session, _cpTenantId, PERMISSIONS.TRIPS_VIEW);
+      if (_d) return _d;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
   const assignedByUserId = session!.type === "USER" ? session!.user.id : null;

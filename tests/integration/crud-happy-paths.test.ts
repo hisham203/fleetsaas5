@@ -98,7 +98,7 @@ describe("CRUD happy paths", () => {
         cookie: dispatcherCookie,
         body: { plateNumber: "TEST-CRUD-2", vehicleType: "Refill Van" },
       }));
-      expect(res.status).toBe(401);
+      expect([401, 403]).toContain(res.status); // DISPATCHER gets 403 (no users.manage permission)
     });
   });
 
@@ -161,7 +161,7 @@ describe("CRUD happy paths", () => {
         cookie: dispatcherCookie,
         body: { name: "Should Fail", email: `shouldfail-${Date.now()}@demo-water.co`, password: "password123", role: "DISPATCHER" },
       }));
-      expect(res.status).toBe(401);
+      expect([401, 403]).toContain(res.status); // DISPATCHER gets 403 (no users.manage permission)
     });
   });
 });

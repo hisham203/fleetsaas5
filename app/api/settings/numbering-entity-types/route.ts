@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { NUMBERING_ENTITY_TYPES } from "@/lib/numbering";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Milestone AD — returns the static entity-type/recommended-prefix
 // registry. Validation/UI defaults only, not tenant configuration —
@@ -16,6 +16,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "settings"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ROLES_VIEW); if (_permDeny1) return _permDeny1;
   return NextResponse.json(NUMBERING_ENTITY_TYPES);
 }

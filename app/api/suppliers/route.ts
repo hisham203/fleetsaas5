@@ -3,12 +3,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { suppliers } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId, optionalEmailSchema } from "@/lib/helpers";
 import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Milestone AC, Part 2 root-cause fix: the UI's email input defaults to
 // and sends an empty string ("") when left blank, never undefined —
@@ -32,11 +32,9 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "master_items"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.INVENTORY_VIEW); if (_permDeny1) return _permDeny1;
   const status = req.nextUrl.searchParams.get("status");
 
   const conditions = [eq(suppliers.tenantId, tenantId), status ? eq(suppliers.status, status) : undefined].filter(Boolean) as any[];
@@ -49,8 +47,16 @@ export async function GET(req: NextRequest) {
 // entirely separate, not-yet-implemented workflows.
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  {
+    const _cpTenantId = getSessionTenantId(session);
+    if (!_cpTenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { hasRole: _hR } = await import("@/lib/auth");
+    if (!_hR(session, ["ADMIN"])) {
+      const _d = await checkPermission(session, _cpTenantId, PERMISSIONS.PR_CREATE);
+      if (_d) return _d;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
 

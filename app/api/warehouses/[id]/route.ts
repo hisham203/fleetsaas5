@@ -3,11 +3,11 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { warehouses } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { rejectCodeChange } from "@/lib/businessCodes";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Task L, Part 4 — the smallest safe PATCH route the existing schema
 // supports: name, address, and coordinates. All operational metadata,
@@ -35,11 +35,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // coordinates is the same class of operational correction Task K.4
   // already decided DISPATCHER should be trusted with for customer
   // sites, and there is no pricing-critical field here to protect.
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW); if (_permDeny1) return _permDeny1;
 
   const warehouse = await db.query.warehouses.findFirst({ where: and(eq(warehouses.id, id), eq(warehouses.tenantId, tenantId)) });
   if (!warehouse) {

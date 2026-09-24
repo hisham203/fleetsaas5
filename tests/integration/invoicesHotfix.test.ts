@@ -126,7 +126,7 @@ describe("GET /api/invoices — S1 hotfix", () => {
     const driverCookie = await loginAs("khalid@demo-water.co", "password123");
     const { GET } = await import("@/app/api/invoices/route");
     const res = await GET(makeRequest("/api/invoices", { cookie: driverCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
     const text = await res.text();
     expect(() => JSON.parse(text)).not.toThrow();
   });

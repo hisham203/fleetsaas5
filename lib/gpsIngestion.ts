@@ -93,6 +93,7 @@ export async function persistGpsPing(ping: GpsPing): Promise<void> {
   ]);
 }
 
+
 // ── Stage 3: Geofence (async, non-blocking) ───────────────────────────────────
 export function processGpsGeofence(ping: GpsPing): void {
   checkAndEmitGeofenceEvents({

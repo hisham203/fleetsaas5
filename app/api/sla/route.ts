@@ -5,10 +5,10 @@ import { db } from "@/lib/db/client";
 import { orders } from "@/lib/db/schema";
 import { computeSlaStatus } from "@/lib/sla";
 import { checkAndCreateEscalations } from "@/lib/escalations";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, notInArray, and } from "drizzle-orm";
 import { SAFE_CUSTOMER_COLUMNS } from "@/lib/contractHelpers";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // BR-20: SLA & Escalation Management — returns every order with its computed
 // due time and current SLA status, so the dispatcher can see what's at risk
@@ -18,11 +18,11 @@ import { SAFE_CUSTOMER_COLUMNS } from "@/lib/contractHelpers";
 // that polling is what makes escalation creation effectively automatic.
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "control_tower"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.REPORTS_OPERATIONS_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.REPORTS_OPERATIONS_VIEW); if (_permDeny2) return _permDeny2;
 
   await checkAndCreateEscalations(tenantId);
 

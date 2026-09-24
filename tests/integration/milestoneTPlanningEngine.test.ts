@@ -185,7 +185,7 @@ describe("Capacity Planner (Milestone T, Part 7)", () => {
     const driverCookie = await loginAs("mohammed@riyadh-bulk-water.co", "password123");
     const { GET: getPlanner } = await import("@/app/api/contract-planner/route");
     const res = await getPlanner(makeRequest("/api/contract-planner", { cookie: driverCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 });
 

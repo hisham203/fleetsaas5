@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { trips, drivers, vehicles } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and, not, isNotNull } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // P2-01 Workstream A: Batched fleet positions endpoint.
 // Returns ALL vehicles in the tenant with their latest GPS position and
@@ -27,11 +27,11 @@ function gpsStatus(lastPingAt: Date | null): "LIVE" | "STALE" | "OFFLINE" {
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "control_tower"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW_LIVE);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.CONTROL_TOWER_VIEW); if (_permDeny2) return _permDeny2;
 
   // Fetch all vehicles with their current active trip (if any):
   const vehicleRows = await db.query.vehicles.findMany({

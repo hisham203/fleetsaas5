@@ -3,11 +3,11 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { contracts, contractPricingRules, distanceBands, vehicles, drivers, orders } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { SAFE_CUSTOMER_COLUMNS } from "@/lib/contractHelpers";
 import { computeReadinessItems } from "@/lib/contractReadiness";
 import { eq, and, inArray, isNull } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Milestone Q, Gate Q5 — Contract Trip Planner aggregation endpoint.
 // Read-only, reuses computeReadinessItems (Task J) exactly as the
@@ -43,11 +43,11 @@ import { eq, and, inArray, isNull } from "drizzle-orm";
 // attach to.
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "contracts"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.CONTRACTS_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.CONTRACTS_VIEW); if (_permDeny2) return _permDeny2;
 
   const contractRows = await db.query.contracts.findMany({
     where: and(eq(contracts.tenantId, tenantId), eq(contracts.status, "ACTIVE")),

@@ -134,7 +134,7 @@ describe("Contract API (Task B)", () => {
         cookie: dispatcherCookie,
         body: { customerId: jarirId, type: "ONE_TIME_TRIP_COUNT", totalTripsPurchased: 5, startDate: "2026-01-01" },
       }));
-      expect(res.status).toBe(401);
+      expect([401, 403]).toContain(res.status);
     });
   });
 

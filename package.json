@@ -17,7 +17,9 @@
     "setup": "npm run db:migrate && npm run db:seed",
     "test": "vitest run",
     "test:watch": "vitest",
-    "security:api": "tsx scripts/checkSensitiveExposure.ts"
+    "security:api": "tsx scripts/checkSensitiveExposure.ts",
+    "db:bootstrap:rbac": "npx tsx scripts/bootstrapRbac.ts",
+    "audit:rbac": "npx tsx scripts/auditRbac.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -4,12 +4,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { customerLocations, customers, distanceBands } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { resolveEntityCode, linkLedgerToRecord } from "@/lib/businessCodes";
 import { isAdminSession, pricingFieldsTouchedBy } from "@/lib/siteFieldGovernance";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Task K audit finding: cityCode/zoneCode/distanceBandCode have existed
 // on the customer_locations table since the A1 Contract Management
@@ -45,6 +45,17 @@ async function canAccessCustomer(session: any, customerId: string) {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: customerId } = await params;
   const session = await getSessionFromRequest(req);
+
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr4 } = await import("@/lib/auth");
+    if (!_hr4(session, ["ADMIN", "DISPATCHER", "DRIVER", "CUSTOMER"])) {
+      const { checkPermission: _cp4, PERMISSIONS: _P4 } = await import("@/lib/requirePermission");
+      const _d4 = await _cp4(session, getSessionTenantId(session)!, _P4.CUSTOMERS_VIEW);
+      if (_d4) return _d4;
+    }
+    // CUSTOMER identity: restrict to their own customer record (below)
+  }
   if (!(await canAccessCustomer(session, customerId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -59,6 +70,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: customerId } = await params;
   const session = await getSessionFromRequest(req);
+
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr3, getSessionTenantId: _gst3 } = await import("@/lib/auth");
+    if (!_hr3(session, ["ADMIN","DISPATCHER","CUSTOMER"])) {
+      const { checkPermission: _cp3, PERMISSIONS: _P3 } = await import("@/lib/requirePermission");
+      const _tenId3 = _gst3(session)!;
+      const _d3 = await _cp3(session, _tenId3, _P3.CUSTOMERS_EDIT);
+      if (_d3) return _d3;
+    }
+  }
   if (!(await canAccessCustomer(session, customerId))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

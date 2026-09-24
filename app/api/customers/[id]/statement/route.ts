@@ -4,9 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { customers, invoices, orders } from "@/lib/db/schema";
 import { getCreditExposure } from "@/lib/creditCheck";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { eq, desc, sql } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Task E.1 audit finding: this route previously fetched the customer via
 // a plain db.query.customers.findFirst() with no column restriction and
@@ -50,6 +50,18 @@ async function canAccessCustomer(session: any, customer: any) {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
+
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr3, getSessionTenantId: _gst3 } = await import("@/lib/auth");
+    if (!_hr3(session, ["ADMIN","DISPATCHER","CUSTOMER"])) {
+      const { checkPermission: _cp3, PERMISSIONS: _P3 } = await import("@/lib/requirePermission");
+      const _tenId3 = _gst3(session)!;
+      const _d3 = await _cp3(session, _tenId3, _P3.BILLING_VIEW);
+      if (_d3) return _d3;
+    }
+  }
   const customer = await db.query.customers.findFirst({ where: eq(customers.id, id), columns: STATEMENT_SAFE_CUSTOMER_COLUMNS });
 
   if (!(await canAccessCustomer(session, customer))) {

@@ -88,6 +88,6 @@ describe("vehicle home warehouse default (BR-09)", () => {
       makeRequest(`/api/vehicles/${created.id}`, { method: "PATCH", cookie: dispatcherCookie, body: { homeWarehouseId: warehouseId } }),
       { params: { id: created.id } }
     );
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status); // DISPATCHER blocked from vehicle PATCH
   });
 });

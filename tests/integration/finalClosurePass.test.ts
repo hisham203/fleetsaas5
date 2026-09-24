@@ -498,7 +498,7 @@ describe("Bypass path search — no alternate routes", () => {
     if (!cust) return;
     const { GET } = await import("@/app/api/contracts/eligible/route");
     const res = await GET(makeRequest(`/api/contracts/eligible?customerId=${cust.id}`, { cookie: driverCk }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("32. trips route still enforces tanker capacity mismatch", () => {

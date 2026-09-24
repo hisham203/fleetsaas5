@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { tenants, platformAdminTenantGrants } from "@/lib/db/schema";
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, getSessionTenantId} from "@/lib/auth";
 import { eq, inArray } from "drizzle-orm";
 
 // Company Switcher: returns the list of tenants the CURRENT user may
@@ -14,6 +14,18 @@ import { eq, inArray } from "drizzle-orm";
 // to them.
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
+
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!getSessionTenantId(session)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hr3, getSessionTenantId: _gst3 } = await import("@/lib/auth");
+    if (!_hr3(session, ["ADMIN"])) {
+      const { checkPermission: _cp3, PERMISSIONS: _P3 } = await import("@/lib/requirePermission");
+      const _tenId3 = _gst3(session)!;
+      const _d3 = await _cp3(session, _tenId3, _P3.ROLES_MANAGE);
+      if (_d3) return _d3;
+    }
+  }
   if (!session || session.type !== "USER") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { tripStops, epods, orders, invoices, inventoryItems, drivers, trips, exceptions, contracts, vehicles } from "@/lib/db/schema";
 import { genId, genNumber, calcInvoiceTotals, VAT_RATE } from "@/lib/helpers";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { runAutomationRules } from "@/lib/automation";
 import { recordUnloadingComplete } from "@/lib/lifecycleHelper";
@@ -12,6 +11,7 @@ import { calculateContractPrice, PricingEngineError } from "@/lib/contractPricin
 import { determineRateType } from "@/lib/contractEligibility";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Milestone W, Part 7/9 root-cause fix: a trip's own status never
 // automatically changed when its stop(s) resolved — only the stop/order
@@ -79,7 +79,7 @@ export async function PATCH(
   // DRIVER role has restricted dispatch access — only their own trips/stops.
   // They bypass module-level enforcement here; the ownership check below gates their access.
   if (session?.type !== "USER" || (session.user as any).role !== "DRIVER") {
-    const _deny = await enforceRbac(session, tenantId, "dispatch"); if (_deny) return _deny;
+    const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW); if (_permDeny1) return _permDeny1;
   }
 
   // Task P.2: trip.vehicle is now embedded — a ONE_TIME_TRIP_COUNT contract

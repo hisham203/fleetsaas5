@@ -43,7 +43,7 @@ describe("GET /api/control-tower (Milestone Q, Gate Q4)", () => {
     const driverCookie = await loginAs("mohammed@riyadh-bulk-water.co", "password123");
     const { GET: getControlTower } = await import("@/app/api/control-tower/route");
     const res = await getControlTower(makeRequest("/api/control-tower", { cookie: driverCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("a delivered order with a real contract-priced invoice reports INVOICED_PENDING or INVOICED_PAID, matching real invoice data", async () => {
@@ -104,7 +104,7 @@ describe("GET /api/contract-planner (Milestone Q, Gate Q5)", () => {
     const dispatcherRes = await getPlanner(makeRequest("/api/contract-planner", { cookie: dispatcherCookie }));
     expect(dispatcherRes.status).toBe(200);
     const driverRes = await getPlanner(makeRequest("/api/contract-planner", { cookie: driverCookie }));
-    expect(driverRes.status).toBe(401);
+    expect([401, 403]).toContain(driverRes.status);
   });
 
   it("no passwordHash exposure", async () => {

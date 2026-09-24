@@ -269,6 +269,9 @@ export const trips = pgTable("trips", {
   lastPingAt: timestamp("last_ping_at", { mode: "date" }),
   startedAt: timestamp("started_at", { mode: "date" }),
   completedAt: timestamp("completed_at", { mode: "date" }),
+  // P2-02: Dispatch governance
+  dispatchedAt: timestamp("dispatched_at", { mode: "date" }),
+  dispatchedBy: text("dispatched_by"),
   createdAt: createdAt(),
 });
 
@@ -1635,9 +1638,10 @@ export const inventoryItemsRelations = relations(inventoryItems, ({ one }) => ({
   warehouse: one(warehouses, { fields: [inventoryItems.warehouseId], references: [warehouses.id] }),
 }));
 
-export const usersRelations = relations(users, ({ one }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   tenant: one(tenants, { fields: [users.tenantId], references: [tenants.id] }),
   driverProfile: one(drivers, { fields: [users.id], references: [drivers.userId] }),
+  userRoles: many(userRoles),
 }));
 
 export const platformAdminTenantGrantsRelations = relations(platformAdminTenantGrants, ({ one }) => ({
@@ -1650,11 +1654,12 @@ export const platformAdminTenantGrantsRelations = relations(platformAdminTenantG
 // No field-level ACL — module boundaries are sufficient for Phase 1 ops.
 export const roles = pgTable("roles", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id"), // null = platform-wide role; non-null = tenant-specific
-  name: text("name").notNull(), // e.g. "TENANT_ADMIN", "DISPATCHER", "DRIVER"
+  tenantId: text("tenant_id"),
+  name: text("name").notNull(),
   label: text("label").notNull(),
   description: text("description"),
   isSystemRole: boolean("is_system_role").default(false).notNull(),
+  isActive: boolean("is_active").notNull().default(true),   // P2-02: soft deactivation
   createdAt: createdAt(),
 }, (table) => ({
   tenantIdx: index("roles_tenant_idx").on(table.tenantId),
@@ -1663,9 +1668,12 @@ export const roles = pgTable("roles", {
 
 export const permissions = pgTable("permissions", {
   id: text("id").primaryKey(),
-  module: text("module").notNull(),    // e.g. "dispatch", "procurement", "maintenance"
-  action: text("action").notNull(),    // e.g. "read", "write", "admin"
+  module: text("module").notNull(),
+  action: text("action").notNull(),
+  code: text("code"),            // stable machine-readable key: "trips.dispatch"
+  category: text("category"),    // UI grouping: "OPERATIONS", "FINANCE", "ADMIN"
   description: text("description"),
+  isSensitive: boolean("is_sensitive").notNull().default(false),
 }, (table) => ({
   moduleActionIdx: uniqueIndex("permissions_module_action_unique").on(table.module, table.action),
 }));
@@ -1683,6 +1691,8 @@ export const userRoles = pgTable("user_roles", {
   userId: text("user_id").notNull(),
   roleId: text("role_id").notNull(),
   tenantId: text("tenant_id").notNull(),
+  assignedAt: timestamp("assigned_at", { mode: "date" }).defaultNow(),
+  assignedBy: text("assigned_by"),
   grantedAt: createdAt(),
 }, (table) => ({
   userTenantIdx: index("user_roles_user_tenant_idx").on(table.userId, table.tenantId),
@@ -2027,6 +2037,7 @@ export const vehicleGpsHistory = pgTable("vehicle_gps_history", {
   accuracy: real("accuracy"),          // metres (from device GPS)
   speed: real("speed"),                // m/s (from device GPS)
   heading: real("heading"),            // degrees 0–360
+
   recordedAt: timestamp("recorded_at", { mode: "date" }).notNull().defaultNow(),
 });
 
@@ -2064,3 +2075,15 @@ export const operationalEventsRelations = relations(operationalEvents, ({ one })
   vehicle: one(vehicles, { fields: [operationalEvents.vehicleId], references: [vehicles.id] }),
 }));
 
+// ── P2-02: Role Audit Log ────────────────────────────────────────────────────
+export const roleAuditLog = pgTable("role_audit_log", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id"),
+  actorId: text("actor_id").notNull(),
+  action: text("action").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  targetLabel: text("target_label"),
+  detail: text("detail"),
+  createdAt: createdAt(),
+});

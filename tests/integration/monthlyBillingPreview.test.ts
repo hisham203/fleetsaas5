@@ -226,7 +226,7 @@ describe("Monthly Billing Preview endpoint (I.5A)", () => {
     const dispatcherCookie = await loginAs("dispatch@riyadh-bulk-water.co", "password123");
     const { GET: preview } = await import("@/app/api/contracts/[id]/monthly-billing-preview/route");
     const res = await preview(makeRequest(`/api/contracts/${contractId}/monthly-billing-preview`, { cookie: dispatcherCookie }), { params: { id: contractId } });
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("no passwordHash exposure in the preview response", async () => {

@@ -1,13 +1,14 @@
+// procurement: PR → PO → GR workflow (same-tenant enforced)
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { purchaseOrders, purchaseOrderLines, purchaseRequisitions } from "@/lib/db/schema";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { resolveEntityCode } from "@/lib/businessCodes";
 import { genId } from "@/lib/helpers";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const lineSchema = z.object({
   itemId: z.string().min(1),
@@ -27,9 +28,11 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!session || !hasRole(session, ["ADMIN", "DISPATCHER"])) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "procurement"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.PO_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.PR_VIEW); if (_permDeny2) return _permDeny2;
   const userId = session!.type === "USER" ? session!.user.id : "";
   const status = req.nextUrl.searchParams.get("status");
   const conditions = [eq(purchaseOrders.tenantId, tenantId), status ? eq(purchaseOrders.status, status) : undefined].filter(Boolean) as any[];
@@ -45,7 +48,7 @@ export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session || !hasRole(session, ["ADMIN"])) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "procurement"); if (_deny) return _deny;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.PR_VIEW); if (_permDeny2) return _permDeny2;
   const userId = session!.type === "USER" ? session!.user.id : "";
   const body = await req.json();
   const parsed = createSchema.safeParse(body);

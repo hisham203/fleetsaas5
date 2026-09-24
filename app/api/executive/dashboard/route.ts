@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { getExecutiveDashboard } from "@/lib/executiveDashboard";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // APP-07: Executive Dashboard. The BRD's named audience (CEO, COO, CFO,
 // Operations Director, Fleet Director) doesn't map to a distinct role in
@@ -12,11 +12,11 @@ import { getExecutiveDashboard } from "@/lib/executiveDashboard";
 // available to DISPATCHER.
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "dashboard"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.REPORTS_OPERATIONS_VIEW);
+  if (_permDeny1) return _permDeny1;
+  const _permDeny2 = await checkPermission(session, tenantId, PERMISSIONS.REPORTS_OPERATIONS_VIEW); if (_permDeny2) return _permDeny2;
 
   const from = req.nextUrl.searchParams.get("from") ?? undefined;
   const to = req.nextUrl.searchParams.get("to") ?? undefined;

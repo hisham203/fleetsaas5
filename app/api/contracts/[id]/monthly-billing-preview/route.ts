@@ -3,12 +3,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { contracts, contractPeriods, invoices } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { calculateContractPrice, PricingEngineError } from "@/lib/contractPricing";
 import { determineRateType } from "@/lib/contractEligibility";
 import { getBillableOrdersForPeriod } from "@/lib/monthlyBillingEligibility";
 import { eq, and } from "drizzle-orm";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 // Task I.5A — Monthly Billing Readiness / Preview. Strictly read-only:
 // this route never writes to invoices, invoice_line_items,
@@ -29,11 +29,9 @@ import { eq, and } from "drizzle-orm";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: contractId } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "contracts"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.BILLING_SETTLE); if (_permDeny1) return _permDeny1;
 
   const contract = await db.query.contracts.findFirst({
     where: and(eq(contracts.id, contractId), eq(contracts.tenantId, tenantId)),

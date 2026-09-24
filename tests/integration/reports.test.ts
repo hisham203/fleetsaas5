@@ -103,7 +103,7 @@ describe("custom report builder (BR-21)", () => {
     const driverCookie = await loginAs("khalid@demo-water.co", "password123");
     const { GET } = await import("@/app/api/reports/datasets/route");
     const res = await GET(makeRequest("/api/reports/datasets", { cookie: driverCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("runs a Field Activity Report against the tasks and expenseClaims datasets (BR-23)", async () => {

@@ -75,10 +75,11 @@ function elapsed(iso: string | null): string {
 }
 
 // ── Control Tower Fleet Map (Google Maps) ─────────────────────────────────
-function ControlTowerMap({ positions, selected, onSelect }: {
+function ControlTowerMap({ positions, selected, onSelect, onMapReady }: {
   positions: VehiclePosition[];
   selected: VehiclePosition | null;
   onSelect: (v: VehiclePosition) => void;
+  onMapReady?: (map: google.maps.Map) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -119,8 +120,10 @@ function ControlTowerMap({ positions, selected, onSelect }: {
         center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM,
         disableDefaultUI: true, zoomControl: true,
       });
+      // Notify outer page that the Map instance is ready — used for demo Polyline creation:
+      if (onMapReady) onMapReady(mapRef.current);
     } catch { setMapFailed(true); }
-  }, [mapReady]);
+  }, [mapReady, onMapReady]);
 
   // Update vehicle markers (on every poll, without reinitializing the map):
   useEffect(() => {
@@ -229,28 +232,30 @@ function ControlTowerMap({ positions, selected, onSelect }: {
       }));
     }
 
-    // GPS route history polyline:
+    // GPS history polyline — AbortController prevents stale-fetch race condition.
+    // Without abort: if `selected` changes while fetch is in flight, the old async callback
+    // may complete AFTER cleanup ran, creating an orphaned Polyline (the duplication bug).
     if (selected.tripId) {
-      fetch(`/api/trips/${selected.tripId}/gps-history`)
+      const controller = new AbortController();
+      fetch(`/api/trips/${selected.tripId}/gps-history`, { signal: controller.signal })
         .then(r => r.ok ? r.json() : { history: [] })
         .then(d => {
-          const pts = (d.history ?? []).slice(-200); // bounded: last 200 points max
+          const pts = (d.history ?? []).slice(-200);
           if (pts.length < 2 || !mapRef.current) return;
-          const path = pts.map((p: any) => ({ lat: p.lat, lng: p.lng }));
+          if (routeRef.current) { routeRef.current.setMap(null); routeRef.current = null; }
           routeRef.current = new google.maps.Polyline({
-            path, map: mapRef.current,
+            path: pts.map((p: any) => ({ lat: p.lat, lng: p.lng })),
+            map: mapRef.current,
             strokeColor: "#0ea5e9", strokeOpacity: 0.7, strokeWeight: 3,
             zIndex: 2,
           });
         })
         .catch(() => {});
+      return () => { controller.abort(); };
     }
 
-    // Pan map to show the selected vehicle:
-    if (selected.lat && selected.lng) {
-      mapRef.current.panTo({ lat: selected.lat, lng: selected.lng });
-      mapRef.current.setZoom(14);
-    }
+    // Operator owns the map viewport — do NOT panTo or setZoom automatically.
+    // Markers update position; the viewport is never moved by polling or selection.
   }, [mapReady, selected]);
 
   if (!apiKey) {
@@ -297,7 +302,10 @@ export default function ControlTowerPage() {
   const serverTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const routeTRef         = useRef<number>(0); // actual route position, ref to avoid stale closures
   const visualTRef        = useRef<number>(0); // displayed position for smooth animation
-  const resolvedTripIdRef = useRef<string>(""); // canonical internal trip.id after GET resolution
+  const resolvedTripIdRef    = useRef<string>(""); // canonical internal trip.id after GET resolution
+  const routeGeometryRef     = useRef<import("@/lib/routeGeometry").RouteGeometry | null>(null); // road route for demo
+  const demoPolylineRef      = useRef<google.maps.Polyline | null>(null); // demo road-route polyline (outer scope, not ControlTowerMap's routeRef)
+  const mapInstanceRef       = useRef<google.maps.Map | null>(null); // google.maps.Map instance, set by ControlTowerMap on ready
   // Stale-closure safety: all demo POST calls use resolvedTripIdRef.current (not demoTripId state).
   // demoTripId holds whatever the operator typed (trip.id UUID or business tripNumber).
   // resolvedTripIdRef holds the canonical internal UUID returned by the GET endpoint.
@@ -311,6 +319,7 @@ export default function ControlTowerPage() {
   const [activeTab, setActiveTab] = useState<"map" | "events" | "history" | "demo">("map");
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchPositions = useCallback(async () => {
@@ -395,6 +404,49 @@ Check the Trip Number (e.g. TRIP-XXXXXXXX-XXX) and ensure it belongs to your org
     // Store canonical internal trip.id — use this for ALL subsequent POSTs, not demoTripId:
     resolvedTripIdRef.current = data.tripId;
 
+    // ── Step 2: Compute real road route via Google Routes API ───────────────────
+    // DO NOT fall back to straight-line if routing fails — show clear error and abort.
+    const routeRes = await fetch(`/api/trips/${resolvedTripIdRef.current}/demo-route`).catch(() => null);
+    if (!routeRes?.ok) {
+      const errData = await routeRes?.json().catch(() => ({}));
+      const errMsg = errData?.error ?? `Routes API error (${routeRes?.status ?? "network"})`;
+      alert(`Cannot start GPS Demo: ${errMsg}
+
+Check:
+• Google Routes API is enabled in Google Cloud Console
+• GOOGLE_MAPS_API_KEY has Routes API permission
+• Loading Point and Customer Site coordinates are valid`);
+      resolvedTripIdRef.current = "";
+      return;
+    }
+    const routeData = await routeRes.json();
+    const { buildRouteGeometry } = await import("@/lib/routeGeometry");
+    let geometry: import("@/lib/routeGeometry").RouteGeometry;
+    try {
+      geometry = buildRouteGeometry(routeData.path);
+    } catch {
+      alert("Demo route geometry could not be built — the computed route has fewer than 2 points.");
+      resolvedTripIdRef.current = "";
+      return;
+    }
+    routeGeometryRef.current = geometry;
+    // Draw the road route on the map using demoPolylineRef (outer page scope).
+    // IMPORTANT: do NOT use ControlTowerMap's routeRef — it is a separate inner-component ref.
+    // Using the inner ref caused orphaned Polyline objects (the P2-01 route duplication defect).
+    if (demoPolylineRef.current) { demoPolylineRef.current.setMap(null); demoPolylineRef.current = null; }
+    const path = geometry.path;
+    if ((window as any).google?.maps && path.length > 1) {
+      // Pass the google.maps.Map instance via mapInstanceRef (set by ControlTowerMap callback):
+      const mapInstance = mapInstanceRef.current;
+      if (mapInstance) {
+        demoPolylineRef.current = new google.maps.Polyline({
+          path, map: mapInstance,
+          strokeColor: "#f97316", strokeOpacity: 0.85, strokeWeight: 4,
+          zIndex: 3,
+        });
+      }
+    }
+
     // ── Step 2: Persist exact Loading Point as initial GPS position ──────────────
     // This is done BEFORE starting any movement clocks so that:
     //   (a) the vehicle starts visibly AT the Loading Point
@@ -460,11 +512,19 @@ Check the Trip Number (e.g. TRIP-XXXXXXXX-XXX) and ensure it belongs to your org
     // Stops at t >= 0.95 to leave a clean window before Clock B sends the
     // final Customer Site ping, preventing any near-final duplicate.
     // At 1×: (90s × 0.95) / 6s ≈ 14 intermediate pings + 1 initial + 1 final = ~16 total.
-    serverTimerRef.current = setInterval(() => {
+    serverTimerRef.current = setInterval(async () => {
       const t = routeTRef.current;
-      if (t >= 0.95) return; // stop intermediate pings near completion — Clock B sends the final
-      const lat = lerp(route.loadingPoint.lat, route.customerSite.lat, t);
-      const lng = lerp(route.loadingPoint.lng, route.customerSite.lng, t);
+      if (t >= 0.95) return; // stop intermediate pings — Clock B sends exact final Customer Site
+      // Use road geometry if available, otherwise fall back to lerp (should not occur after road routing):
+      let lat: number; let lng: number;
+      if (routeGeometryRef.current) {
+        const { getRoutePosition } = await import("@/lib/routeGeometry");
+        const pos = getRoutePosition(routeGeometryRef.current, t);
+        lat = pos.lat; lng = pos.lng;
+      } else {
+        lat = lerp(route.loadingPoint.lat, route.customerSite.lat, t);
+        lng = lerp(route.loadingPoint.lng, route.customerSite.lng, t);
+      }
       fetch(`/api/trips/${resolvedTripIdRef.current}/demo-gps`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lat, lng, speed: 8.3, accuracy: 5 }),
@@ -513,11 +573,18 @@ Check the Trip Number (e.g. TRIP-XXXXXXXX-XXX) and ensure it belongs to your org
     }, 1000);
 
     // Restart Clock C (persistence) — same 0.95 stop threshold as startDemo:
-    serverTimerRef.current = setInterval(() => {
+    serverTimerRef.current = setInterval(async () => {
       const t = routeTRef.current;
       if (t >= 0.95) return;
-      const lat = lerp(route.loadingPoint.lat, route.customerSite.lat, t);
-      const lng = lerp(route.loadingPoint.lng, route.customerSite.lng, t);
+      let lat: number; let lng: number;
+      if (routeGeometryRef.current) {
+        const { getRoutePosition } = await import("@/lib/routeGeometry");
+        const pos = getRoutePosition(routeGeometryRef.current, t);
+        lat = pos.lat; lng = pos.lng;
+      } else {
+        lat = lerp(route.loadingPoint.lat, route.customerSite.lat, t);
+        lng = lerp(route.loadingPoint.lng, route.customerSite.lng, t);
+      }
       fetch(`/api/trips/${resolvedTripIdRef.current}/demo-gps`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lat, lng, speed: 8.3, accuracy: 5 }),
@@ -530,6 +597,8 @@ Check the Trip Number (e.g. TRIP-XXXXXXXX-XXX) and ensure it belongs to your org
     routeTRef.current        = 0;
     visualTRef.current       = 0;
     resolvedTripIdRef.current = "";
+    routeGeometryRef.current  = null;
+    if (demoPolylineRef.current) { demoPolylineRef.current.setMap(null); demoPolylineRef.current = null; }
     setDemoStatus("idle");
     setDemoRoute(null);
     setDemoProgress(0);
@@ -660,7 +729,7 @@ Check the Trip Number (e.g. TRIP-XXXXXXXX-XXX) and ensure it belongs to your org
 
               {/* THE MAP — real Google Maps with vehicle pins, geofence circles, route polyline */}
               <div className="flex-1 flex p-3 min-h-0">
-                <ControlTowerMap positions={positions} selected={selected} onSelect={setSelected} />
+                <ControlTowerMap positions={positions} selected={selected} onSelect={setSelected} onMapReady={m => { mapInstanceRef.current = m; }} />
               </div>
             </div>
           </div>

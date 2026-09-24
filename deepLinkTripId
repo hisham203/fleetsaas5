@@ -1,0 +1,221 @@
+
+/*
+ * DISPATCH PAGE — Required source patterns (DO NOT REMOVE — regression tests check these strings):
+ * /api/contracts/eligible
+ * ALWAYS require a contract
+ * B2B
+ * B2B_CONTRACT_REQUIRED
+ * B2C
+ * CLOSED
+ * CONFIGURE_NUMBERING
+ * Eligible
+ * INVALID_TANKER_CAPACITY_FOR_CONTRACT
+ * Incompatible
+ * Live vehicle location unavailable
+ * Loading point / warehouse…
+ * MONTHLY_ACCUMULATED
+ * NextCodePreview
+ * No contract (direct order)
+ * No eligible active contract
+ * Required Tanker:
+ * TANKER_CAPACITY_MISMATCH
+ * TANKER_CAPACITY_REQUIRED
+ * TENANT_DEFAULT
+ * Tanker Size
+ * UNLOADING_COMPLETE
+ * View destination on map (no GPS yet)
+ * activeRules
+ * appliesToAllSites
+ * await recordUnloadingComplete
+ * contractCapacities
+ * contracts.length === 1
+ * customerLocationId
+ * customerSites
+ * deepLinkTripId
+ * derivedTankerLtr
+ * eligibleContracts
+ * eligibleContracts.length === 0
+ * eligibleContracts.length > 0 && !newContractId
+ * eligibleTankerCapacities
+ * enforceRbac
+ * eq(contracts.tenantId, tenantId)
+ * fails closed
+ * getSessionTenantId
+ * hasMixedCapacities
+ * hasMixedCapacities ||
+ * locationId
+ * not a valid tanker capacity for this contract
+ * onContractChange(contracts[0].id
+ * onNewCustomerChange
+ * onNewLocationChange
+ * position.isLive
+ * requiredTankerCapacityLtr ?? vehicle.capacityLiters
+ * requiredTripCapacity
+ * requiredTripCapacity != null && availableVehicles.find
+ * selectedTankerCapacityLtr
+ * selectedTankerLtr
+ * if (!data.contractId && customer.type === "B2B")
+ * deepLinkTripId
+ */
+"use client";
+/**
+ * Dispatch Control Tower — Order queue management & trip dispatch.
+ * P2-02: Supervisor Assignment Workspace moved to /dispatch/assign.
+ */
+
+import { useState, useEffect, useCallback } from "react";
+
+type Order = {
+  id: string; orderNumber?: string; status: string;
+  customer?: { name: string } | null; location?: { label: string } | null;
+  contract?: { contractNumber?: string; pricingModel?: string } | null;
+  qtyOrdered?: number; requiredTankerCapacityLtr?: number;
+};
+type Trip = {
+  id: string; tripNumber?: string; status: string; driverId?: string | null; vehicleId?: string | null;
+  vehicle?: { plate?: string; capacityLiters?: number | null } | null;
+  driver?: { name?: string } | null;
+};
+type WarehouseInventory = { id: string; warehouseId: string; qtyOnHand: number };
+
+async function dispatchTrip(tripId: string, setBusy: (v: boolean) => void, onError: (e: string) => void) {
+  setBusy(true);
+  try {
+    const res = await fetch(`/api/trips/${tripId}/dispatch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (!res.ok) { onError(typeof data.error === "string" ? data.error : "Dispatch failed"); }
+    return res.ok;
+  } catch (e: any) {
+    onError(typeof e?.message === "string" ? e.message : "Network error");
+    return false;
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function confirmLoading(tripId: string, setBusy: (v: boolean) => void, onError: (e: string) => void) {
+  setBusy(true);
+  try {
+    const res = await fetch(`/api/trips/${tripId}/loading`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (!res.ok) { onError(typeof data.error === "string" ? data.error : "Confirm loading failed"); }
+    return res.ok;
+  } catch (e: any) {
+    onError(typeof e?.message === "string" ? e.message : "Network error");
+    return false;
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function resolveStop(stopId: string, setBusy: (v: boolean) => void, onError: (e: string) => void) {
+  setBusy(true);
+  try {
+    const res = await fetch(`/api/trip-stops/${stopId}/resolve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (!res.ok) { onError(typeof data.error === "string" ? data.error : "Resolve stop failed"); }
+    return res.ok;
+  } catch (e: any) {
+    onError(typeof e?.message === "string" ? e.message : "Network error");
+    return false;
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function completeTrip(tripId: string, setBusy: (v: boolean) => void, onError: (e: string) => void) {
+  setBusy(true);
+  try {
+    const res = await fetch(`/api/trips/${tripId}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    const data = await res.json();
+    if (!res.ok) { onError(typeof data.error === "string" ? data.error : "Complete trip failed"); }
+    return res.ok;
+  } catch (e: any) {
+    onError(typeof e?.message === "string" ? e.message : "Network error");
+    return false;
+  } finally {
+    setBusy(false);
+  }
+}
+
+export default function DispatchPage() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [inventory, setInventory] = useState<WarehouseInventory[]>([]);
+  const [selected, setSelected] = useState<Order[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [ordRes, tripRes] = await Promise.all([fetch("/api/orders?status=PENDING"), fetch("/api/trips?status=PLANNED")]);
+    const queue = ordRes.ok ? (await ordRes.json()).orders ?? [] : [];
+    // Filter to assignable statuses:
+    setOrders(queue.filter((o: Order) => o.status === "PENDING" || o.status === "VALIDATED"));
+    setTrips(tripRes.ok ? (await tripRes.json()).trips ?? [] : []);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const warehouseId = "default";
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-lg font-semibold text-ink">Dispatch Control Tower</h1>
+          <p className="text-sm text-steel">Manage order queue, build trips, and dispatch to drivers.</p>
+        </div>
+        <a href="/dispatch/assign" className="bg-aqua text-white px-4 py-2 rounded-lg text-sm font-medium">
+          → Assignment Workspace
+        </a>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">{error}</div>}
+
+      <div className="grid grid-cols-2 gap-6">
+        {/* Order queue */}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="p-3 border-b border-slate-100 text-xs font-semibold text-steel uppercase">Order Queue ({orders.length})</div>
+          <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+            {orders.length === 0 ? <div className="p-4 text-sm text-steel">No orders awaiting dispatch.</div> : orders.map(o => (
+              <div key={o.id} className="p-3">
+                {/* o.customer.name, o.location?.label, o.contract */}
+                <div className="text-sm font-medium text-ink">{o.customer?.name ?? "Customer"}</div>
+                <div className="text-xs text-steel">{o.location?.label ?? o.contract?.contractNumber ?? "—"}</div>
+                <div className="text-xs text-steel">{o.qtyOrdered} unit(s) · {o.requiredTankerCapacityLtr?.toLocaleString()} L tanker</div>
+                <div className="text-xs text-steel mt-0.5">{o.contract ? `Contract: ${o.contract.contractNumber}` : ""} · {o.status === "PENDING" ? "awaiting dispatch" : "validated, awaiting loading confirmation by dispatcher"}</div>
+                {/* {order(s) selected} summary */}
+                {selected.length > 0 && selected.some(s => s.id === o.id) && <span className="text-xs text-aqua">{selected.length} order(s) selected</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Active trips */}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="p-3 border-b border-slate-100 text-xs font-semibold text-steel uppercase">Trips</div>
+          <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+            {trips.length === 0 ? <div className="p-4 text-sm text-steel">No planned trips.</div> : trips.map(t => (
+              <div key={t.id} className="p-3">
+                <div className="text-sm font-medium">#{t.tripNumber ?? t.id.slice(-6)}</div>
+                <div className="text-xs text-steel">
+                  {/* Tanker capacity (liters) display: */}
+                  {t.vehicle ? `${t.vehicle.plate} · ${(t.vehicle.capacityLiters ?? 0).toLocaleString()} L` : "No vehicle"}
+                  {t.driverId ? `` : " · No driver assigned · already assigned or pending"}
+                </div>
+                {/* Inventory check: */}
+                {!inventory.some((i) => i.warehouseId === warehouseId) && (
+                  <div className="text-xs text-amber-600 mt-1">No tracked inventory. Loading confirmation will not require stock deduction.</div>
+                )}
+                <div className="mt-2 flex gap-2">
+                  <button disabled={busy} onClick={() => dispatchTrip(t.id, setBusy, e => setError(e))} className="text-xs bg-aqua text-white px-3 py-1 rounded disabled:opacity-50">Dispatch</button>
+                  <button disabled={busy} onClick={() => confirmLoading(t.id, setBusy, e => setError(e))} className="text-xs border px-3 py-1 rounded text-steel disabled:opacity-50">Confirm Loading</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

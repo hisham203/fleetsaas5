@@ -3,11 +3,11 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { customers } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { rejectCodeChange } from "@/lib/businessCodes";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const updateSchema = z.object({
   contractPricePerBottle: z.number().positive().nullable().optional(),
@@ -29,11 +29,21 @@ const updateSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  {
+    const { hasRole: _hPatch } = await import("@/lib/auth");
+    const _tId = getSessionTenantId(session);
+    if (!_tId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!_hPatch(session, ["ADMIN"])) {
+      const { checkPermission: _cpPatch, PERMISSIONS: _PPatch } = await import("@/lib/requirePermission");
+      const _dPatch = await _cpPatch(session, _tId, _PPatch.CUSTOMERS_EDIT);
+      if (_dPatch) return _dPatch;
+    }
   }
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "customers"); if (_deny) return _deny;
+  // GET uses CUSTOMERS_VIEW; PATCH/DELETE uses CUSTOMERS_EDIT
+  // (This checkPermission is in the handler that calls it — see handler-specific guards below)
+  // CUSTOMERS_VIEW guard removed here — applied per-method below
 
   const customer = await db.query.customers.findFirst({ where: and(eq(customers.id, id), eq(customers.tenantId, tenantId)) });
   if (!customer) return NextResponse.json({ error: "Customer not found" }, { status: 404 });

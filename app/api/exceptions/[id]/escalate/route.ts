@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { exceptions, users } from "@/lib/db/schema";
-import { enforceRbac } from "@/lib/enforceRbac";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 
 const escalateSchema = z.object({
   escalatedToUserId: z.string().optional(), // omit to escalate generically, without naming a specific person
@@ -19,11 +19,9 @@ const escalateSchema = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSessionFromRequest(req);
-  if (!hasRole(session, ["ADMIN", "DISPATCHER"])) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _deny = await enforceRbac(session, tenantId, "control_tower"); if (_deny) return _deny;
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.CONTROL_TOWER_MANAGE_EVENTS); if (_permDeny1) return _permDeny1;
 
   const exception = await db.query.exceptions.findFirst({ where: and(eq(exceptions.id, id), eq(exceptions.tenantId, tenantId)) });
   if (!exception) return NextResponse.json({ error: "Exception not found" }, { status: 404 });

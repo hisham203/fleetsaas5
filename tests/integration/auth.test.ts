@@ -65,7 +65,7 @@ describe("authentication", () => {
     const cookie = await loginAs("khalid@demo-water.co", "password123");
     const { GET } = await import("@/app/api/vehicles/route");
     const res = await GET(makeRequest("/api/vehicles", { cookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("signup creates a brand-new, isolated tenant with a default warehouse", async () => {

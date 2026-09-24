@@ -63,8 +63,8 @@ export async function ensureSystemRoles() {
     if (!role) {
       const label = name.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
       const id = genId();
-      await db.insert(roles).values({ id, tenantId: null, name, label, isSystemRole: true });
-      role = { id, tenantId: null, name, label, isSystemRole: true, description: null, createdAt: new Date() };
+      await db.insert(roles).values({ id, tenantId: null, name, label, isSystemRole: true, isActive: true });
+      role = { id, tenantId: null, name, label, isSystemRole: true, isActive: true, description: null, createdAt: new Date() };
     }
     for (const modName of modules) {
       const permId = permMap[modName];

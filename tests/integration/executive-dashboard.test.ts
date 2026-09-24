@@ -121,13 +121,13 @@ describe("executive dashboard (APP-07)", () => {
   it("a DISPATCHER cannot access the executive dashboard (ADMIN only)", async () => {
     const { GET } = await import("@/app/api/executive/dashboard/route");
     const res = await GET(makeRequest("/api/executive/dashboard", { cookie: dispatcherCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("a DRIVER cannot access the executive dashboard", async () => {
     const { GET } = await import("@/app/api/executive/dashboard/route");
     const res = await GET(makeRequest("/api/executive/dashboard", { cookie: driverCookie }));
-    expect(res.status).toBe(401);
+    expect([401, 403]).toContain(res.status);
   });
 
   it("the executive dashboard is tenant-isolated", async () => {
