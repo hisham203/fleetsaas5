@@ -52,9 +52,10 @@ describe("Dispatch context resolution root-cause fix (Task S.1, Parts 2/4/5)", (
 
   it("4/5. the new messages are context-aware, matching Part 5's exact examples for each trip state", () => {
     const source = dispatchSource();
-    expect(source).toContain("is assigned and waiting for loading confirmation");
-    expect(source).toContain("is loaded and ready to dispatch");
-    expect(source).toContain("is active and shown under Live Trips");
+    // P2-02 trip states: planned-unassigned / assigned-awaiting-dispatch / active / completed.
+    expect(source).toContain("awaiting tanker and driver assignment");
+    expect(source).toContain("is assigned and waiting for dispatch");
+    expect(source).toContain("shown under Active Trips");
     expect(source).toContain("is already completed. Showing readonly trip details");
   });
 
@@ -71,7 +72,10 @@ describe("Dispatch context resolution root-cause fix (Task S.1, Parts 2/4/5)", (
 
   it("9. Live Trips already includes PLANNED (assigned/waiting-loading) trips, not only DISPATCHED ones — confirmed at the source level", () => {
     const source = dispatchSource();
-    expect(source).toContain('trips.filter((t) => t.status !== "COMPLETED")');
+    // P2-02: PLANNED trips have their own section; active trips are fetched by
+    // explicit non-terminal statuses (COMPLETED never appears with operational actions).
+    expect(source).toContain('fetch("/api/trips?status=PLANNED&view=operational")');
+    expect(source).toContain('const ACTIVE_STATUSES = "DISPATCHED,IN_PROGRESS,STARTED,ARRIVED_LOADING,LOADING_COMPLETE,ARRIVED_SITE"');
   });
 });
 

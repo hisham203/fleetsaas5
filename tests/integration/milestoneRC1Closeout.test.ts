@@ -26,7 +26,7 @@ beforeAll(async () => {
 describe("RBAC schema and migration (RC1 closeout, Part 1)", () => {
   it("1. migration 0021 exists, adds RBAC tables and expenseRef", () => {
     const sql = src("drizzle/0021_regular_praxagora.sql");
-    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter(f => f.endsWith(".sql")).length).toBe(25);
+    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter(f => f.endsWith(".sql")).length).toBe(26); // P2-02 added migration 0025 (unassigned trip planning)
     expect(sql).toContain('CREATE TABLE "roles"');
     expect(sql).toContain('CREATE TABLE "permissions"');
     expect(sql).toContain('CREATE TABLE "role_permissions"');
@@ -325,7 +325,7 @@ describe("Regression — RC1 closeout (Part 9)", () => {
 
   it("29. 26 total migrations, all additive", () => {
     const migrations = fs.readdirSync(path.join(process.cwd(), "drizzle")).filter(f => f.endsWith(".sql"));
-    expect(migrations.length).toBe(25);
+    expect(migrations.length).toBe(26); // P2-02 added migration 0025 (unassigned trip planning)
     // Spot-check the two RC1 migrations
     const sql0020 = src("drizzle/0020_fat_dorian_gray.sql");
     const sql0021 = src("drizzle/0021_regular_praxagora.sql");

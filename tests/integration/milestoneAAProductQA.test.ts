@@ -181,8 +181,8 @@ describe("Inventory retirement (Milestone AA, Part 6)", () => {
 describe("Escalations clarification (Milestone AA, Part 7)", () => {
   it("24. Escalations is renamed to clarify it is SLA-based, distinct from failed-trip exceptions", () => {
     const source = dispatchSource();
-    expect(source).toContain('<h3 className="font-medium">SLA Escalations</h3>');
-    expect(source).toContain("separate from failed deliveries below");
+    expect(source).toContain('<h3 className="font-medium text-sm flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-warn" />SLA Escalations');
+    expect(source).toContain("separate from failed deliveries");
   });
 
   it("28. Acknowledge/Resolve behavior remains valid and untouched (a real, working workflow, not removed)", () => {
@@ -199,7 +199,7 @@ describe("Escalations clarification (Milestone AA, Part 7)", () => {
   it("27. normal Dispatch Queue is not polluted with escalations — they remain in their own, separate panel", () => {
     const source = dispatchSource();
     const escalationsIdx = source.indexOf("function EscalationsPanel");
-    const queueIdx = source.indexOf("Dispatch queue");
+    const queueIdx = source.indexOf("Order Queue"); // P2-02 name of the dispatch queue
     expect(escalationsIdx).toBeGreaterThan(0);
     expect(queueIdx).toBeGreaterThan(0);
   });

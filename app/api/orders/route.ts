@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { orders, customers, customerLocations, contractPricingRules, contracts } from "@/lib/db/schema";
+import { orders, customers, customerLocations, contractPricingRules, contracts, vehicles } from "@/lib/db/schema";
 import { genId, genNumber } from "@/lib/helpers";
 import { getCreditExposure } from "@/lib/creditCheck";
 import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
@@ -34,8 +34,9 @@ const createSchema = z.object({
   // below this comment runs unless contractId is actually provided.
   contractId: z.string().min(1).optional(),
   // Migration 0022: the explicitly selected tanker capacity for multi-capacity contracts.
-  // Auto-derived for single-capacity contracts; required for multi-capacity contracts;
-  // omitted for non-contract orders.
+  // Auto-derived for single-capacity contracts; required for multi-capacity contracts.
+  // P2-02: for a B2C direct order it is the tanker size the customer ordered
+  // (validated against the tenant fleet); omitted by legacy non-contract callers.
   selectedTankerCapacityLtr: z.number().int().positive().optional(),
 });
 
@@ -59,6 +60,9 @@ export async function GET(req: NextRequest) {
     tenantId = session.customer.tenantId;
   } else if (hasRole(session, ["ADMIN", "DISPATCHER", "DRIVER"])) {
     tenantId = getSessionTenantId(session)!;
+    // P2-02: reading orders requires orders.view (explicit RBAC or legacy fallback).
+    const _viewDeny = await checkPermission(session, tenantId, PERMISSIONS.ORDERS_VIEW);
+    if (_viewDeny) return _viewDeny;
   } else {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -85,7 +89,8 @@ export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ORDERS_VIEW); if (_permDeny1) return _permDeny1;
+  // P2-02: creating an order requires orders.create (orders.view only reads).
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ORDERS_CREATE); if (_permDeny1) return _permDeny1;
 
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
@@ -199,6 +204,26 @@ export async function POST(req: NextRequest) {
   //   requiredTankerCapacityLtr stays null. No constraint.
   const selectedTankerLtr: number | undefined = data.selectedTankerCapacityLtr;
   let requiredTankerCapacityLtr: number | null = null;
+
+  if (!attachedContract && selectedTankerLtr != null) {
+    // P2-02 B2C DIRECT ORDER (bulk water): the operator selects the tanker
+    // size the customer ordered. Pricing is unchanged — the existing
+    // direct-order path (pricePerBottle × qty, see stops route) still
+    // applies; this only persists the operational tanker requirement so
+    // assignment can enforce STRICT capacity equality later. The size must
+    // exist in this tenant's fleet, otherwise no tanker could ever serve it.
+    const tanker = await db.query.vehicles.findFirst({
+      where: and(eq(vehicles.tenantId, tenantId), eq(vehicles.capacityLiters, selectedTankerLtr)),
+      columns: { id: true },
+    });
+    if (!tanker) {
+      return NextResponse.json({
+        error: `No ${selectedTankerLtr.toLocaleString()} L tanker exists in this fleet. Select an available tanker size.`,
+        errorCode: "INVALID_TANKER_CAPACITY_FOR_FLEET",
+      }, { status: 422 });
+    }
+    requiredTankerCapacityLtr = selectedTankerLtr;
+  }
 
   if (attachedContract?.id) {
     const pricingRules = await db.query.contractPricingRules.findMany({

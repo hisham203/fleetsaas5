@@ -43,7 +43,7 @@ describe("Dispatch Control Tower -> Dispatch deep link (Milestone S, Parts 3A/5)
 
   it("4. a detail drawer/panel renders for the selected trip, with real operational fields", () => {
     const source = dispatchSource();
-    expect(source).toContain("detailTripId && (() => {");
+    expect(source).toContain("detailTrip && <TripDetailDrawer"); // P2-02: drawer component over the OperationalTripDto
     expect(source).toContain('label="Trip status"');
     expect(source).toContain('label="Customer"');
     expect(source).toContain('label="Contract"');

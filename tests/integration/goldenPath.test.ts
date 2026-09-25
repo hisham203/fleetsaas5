@@ -20,8 +20,6 @@ let supCookie: string;     // OPERATION_SUPERVISOR explicit role
 let driverCookie: string;
 let gpOrderId: string;
 let gpTripId: string;
-let gpDriverId: string;
-let gpVehicleId: string;
 let gpWarehouseId: string;
 let gpCustomerId: string;
 const cleanupUserIds: string[] = [];
@@ -59,20 +57,6 @@ beforeAll(async () => {
   if (!c) throw new Error("No customer");
   gpCustomerId = c.id;
 
-  // Find a free driver (AVAILABLE, not on active trip):
-  const dr = await db.query.drivers.findFirst({
-    where: and(eq(drivers.tenantId, tenantId), eq(drivers.status, "AVAILABLE"))
-  });
-  if (!dr) throw new Error("No available driver");
-  gpDriverId = dr.id;
-
-  // Find a free vehicle (AVAILABLE, not on active trip):
-  const ve = await db.query.vehicles.findFirst({
-    where: and(eq(vehicles.tenantId, tenantId), eq(vehicles.status, "AVAILABLE"))
-  });
-  if (!ve) throw new Error("No available vehicle");
-  gpVehicleId = ve.id;
-
   // Create a fresh test order for this run:
   const { POST: createOrder } = await import("@/app/api/orders/route");
   const oRes = await createOrder(makeRequest("/api/orders", { method: "POST", cookie: adminCookie,
@@ -82,10 +66,11 @@ beforeAll(async () => {
   gpOrderId = oData.id ?? oData.order?.id;
   if (!gpOrderId) throw new Error("GP order ID not returned");
 
-  // Create the test trip:
+  // Create the test trip with the EXACT browser Plan Trip payload (P2-02):
+  // { orderIds, warehouseId } — no driverId / vehicleId. The trip is PLANNED and unassigned.
   const { POST: createTrip } = await import("@/app/api/trips/route");
   const tRes = await createTrip(makeRequest("/api/trips", { method: "POST", cookie: adminCookie,
-    body: { warehouseId: gpWarehouseId, driverId: gpDriverId, vehicleId: gpVehicleId, orderIds: [gpOrderId] } }));
+    body: { orderIds: [gpOrderId], warehouseId: gpWarehouseId } }));
   if (![200,201].includes(tRes.status)) {
     const tErr = await tRes.json().catch(() => ({}));
     throw new Error("Failed to create GP trip: " + tRes.status + " " + JSON.stringify(tErr));
@@ -170,7 +155,9 @@ describe("Data layer", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
-    expect(data.some((t: any) => t.id === gpTripId)).toBe(true);
+    const gp = data.find((t: any) => t.id === gpTripId);
+    expect(gp).toMatchObject({ status: "PLANNED", driverId: null, vehicleId: null }); // P2-02: planned unassigned
+    expect(data.every((t: any) => t.status === "PLANNED")).toBe(true); // status filter honoured
   });
 
   it("D3. 71+ permissions in DB after bootstrap", async () => {
@@ -187,8 +174,8 @@ describe("Role segregation", () => {
     // This test verifies the legacy behavior is consistent and predictable.
     const src = require("fs").readFileSync("lib/requirePermission.ts", "utf8");
     expect(src).toContain("PERMISSIONS.TRIPS_DISPATCH"); // DISPATCHER has dispatch in legacy
-    expect(src).toContain("DISPATCHER: [");
-    expect(true).toBe(true); // Expected: DISPATCHER legacy includes trips.dispatch
+    const legacyDispatcher = src.slice(src.indexOf("DISPATCHER: ["), src.indexOf("],", src.indexOf("DISPATCHER: [")));
+    expect(legacyDispatcher).toContain("PERMISSIONS.TRIPS_DISPATCH");
   });
 
   it("R2. OPERATION_SUPERVISOR role template includes trips.dispatch permission", async () => {
@@ -269,8 +256,9 @@ describe("Business rules", () => {
     expect(exists).toBe(true);
   });
 
-  it("B4. No P2-03 migration files", () => {
-    const files = require("fs").readdirSync("drizzle").filter((f: string) => f.startsWith("0025_") || f.startsWith("0026_"));
-    expect(files.length).toBe(0);
+  it("B4. Migration 0025 belongs to P2-02 (unassigned trip planning); no P2-03 migration (0026+) exists", () => {
+    const all: string[] = require("fs").readdirSync("drizzle").filter((f: string) => f.endsWith(".sql"));
+    expect(all.filter((f) => f.startsWith("0025_"))).toEqual(["0025_p2_02_unassigned_trip_planning.sql"]);
+    expect(all.filter((f) => Number(f.slice(0, 4)) >= 26)).toEqual([]);
   });
 });

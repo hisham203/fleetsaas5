@@ -155,7 +155,9 @@ describe("Loading Point / Warehouse UI labels and empty-state wording (Task L)",
   });
 
   it("8. the dispatch page's loading point selector uses clear Loading point / warehouse wording", () => {
-    expect(dispatchSource).toContain("Loading point / warehouse…");
+    // P2-02: the operator-facing term is "Loading Point" (warehouses remain the backing table).
+    expect(dispatchSource).toContain("Loading Point <span");
+    expect(dispatchSource).not.toMatch(/>[^<{]*[Ww]arehouse[^<{]*</);
   });
 
   it("9. the vehicle home loading point / warehouse display and default-selection label remain correct", () => {

@@ -8,6 +8,25 @@ import { runAutomationRules } from "@/lib/automation";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
+import { getOperationalTrip } from "@/lib/tripDto";
+
+// P2-02: one operational trip (stable OperationalTripDto contract, lib/tripDto.ts).
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await getSessionFromRequest(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const tenantId = getSessionTenantId(session)!;
+  const _permDeny = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_VIEW);
+  if (_permDeny) return _permDeny;
+  const trip = await getOperationalTrip(tenantId, id);
+  if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
+  // A driver may only read a trip assigned to them.
+  if (session.type === "USER" && (session.user as any).role === "DRIVER") {
+    const own = await db.query.drivers.findFirst({ where: and(eq(drivers.userId, session.user.id), eq(drivers.tenantId, tenantId)), columns: { id: true } });
+    if (!own || own.id !== trip.driver?.id) return NextResponse.json({ error: "You are not assigned to this trip", errorCode: "NOT_ASSIGNED" }, { status: 403 });
+  }
+  return NextResponse.json(trip);
+}
 
 const actionSchema = z.object({
   action: z.enum(["dispatch", "complete"]),
@@ -41,6 +60,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (trip.status !== "PLANNED") {
       return NextResponse.json({ error: "Only PLANNED trips can be dispatched" }, { status: 422 });
     }
+    // P2-02: an unassigned (planned-only) trip can never be dispatched.
+    if (!trip.driverId || !trip.vehicleId) {
+      return NextResponse.json({ error: "Trip must have a driver and vehicle assigned before dispatch", errorCode: "MISSING_ASSIGNMENT" }, { status: 422 });
+    }
     if (!trip.loadingConfirmed) {
       return NextResponse.json({ error: "Cannot dispatch — warehouse has not confirmed loading yet" }, { status: 422 });
     }
@@ -71,8 +94,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   await db.transaction(async (tx) => {
     await tx.update(trips).set({ status: "COMPLETED", completedAt: new Date() }).where(eq(trips.id, trip.id));
-    await tx.update(vehicles).set({ status: "AVAILABLE" }).where(eq(vehicles.id, trip.vehicleId));
-    await tx.update(drivers).set({ status: "AVAILABLE" }).where(eq(drivers.id, trip.driverId));
+    // P2-02: resources are released at the terminal state — only if assigned.
+    if (trip.vehicleId) await tx.update(vehicles).set({ status: "AVAILABLE" }).where(eq(vehicles.id, trip.vehicleId));
+    if (trip.driverId) await tx.update(drivers).set({ status: "AVAILABLE" }).where(eq(drivers.id, trip.driverId));
   });
   const updated = await db.query.trips.findFirst({ where: eq(trips.id, trip.id) });
   return NextResponse.json(updated);

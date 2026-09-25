@@ -37,8 +37,9 @@ async function autoCloseTripIfAllStopsResolved(tripId: string) {
   if (unresolved.length > 0) return;
   await db.transaction(async (tx) => {
     await tx.update(trips).set({ status: "COMPLETED", completedAt: new Date() }).where(eq(trips.id, tripId));
-    await tx.update(vehicles).set({ status: "AVAILABLE" }).where(eq(vehicles.id, trip.vehicleId));
-    await tx.update(drivers).set({ status: "AVAILABLE" }).where(eq(drivers.id, trip.driverId));
+    // P2-02: resources are released at the terminal state — only if assigned.
+    if (trip.vehicleId) await tx.update(vehicles).set({ status: "AVAILABLE" }).where(eq(vehicles.id, trip.vehicleId));
+    if (trip.driverId) await tx.update(drivers).set({ status: "AVAILABLE" }).where(eq(drivers.id, trip.driverId));
   });
 }
 
@@ -96,6 +97,10 @@ export async function PATCH(
     const driverProfile = await db.query.drivers.findFirst({ where: eq(drivers.userId, session!.user.id) });
     if (!driverProfile || driverProfile.id !== trip.driverId) {
       return NextResponse.json({ error: "Not your trip" }, { status: 403 });
+    }
+    // P2-02: a driver acts only on a dispatched trip — never a planned one.
+    if (trip.status === "PLANNED") {
+      return NextResponse.json({ error: "Trip not dispatched yet. Supervisor must dispatch first.", errorCode: "TRIP_NOT_DISPATCHED" }, { status: 422 });
     }
   }
 

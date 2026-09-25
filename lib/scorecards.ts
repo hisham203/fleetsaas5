@@ -108,6 +108,8 @@ export async function computeDriverScorecards(tenantId: string): Promise<DriverS
 
   const tripsByDriver = new Map<string, typeof allTrips>();
   for (const t of allTrips) {
+    // P2-02: an unassigned PLANNED trip (driverId NULL) belongs to no driver's scorecard.
+    if (!t.driverId) continue;
     const list = tripsByDriver.get(t.driverId) ?? [];
     list.push(t);
     tripsByDriver.set(t.driverId, list);

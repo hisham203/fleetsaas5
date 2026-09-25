@@ -2,21 +2,36 @@ export const dynamic = "force-dynamic";
 /**
  * P2-02: Trip Resource Assignment — Operation Supervisor action.
  * Permission required: trips.assign
- * Validates vehicle + driver eligibility before accepting assignment.
+ *
+ * Assigns a tanker and/or driver to a PLANNED trip. The trip REMAINS
+ * PLANNED — assignment never dispatches (POST /api/trips/[id]/dispatch is a
+ * separate, separately-permissioned action) and never changes the driver's
+ * or vehicle's status (that happens at dispatch; see dispatch route).
+ *
+ * Server-side re-validation (never trusts the workspace list):
+ *   tenant · trip status · vehicle status/maintenance · STRICT capacity
+ *   equality · vehicle/driver conflicts · driver availability
+ *
+ * Concurrency: one transaction, row locks taken in the deterministic order
+ *   trip → driver → vehicle   (SELECT … FOR UPDATE)
+ * — the same order the dispatch route uses, so the two can never deadlock.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { trips, tripStops } from "@/lib/db/schema";
+import { trips } from "@/lib/db/schema";
 import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
-import { getVehicleEligibility, getDriverEligibility } from "@/lib/dispatchEligibility";
+import { getVehicleEligibility, getDriverEligibility, getTripCapacityRequirement } from "@/lib/dispatchEligibility";
+import { getOperationalTrip, TERMINAL_TRIP_STATUSES } from "@/lib/tripDto";
 
 const assignSchema = z.object({
   vehicleId: z.string().min(1).optional(),
   driverId:  z.string().min(1).optional(),
 });
+
+const rowOf = (r: any) => r?.rows?.[0] ?? (Array.isArray(r) ? r[0] : null);
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromRequest(req);
@@ -24,7 +39,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const tenantId = getSessionTenantId(session)!;
   const _permDeny = await checkPermission(session, tenantId, PERMISSIONS.TRIPS_ASSIGN);
   if (_permDeny) return _permDeny;
-  const userId = (session as any).user?.id;
 
   const { id } = await params;
   const body = assignSchema.safeParse(await req.json().catch(() => ({})));
@@ -36,14 +50,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: `Cannot reassign a ${trip.status} trip`, errorCode: "INVALID_STATE" }, { status: 422 });
   }
 
-  const updates: Record<string, any> = {};
+  const updates: { vehicleId?: string; driverId?: string } = {};
 
   if (body.data.vehicleId) {
-    // Server-side re-validation of vehicle eligibility (availability may have changed):
-    // Get required capacity from the orders linked to this trip's stops:
-    const tripStops = await db.query.tripStops.findMany({ where: (ts, { eq: eq2 }) => eq2(ts.tripId, trip.id), with: { order: { columns: { requiredTankerCapacityLtr: true } } } });
-    const requiredCapacity = tripStops[0]?.order?.requiredTankerCapacityLtr ?? 0;
-    const vehicleResults = await getVehicleEligibility(tenantId, requiredCapacity);
+    // Required capacity is derived trip → stop → order (never stored on the trip):
+    const { required, mixed } = await getTripCapacityRequirement(trip.id);
+    if (mixed) {
+      return NextResponse.json({ error: "Trip orders require different tanker capacities", errorCode: "TANKER_CAPACITY_MIXED" }, { status: 422 });
+    }
+    const vehicleResults = await getVehicleEligibility(tenantId, required, { excludeTripId: trip.id });
     const selected = vehicleResults.find(r => r.candidate.id === body.data.vehicleId);
     if (!selected?.eligible) {
       return NextResponse.json({
@@ -55,7 +70,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (body.data.driverId) {
-    const driverResults = await getDriverEligibility(tenantId);
+    const driverResults = await getDriverEligibility(tenantId, { excludeTripId: trip.id });
     const selected = driverResults.find(r => r.candidate.id === body.data.driverId);
     if (!selected?.eligible) {
       return NextResponse.json({
@@ -66,63 +81,53 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     updates.driverId = body.data.driverId;
   }
 
-  if (Object.keys(updates).length === 0) return NextResponse.json({ ok: true, message: "Nothing to update" });
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ ok: true, message: "Nothing to update" });
+  }
 
-  // P2-02: Serialised assignment using raw SQL transaction with FOR UPDATE lock.
-  // This prevents two supervisors from simultaneously assigning the same driver/vehicle.
-  // The lock is acquired on the trip row — any concurrent assignment must wait.
   const { sql: drizzleSql } = await import("drizzle-orm");
-  const conflictErrorCode = updates.driverId ? "DRIVER_CONFLICT" : "VEHICLE_CONFLICT";
-  let conflictError: string | null = null;
-  let updatedTrip: any = null;
+  const terminal = drizzleSql.raw(TERMINAL_TRIP_STATUSES.map(s => `'${s}'`).join(","));
+  let conflict: { error: string; errorCode: string } | null = null;
 
   await db.transaction(async (tx) => {
-    // 1. Lock the trip row (serialises concurrent assignments):
-    const lockedResult = await tx.execute(drizzleSql`
-      SELECT id, status, driver_id, vehicle_id
-      FROM trips
-      WHERE id = ${id} AND tenant_id = ${tenantId}
-      FOR UPDATE
-    `);
-    const locked = (lockedResult as any).rows?.[0] ?? (Array.isArray(lockedResult) ? lockedResult[0] : null);
+    // 1. Lock the trip row (serialises concurrent assignment / dispatch of this trip):
+    const locked = rowOf(await tx.execute(drizzleSql`
+      SELECT id, status FROM trips WHERE id = ${id} AND tenant_id = ${tenantId} FOR UPDATE
+    `));
     if (!locked || locked.status !== "PLANNED") {
-      conflictError = "Assignment conflict: trip status changed. Refresh and retry.";
+      conflict = { error: "Assignment conflict: trip status changed. Refresh and retry.", errorCode: "ASSIGNMENT_CONFLICT" };
       return;
     }
 
-    // 2. Re-validate driver not in use (inside lock):
+    // 2. Lock the DRIVER row, then re-check inside the lock:
     if (updates.driverId) {
-      const driverCheck = await tx.execute(drizzleSql`
-        SELECT id FROM trips
-        WHERE driver_id = ${updates.driverId}
-          AND status IN ('DISPATCHED','STARTED','ARRIVED_LOADING','LOADING_COMPLETE','ARRIVED_SITE')
-          AND tenant_id = ${tenantId}
+      await tx.execute(drizzleSql`SELECT id FROM drivers WHERE id = ${updates.driverId} AND tenant_id = ${tenantId} FOR UPDATE`);
+      const activeDriver = rowOf(await tx.execute(drizzleSql`
+        SELECT trip_number FROM trips
+        WHERE driver_id = ${updates.driverId} AND tenant_id = ${tenantId} AND id != ${id}
+          AND status IN ('DISPATCHED','IN_PROGRESS','STARTED','ARRIVED_LOADING','LOADING_COMPLETE','ARRIVED_SITE')
         LIMIT 1
-      `);
-      const activeDriver = (driverCheck as any).rows?.[0] ?? (Array.isArray(driverCheck) ? driverCheck[0] : null);
-      if (activeDriver) { conflictError = "Driver is now on another active trip"; return; }
+      `));
+      if (activeDriver) { conflict = { error: `Driver is now on active trip ${activeDriver.trip_number}`, errorCode: "DRIVER_CONFLICT" }; return; }
     }
 
-    // 3. Re-validate vehicle not in use (inside lock):
+    // 3. Lock the VEHICLE row, then re-check inside the lock (a tanker serves one open trip):
     if (updates.vehicleId) {
-      const vehicleCheck = await tx.execute(drizzleSql`
-        SELECT id FROM trips
-        WHERE vehicle_id = ${updates.vehicleId}
-          AND status IN ('DISPATCHED','STARTED','ARRIVED_LOADING','LOADING_COMPLETE','ARRIVED_SITE')
-          AND tenant_id = ${tenantId}
+      await tx.execute(drizzleSql`SELECT id FROM vehicles WHERE id = ${updates.vehicleId} AND tenant_id = ${tenantId} FOR UPDATE`);
+      const otherTrip = rowOf(await tx.execute(drizzleSql`
+        SELECT trip_number FROM trips
+        WHERE vehicle_id = ${updates.vehicleId} AND tenant_id = ${tenantId} AND id != ${id}
+          AND status NOT IN (${terminal})
         LIMIT 1
-      `);
-      const activeVehicle = (vehicleCheck as any).rows?.[0] ?? (Array.isArray(vehicleCheck) ? vehicleCheck[0] : null);
-      if (activeVehicle) { conflictError = "Vehicle is now on another active trip"; return; }
+      `));
+      if (otherTrip) { conflict = { error: `Tanker is now assigned to trip ${otherTrip.trip_number}`, errorCode: "VEHICLE_CONFLICT" }; return; }
     }
 
-    // 4. Apply update atomically (inside lock, trip still PLANNED):
+    // 4. Apply atomically — trip stays PLANNED:
     await tx.update(trips).set(updates).where(and(eq(trips.id, id), eq(trips.status, "PLANNED")));
-    updatedTrip = await tx.query.trips.findFirst({ where: eq(trips.id, id) });
   });
 
-  if (conflictError) {
-    return NextResponse.json({ error: conflictError, errorCode: conflictErrorCode }, { status: 409 });
-  }
-  return NextResponse.json({ ok: true, trip: updatedTrip });
+  if (conflict) return NextResponse.json(conflict, { status: 409 });
+  const updated = await getOperationalTrip(tenantId, id);
+  return NextResponse.json({ ok: true, trip: updated });
 }

@@ -68,8 +68,15 @@ describe("LiveMap source-level marker clarity (Task N.1)", () => {
     // The dispatch queue and trip planner sections are defined well
     // after the LiveMap element closes, confirming they don't depend on
     // it rendering successfully — a map failure can't take them down.
-    expect(dispatchSource.indexOf("Dispatch queue")).toBeGreaterThan(mapBlockEnd);
-    expect(dispatchSource.indexOf("Plan trip")).toBeGreaterThan(mapBlockEnd);
+    // P2-02: the Order Queue and Plan Trip form render BEFORE the map's block
+    // (the map sits inside Active Trips). Either way neither is inside the
+    // LiveMap element, so a map failure can't take them down.
+    expect(mapBlockStart).toBeGreaterThan(-1);
+    for (const marker of ["Order Queue", "Plan trip for", "Planned Trips"]) {
+      const at = dispatchSource.indexOf(marker);
+      expect(at).toBeGreaterThan(-1);
+      expect(at < mapBlockStart || at > mapBlockEnd).toBe(true);
+    }
   });
 });
 

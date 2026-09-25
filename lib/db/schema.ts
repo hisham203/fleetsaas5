@@ -257,8 +257,11 @@ export const trips = pgTable("trips", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
   tripNumber: text("trip_number").notNull().unique(),
-  driverId: text("driver_id").notNull(),
-  vehicleId: text("vehicle_id").notNull(),
+  // P2-02 (migration 0025): nullable. A coordinator plans a trip WITHOUT
+  // resources (PLANNED, driver/vehicle NULL); a supervisor assigns them
+  // later via PATCH /api/trips/[id]/assign, and dispatch requires both.
+  driverId: text("driver_id"),
+  vehicleId: text("vehicle_id"),
   warehouseId: text("warehouse_id").notNull(), // BR-09: which depot this trip loads from
   status: text("status").notNull().default("PLANNED"),
   loadingConfirmed: boolean("loading_confirmed").notNull().default(false),

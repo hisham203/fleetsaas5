@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tenantId = getSessionTenantId(session)!;
-  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ORDERS_VIEW); if (_permDeny1) return _permDeny1;
+  // P2-02: this route CREATES orders → orders.create (not orders.view).
+  const _permDeny1 = await checkPermission(session, tenantId, PERMISSIONS.ORDERS_CREATE); if (_permDeny1) return _permDeny1;
 
   const body = await req.json();
   const parsed = bulkSchema.safeParse(body);
