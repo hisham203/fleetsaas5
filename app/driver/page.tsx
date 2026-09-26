@@ -70,6 +70,28 @@ export default function DriverPage() {
   // the driver is told while it's not yet theirs to act on.
   const myPlannedTrip = trips.find((t) => t.driverId === driverId && t.status === "PLANNED");
 
+  // P2-02: the trip's recorded lifecycle stages (persisted events), shared by
+  // the stage control and the stop cards so both follow one sequence:
+  //   Arrived Loading Point → Confirm Loading → Arrived Customer Site → Delivered (ePOD) | Mark Failed
+  const [stageEvents, setStageEvents] = useState<string[]>([]);
+  const loadStages = useCallback(async (tripId: string) => {
+    const res = await fetch(`/api/trips/${tripId}/lifecycle`);
+    if (!res.ok) return;
+    const data = await res.json().catch(() => null);
+    const events: { eventType: string }[] = Array.isArray(data?.events) ? data.events : [];
+    setStageEvents(events.map((e) => e.eventType).filter((t) => (STAGE_SEQUENCE as readonly string[]).includes(t)));
+  }, []);
+  useEffect(() => {
+    if (myTrip?.id) loadStages(myTrip.id);
+    else setStageEvents([]);
+  }, [myTrip?.id, loadStages]);
+  // Furthest stage reached (order-independent):
+  const latestStage = stageEvents.reduce<LifecycleStage | undefined>(
+    (best, t) => (best === undefined || STAGE_SEQUENCE.indexOf(t as LifecycleStage) > STAGE_SEQUENCE.indexOf(best) ? (t as LifecycleStage) : best),
+    undefined
+  );
+  const arrivedAtSite = latestStage != null && STAGE_SEQUENCE.indexOf(latestStage) >= STAGE_SEQUENCE.indexOf("ARRIVED_SITE");
+
   // BR-12 Live Location Tracking — REAL DEVICE GPS via navigator.geolocation.watchPosition().
   // Uses the browser Geolocation API to get genuine device coordinates.
   // One watcher per active trip; cleaned up on trip change, completion, or unmount.
@@ -178,7 +200,28 @@ export default function DriverPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "arrive" }),
     });
-    logLifecycleEvent(tripId, "ARRIVED_SITE", { stopId });
+    load();
+  }
+
+  // P2-02: advance the trip to the next lifecycle stage. "Arrived Customer
+  // Site" also checks the driver in at the first pending stop.
+  async function advanceStage(tripId: string, stage: LifecycleStage) {
+    const res = await fetch(`/api/trips/${tripId}/lifecycle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventType: stage }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setActionMessage({ text: typeof d.error === "string" ? d.error : "Could not record this step.", tone: "danger" });
+      return;
+    }
+    setActionMessage(null);
+    if (stage === "ARRIVED_SITE" && myTrip) {
+      const next = [...myTrip.stops].sort((a: any, b: any) => a.sequence - b.sequence).find((st: any) => st.status === "PENDING");
+      if (next) await checkIn(tripId, next.id);
+    }
+    await loadStages(tripId);
     load();
   }
   // RC1 — lifecycle events alongside dispatch/POD actions (additive, non-blocking).
@@ -277,10 +320,12 @@ export default function DriverPage() {
               <span className="font-mono text-sm">{myTrip.tripNumber}</span>
               <StatusBadge status={myTrip.status} />
             </div>
-            <p className="text-steel text-xs mb-4">Vehicle {myTrip.vehicle.plateNumber} · {myTrip.stops.length} stop(s)</p>
+            <p className="text-steel text-xs mb-4">
+              Tanker {myTrip.vehicle?.plateNumber ?? "—"}{myTrip.vehicle?.capacityLiters ? ` · ${myTrip.vehicle.capacityLiters.toLocaleString()} L` : ""} · Loading point {myTrip.warehouse?.name ?? "—"} · {myTrip.stops.length} stop(s)
+            </p>
             {/* RC1 — ordered lifecycle. Only the next valid stage is shown.
                  Does not replace existing POD/billing/delivery logic below. */}
-            <TripStageControl tripId={myTrip.id} onStageLogged={load} />
+            <TripStageControl latestStage={latestStage} onAdvance={(stage) => advanceStage(myTrip.id, stage)} />
 
             <div className="space-y-3">
               {myTrip.stops
@@ -290,6 +335,7 @@ export default function DriverPage() {
                     key={stop.id}
                     stop={stop}
                     tripId={myTrip.id}
+                    canArrive={arrivedAtSite}
                     onArrive={() => checkIn(myTrip.id, stop.id)}
                     onDeliver={() => setEpodStop({ ...stop, tripId: myTrip.id })}
                     onFail={(reason: string) => markFailed(myTrip.id, stop.id, reason)}
@@ -316,9 +362,10 @@ export default function DriverPage() {
               const data = await res.json().catch(() => ({}));
               setActionMessage({ text: typeof data.error === "string" ? data.error : "Could not record this delivery.", tone: "danger" });
             } else {
-              setActionMessage({ text: "Delivery confirmed.", tone: "ok" });
-              // RC1: log UNLOADING_COMPLETE lifecycle event after successful POD (fire-and-forget)
-              logLifecycleEvent(epodStop.tripId, "UNLOADING_COMPLETE", { stopId: epodStop.id });
+              // The stop route records UNLOADING_COMPLETE (and CLOSED once the
+              // trip auto-completes) server-side as part of the ePOD — see
+              // recordUnloadingComplete in lib/lifecycleHelper.ts.
+              setActionMessage({ text: "Delivery confirmed. Trip completed once every stop is resolved.", tone: "ok" });
             }
             setEpodStop(null);
             load();
@@ -329,7 +376,7 @@ export default function DriverPage() {
   );
 }
 
-function StopCard({ stop, onArrive, onDeliver, onFail }: any) {
+function StopCard({ stop, onArrive, onDeliver, onFail, canArrive }: any) {
   const [showFail, setShowFail] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -355,12 +402,15 @@ function StopCard({ stop, onArrive, onDeliver, onFail }: any) {
       </div>
       <p className="text-steel text-xs mb-2">{stop.order.deliveryAddress}</p>
       <p className="text-steel text-xs mb-2">
-        Order: {stop.order.qtyOrdered} × {stop.order.bottleSizeLtr}L
-        {stop.order.emptyBottlesToCollect ? ` · collect ${stop.order.emptyBottlesToCollect} empties` : ""}
+        {stop.order.requiredTankerCapacityLtr
+          ? <>Order {stop.order.orderNumber} · {stop.order.requiredTankerCapacityLtr.toLocaleString()} L tanker load</>
+          : <>Order: {stop.order.qtyOrdered} × {stop.order.bottleSizeLtr}L
+            {stop.order.emptyBottlesToCollect ? ` · collect ${stop.order.emptyBottlesToCollect} empties` : ""}</>}
       </p>
 
-      {stop.status === "PENDING" && (
-        <button onClick={onArrive} className="w-full bg-ink text-white rounded-lg py-3 text-sm font-semibold">
+      {/* Additional stops (multi-stop trips): checked in individually once the driver is on site. */}
+      {stop.status === "PENDING" && canArrive && !showFail && (
+        <button onClick={onArrive} className="w-full bg-ink text-white rounded-lg py-3 text-sm font-semibold mb-2">
           Arrived at stop
         </button>
       )}
@@ -368,12 +418,17 @@ function StopCard({ stop, onArrive, onDeliver, onFail }: any) {
       {stop.status === "ARRIVED" && !showFail && (
         <div className="flex gap-2">
           <button onClick={onDeliver} className="flex-1 bg-ok text-white rounded-lg py-3 text-sm font-semibold">
-            Confirm delivery
+            Delivered
           </button>
           <button onClick={() => setShowFail(true)} className="flex-1 bg-danger text-white rounded-lg py-3 text-sm font-semibold">
-            Report failure
+            Mark Failed
           </button>
         </div>
+      )}
+      {stop.status === "PENDING" && !showFail && (
+        <button onClick={() => setShowFail(true)} className="w-full border border-danger/40 text-danger rounded-lg py-2 text-xs font-medium">
+          Mark Failed
+        </button>
       )}
 
       {showFail && (
@@ -420,14 +475,16 @@ function EpodModal({ stop, onClose, onSubmit }: any) {
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-steel">Quantity delivered</label>
+            <label className="text-xs text-steel">{stop.order.requiredTankerCapacityLtr ? "Tanker loads delivered" : "Quantity delivered"}</label>
             <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm mt-1" value={deliveredQty} onChange={(e) => setQty(Number(e.target.value))} />
             {isPartial && <p className="text-warn text-xs mt-1">Less than ordered ({stop.order.qtyOrdered}) — will record as partial delivery.</p>}
           </div>
-          <div>
-            <label className="text-xs text-steel">Empties collected</label>
-            <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm mt-1" value={emptiesCollected} onChange={(e) => setEmpties(Number(e.target.value))} />
-          </div>
+          {(stop.order.emptyBottlesToCollect ?? 0) > 0 && (
+            <div>
+              <label className="text-xs text-steel">Empties collected</label>
+              <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm mt-1" value={emptiesCollected} onChange={(e) => setEmpties(Number(e.target.value))} />
+            </div>
+          )}
           <div>
             <label className="text-xs text-steel">Recipient name</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm mt-1" value={recipientName} onChange={(e) => setRecipient(e.target.value)} placeholder="Who received it" />
@@ -635,82 +692,50 @@ function DriverTasksAndExpenses({ driverId, tasks, expenses, vehicleId, tripId, 
 // RC1 — Ordered trip lifecycle control.
 // Derives the current stage from persisted events and shows only the
 // next valid action. Never touches billing/POD (that's in StopCard below).
+// P2-02: STARTED is optional — a dispatched trip begins at ARRIVED_LOADING.
+// The driver-facing steps are the first three; "Delivered" is the ePOD in
+// StopCard (which records UNLOADING_COMPLETE and auto-completes the trip).
 const STAGE_SEQUENCE = ["STARTED","ARRIVED_LOADING","LOADING_COMPLETE","ARRIVED_SITE","UNLOADING_COMPLETE","CLOSED"] as const;
 type LifecycleStage = typeof STAGE_SEQUENCE[number];
+const DRIVER_STEPS: LifecycleStage[] = ["ARRIVED_LOADING", "LOADING_COMPLETE", "ARRIVED_SITE"];
 const STAGE_LABELS: Record<LifecycleStage, string> = {
   STARTED: "Start Trip",
-  ARRIVED_LOADING: "Arrived at Loading Point",
-  LOADING_COMPLETE: "Loading Complete",
-  ARRIVED_SITE: "Arrived at Customer Site",
-  UNLOADING_COMPLETE: "Unloading Complete",
+  ARRIVED_LOADING: "Arrived Loading Point",
+  LOADING_COMPLETE: "Confirm Loading",
+  ARRIVED_SITE: "Arrived Customer Site",
+  UNLOADING_COMPLETE: "Delivered",
   CLOSED: "Close Trip",
 };
 
-function TripStageControl({ tripId, onStageLogged }: { tripId: string; onStageLogged: () => void }) {
-  const [events, setEvents] = useState<{ eventType: string; createdAt: string }[]>([]);
+function TripStageControl({ latestStage, onAdvance }: { latestStage: LifecycleStage | undefined; onAdvance: (stage: LifecycleStage) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const load = async () => {
-    const res = await fetch(`/api/trips/${tripId}/lifecycle`);
-    if (res.ok) {
-      const data = await res.json();
-      setEvents(Array.isArray(data) ? data : []);
-    }
-  };
-
-  // Load once on mount
-  const [loaded, setLoaded] = useState(false);
-  if (!loaded) { setLoaded(true); load(); }
-
-  // Derive current stage (latest non-NOTE event)
-  const stageEvents = events.filter(e => e.eventType !== "NOTE");
-  const latestStage = stageEvents.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]?.eventType as LifecycleStage | undefined;
   const latestIdx = latestStage !== undefined ? STAGE_SEQUENCE.indexOf(latestStage) : -1;
-  const nextStage = latestIdx < STAGE_SEQUENCE.length - 1 ? STAGE_SEQUENCE[latestIdx + 1] : null;
+  const nextStage = DRIVER_STEPS.find((s) => STAGE_SEQUENCE.indexOf(s) > latestIdx) ?? null;
+  const doneSteps = DRIVER_STEPS.filter((s) => STAGE_SEQUENCE.indexOf(s) <= latestIdx).length;
 
-  async function logNext() {
+  async function advance() {
     if (!nextStage) return;
-    setBusy(true); setError("");
-    const res = await fetch(`/api/trips/${tripId}/lifecycle`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventType: nextStage }),
-    });
-    setBusy(false);
-    if (!res.ok) {
-      const d = await res.json();
-      setError(d.error ?? "Failed");
-      return;
-    }
-    await load();
-    onStageLogged();
+    setBusy(true);
+    try { await onAdvance(nextStage); } finally { setBusy(false); }
   }
-
-  const isClosed = latestStage === "CLOSED";
 
   return (
     <div className="mb-3 bg-paper rounded-lg p-3 space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-steel text-xs font-medium uppercase tracking-wide">Trip Progress</p>
-        {latestStage && <span className="text-xs bg-ink text-white rounded px-2 py-0.5">{latestStage.replace(/_/g," ")}</span>}
+        {latestStage && <span className="text-xs bg-ink text-white rounded px-2 py-0.5">{STAGE_LABELS[latestStage]}</span>}
       </div>
-      <div className="flex gap-1 flex-wrap">
-        {STAGE_SEQUENCE.map((s, i) => (
-          <div key={s} className={`h-1.5 flex-1 rounded-full ${i <= latestIdx ? "bg-ok" : "bg-slate-200"}`} title={s} />
+      <div className="flex gap-1">
+        {[...DRIVER_STEPS, "UNLOADING_COMPLETE" as LifecycleStage].map((s, i) => (
+          <div key={s} className={`h-1.5 flex-1 rounded-full ${i < doneSteps || (s === "UNLOADING_COMPLETE" && latestIdx >= STAGE_SEQUENCE.indexOf("UNLOADING_COMPLETE")) ? "bg-ok" : "bg-slate-200"}`} title={STAGE_LABELS[s]} />
         ))}
       </div>
-      {isClosed ? (
-        <p className="text-ok text-xs font-medium">✓ Trip closed</p>
-      ) : nextStage ? (
-        <>
-          <button disabled={busy} onClick={logNext} className="w-full bg-ok text-white rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-40">
-            {busy ? "Logging…" : `→ ${STAGE_LABELS[nextStage]}`}
-          </button>
-          {error && <p className="text-danger text-xs">{error}</p>}
-        </>
+      {nextStage ? (
+        <button disabled={busy} onClick={advance} className="w-full bg-ok text-white rounded-lg px-3 py-3 text-sm font-semibold disabled:opacity-40">
+          {busy ? "Recording…" : `→ ${STAGE_LABELS[nextStage]}`}
+        </button>
       ) : (
-        <p className="text-steel text-xs">No active stages.</p>
+        <p className="text-steel text-xs">On site — confirm delivery with proof of delivery below, or mark the stop failed.</p>
       )}
     </div>
   );

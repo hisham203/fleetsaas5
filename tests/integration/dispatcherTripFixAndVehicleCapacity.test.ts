@@ -131,13 +131,16 @@ describe("Dispatcher trip assignment fix (G.3)", () => {
 
     it("no longer displays the misleading bottle-era 'x {bottleSizeLtr}L' order line", () => {
       expect(dispatchSource).not.toContain("bottleSizeLtr");
-      expect(dispatchSource).toContain("unit(s)");
+      // P2-02: a bulk-water order is one tanker load, shown by its required tanker size.
+      expect(dispatchSource).toContain("1 tanker load");
+      expect(dispatchSource).toContain("Required tanker");
     });
 
     it("no legacy 'load(s) total' / 'units total' suffix — qtyOrdered is a unit count, not liters, so Milestone AF.1 removed the misleading total rather than fake liters", () => {
       expect(dispatchSource).not.toContain("load(s) total");
       expect(dispatchSource).not.toContain("units total");
-      expect(dispatchSource).toContain("order(s) selected");
+      // P2-02: Plan Trip is per queued order (one order → one planned tanker trip).
+      expect(dispatchSource).toContain("Plan trip for {order.orderNumber}");
     });
 
     it("createTrip always resets the busy state, even if the response is unreadable", () => {

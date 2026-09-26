@@ -113,6 +113,12 @@ export async function POST(
     return NextResponse.json({ error: "Cannot demo GPS on a completed trip" }, { status: 422 });
   }
 
+  // P2-02 (migration 0025): an unassigned PLANNED trip has no vehicle/driver
+  // to attribute a GPS ping to. GPS is only meaningful once resources exist.
+  if (!trip.vehicleId || !trip.driverId) {
+    return NextResponse.json({ error: "Trip has no assigned vehicle and driver", errorCode: "TRIP_NOT_ASSIGNED" }, { status: 422 });
+  }
+
   const ping = {
     tenantId,
     tripId: trip.id,       // canonical internal ID — always

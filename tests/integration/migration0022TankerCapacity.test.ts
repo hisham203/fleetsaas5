@@ -515,11 +515,14 @@ describe("Migration 0022 correctness", () => {
 
   it("30. dispatch page has tanker capacity selection UI", () => {
     const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
-    expect(src).toContain("contractCapacities");
-    expect(src).toContain("selectedTankerLtr");
-    expect(src).toContain("derivedTankerLtr");
-    expect(src).toContain("Required Tanker:");
-    expect(src).toContain("Tanker Size");
+    // P2-02 NewOrderPanel: single-capacity contracts show the derived size;
+    // multi-capacity contracts require an explicit choice among the contract's
+    // own capacities, sent as selectedTankerCapacityLtr.
+    expect(src).toContain("contractCaps");
+    expect(src).toContain("contractCaps.length === 1");
+    expect(src).toContain("Required tanker: {litres(contractCaps[0])}");
+    expect(src).toContain("contractCaps.map((c) => <option");
+    expect(src).toContain("body.selectedTankerCapacityLtr = capacity");
   });
 
   it("31. required tanker capacity is shown inline in order cards", () => {

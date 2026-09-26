@@ -249,13 +249,14 @@ describe("Direct order bypass — server-side enforcement", () => {
 
   it("17. dispatch UI shows contract-required message for B2B and direct-order for B2C (source check)", () => {
     const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
-    expect(src).toContain("eligibleContracts.length === 0");
-    // B2C still gets the direct order option:
-    expect(src).toContain("No contract (direct order)");
-    // B2B gets the blocked message:
-    expect(src).toContain("No eligible active contract");
-    expect(src).toContain("B2C");
-    expect(src).toContain("B2B");
+    // P2-02: order type is an explicit choice. B2C Direct Order has no contract;
+    // a B2B Contract Order never offers a "no contract" option — with no eligible
+    // contract it is blocked with an operational message.
+    expect(src).toContain("B2C Direct Order");
+    expect(src).toContain("B2B Contract Order");
+    expect(src).toContain("contracts.length === 0");
+    expect(src).toContain("No eligible active contract covers this company and site");
+    expect(src).not.toContain("No contract (direct order)");
   });
 });
 
@@ -342,26 +343,29 @@ describe("Dispatch UI — contract discovery integration", () => {
 
   it("23. dispatch page loads eligible contracts on customer selection", () => {
     const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
-    expect(src).toContain("onNewCustomerChange");
+    // P2-02: Customer → Site → eligible contracts (loaded once the site is known).
+    expect(src).toContain("async function chooseCustomer");
+    expect(src).toContain("async function chooseSite");
     expect(src).toContain("/api/contracts/eligible");
-    expect(src).toContain("eligibleContracts");
   });
 
   it("24. dispatch page auto-selects single eligible contract", () => {
     const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
-    expect(src).toContain("contracts.length === 1");
-    expect(src).toContain("onContractChange(contracts[0].id");
+    expect(src).toContain("list.length === 1");
+    expect(src).toContain("chooseContract(list[0].id, list)");
   });
 
   it("25. dispatch page shows eligible tanker capacities from contract", () => {
     const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
     expect(src).toContain("eligibleTankerCapacities");
-    expect(src).toContain("Required Tanker:");
+    expect(src).toContain("Required tanker: {litres(contractCaps[0])}");
   });
 
   it("26. dispatch page disables create when contract required but not selected", () => {
     const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
-    expect(src).toContain("eligibleContracts.length > 0 && !newContractId");
+    // P2-02: Create Order stays disabled until a B2B order has site + contract (+ size when multi-capacity).
+    expect(src).toContain('const b2bReady = kind === "B2B_CONTRACT" && !!customerId && !!siteId && !!contractId');
+    expect(src).toContain("disabled={!ready}");
   });
 });
 

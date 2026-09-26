@@ -13,8 +13,9 @@ describe("Dispatch page source-level improvements (Task N)", () => {
   const dispatchSource = fs.readFileSync(path.join(process.cwd(), "app/dispatch/page.tsx"), "utf8");
 
   it("1/2. selected-order summary shows customer/site/contract with neutral wording, no bottle-era language", () => {
-    expect(dispatchSource).toContain("o.customer.name");
-    expect(dispatchSource).toContain("o.location?.label");
+    // P2-02: Order Queue rows show customer / site / contract via OrderSummary.
+    expect(dispatchSource).toContain("o.customer?.name");
+    expect(dispatchSource).toContain("o.location.label");
     expect(dispatchSource).toContain("o.contract");
     expect(dispatchSource).not.toContain("bottleSizeLtr");
   });
@@ -25,17 +26,33 @@ describe("Dispatch page source-level improvements (Task N)", () => {
   });
 
   it("4. the loading point zero-inventory note uses the exact specified wording, shown only when genuinely no inventory is tracked there", () => {
-    expect(dispatchSource).toContain("No tracked inventory. Loading confirmation will not require stock deduction.");
-    expect(dispatchSource).toContain("!inventory.some((i) => i.warehouseId === warehouseId)");
+    // P2-02: loading is confirmed by the DRIVER ("Confirm Loading" lifecycle step),
+    // not by the coordinator, so the coordinator page no longer carries the
+    // stock-deduction note or a Confirm Loading action. The dispatcher-side
+    // PATCH /api/trips/[id]/loading route itself is unchanged (see test 8 below).
+    expect(dispatchSource).not.toContain("confirmLoading(");
+    const driverSource = fs.readFileSync(path.join(process.cwd(), "app/driver/page.tsx"), "utf8");
+    expect(driverSource).toContain('LOADING_COMPLETE: "Confirm Loading"');
   });
 
   it("5/6. dispatchTrip, resolveStop, confirmLoading, and completeTrip all surface real API errors and always reset their busy state via finally", () => {
-    for (const fnName of ["dispatchTrip", "confirmLoading", "completeTrip", "resolveStop"]) {
+    // P2-02: the coordinator page's actions are planTrip / createOrder; assign and
+    // dispatch live in the supervisor's Assignment Workspace. All surface the
+    // real API error and reset busy state in finally.
+    for (const fnName of ["planTrip", "createOrder"]) {
       const start = dispatchSource.indexOf(`async function ${fnName}`);
       expect(start, `expected to find function ${fnName}`).toBeGreaterThan(-1);
-      const fnBody = dispatchSource.slice(start, start + 1200);
+      const fnBody = dispatchSource.slice(start, start + 1800);
       expect(fnBody).toContain("finally");
-      expect(fnBody).toContain('typeof data.error === "string"');
+      expect(fnBody).toContain("errorText(data");
+    }
+    const assignSource = fs.readFileSync(path.join(process.cwd(), "app/dispatch/assign/page.tsx"), "utf8");
+    for (const fnName of ["assign", "dispatch"]) {
+      const start = assignSource.indexOf(`async function ${fnName}()`);
+      expect(start, `expected to find function ${fnName}`).toBeGreaterThan(-1);
+      const fnBody = assignSource.slice(start, start + 1600);
+      expect(fnBody).toContain("finally");
+      expect(fnBody).toContain('typeof data?.error === "string"');
     }
   });
 

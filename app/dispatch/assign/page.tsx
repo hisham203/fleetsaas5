@@ -1,234 +1,354 @@
 "use client";
 /**
  * P2-02: Supervisor Assignment Workspace
- * Shows PLANNED trips, eligible/ineligible drivers and vehicles,
- * surfaces recommendation, and allows assign + dispatch.
+ *
+ *   PLANNED trip → review eligibility → Assign Tanker + Driver (trip stays PLANNED)
+ *               → Dispatch Trip (separate action) → DISPATCHED
+ *
  * Permission: trips.assign (assign) + trips.dispatch (dispatch)
+ *
+ * List row AND detail panel are rendered from the same OperationalTripDto
+ * (GET /api/trips?status=PLANNED&view=operational, GET /api/trips/[id]),
+ * so they can never disagree. Candidates come from
+ * GET /api/fleet/eligible-vehicles?tripId= and /api/fleet/eligible-drivers?tripId=
+ * → { results: [{ candidate, eligible, availability, reason }] }.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import AdminShell from "@/components/AdminShell";
+import StatusBadge from "@/components/StatusBadge";
+import { useRequireSession } from "@/lib/useSession";
+import type { OperationalTripDto } from "@/lib/tripDto";
 
-type Trip = {
-  id: string; tripNumber?: string; customerId?: string; siteId?: string; requiredTankerCapacityLtr?: number;
-  driverId?: string | null; vehicleId?: string | null; status: string; dispatchedAt?: string | null;
-  customer?: { name?: string }; site?: { name?: string }; vehicle?: { plate?: string } | null; driver?: { name?: string } | null;
-};
-type VehicleCandidate = { candidate: { id: string; plate: string; capacityLiters: number | null; status: string }; eligible: boolean; reason: string; recommended?: boolean };
-type DriverCandidate = { candidate: { id: string; name: string; userId: string; status: string }; eligible: boolean; reason: string; recommended?: boolean };
-type Rec = { driver?: DriverCandidate; vehicle?: VehicleCandidate };
+type Availability = "AVAILABLE" | "BUSY" | "INELIGIBLE";
+type VehicleCandidate = { candidate: { id: string; plateNumber: string; vehicleCode: string | null; capacityLiters: number | null; status: string }; eligible: boolean; availability: Availability; reason: string };
+type DriverCandidate = { candidate: { id: string; name: string | null; driverCode: string | null; status: string }; eligible: boolean; availability: Availability; reason: string };
 
-function EligibilityBadge({ eligible, recommended }: { eligible: boolean; recommended?: boolean }) {
-  if (recommended) return <span className="text-xs font-bold bg-aqua text-white px-2 py-0.5 rounded-full">⭐ Recommended</span>;
-  if (eligible) return <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">Eligible</span>;
-  return <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Ineligible</span>;
+const litres = (n: number | null | undefined) => (n == null ? "—" : `${n.toLocaleString()} L`);
+const ORDER_OF: Record<Availability, number> = { AVAILABLE: 0, BUSY: 1, INELIGIBLE: 2 };
+
+async function readJson(res: Response): Promise<any> {
+  try { return await res.json(); } catch { return null; }
 }
 
-export default function DispatchWorkspace() {
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [selected, setSelected] = useState<Trip | null>(null);
+export default function AssignmentWorkspacePage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-paper flex items-center justify-center text-steel text-sm">Loading…</main>}>
+      <DispatchWorkspace />
+    </Suspense>
+  );
+}
+
+function DispatchWorkspace() {
+  const { session, loading: sessionLoading } = useRequireSession(["ADMIN", "DISPATCHER"]);
+  const searchParams = useSearchParams();
+  const deepLinkTripId = searchParams.get("tripId");
+
+  const [trips, setTrips] = useState<OperationalTripDto[]>([]);
+  const [listLoaded, setListLoaded] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(deepLinkTripId);
   const [vehicles, setVehicles] = useState<VehicleCandidate[]>([]);
   const [drivers, setDrivers] = useState<DriverCandidate[]>([]);
-  const [rec, setRec] = useState<Rec>({});
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
-  const [selectedDriverId, setSelectedDriverId] = useState<string>("");
+  const [candidateError, setCandidateError] = useState<string | null>(null);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [selectedDriverId, setSelectedDriverId] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [loadingCandidates, setLoadingCandidates] = useState(false);
+
+  // Detail is the SAME DTO object as the list row — one source of truth.
+  const selected = trips.find((t) => t.id === selectedId) ?? null;
 
   const loadTrips = useCallback(async () => {
-    const res = await fetch("/api/trips?status=PLANNED&limit=50");
-    if (res.ok) { const d = await res.json(); setTrips(Array.isArray(d) ? d : (d.trips ?? d.data ?? [])); }
+    try {
+      const res = await fetch("/api/trips?status=PLANNED&view=operational");
+      const data = await readJson(res);
+      if (!res.ok || !Array.isArray(data)) { setListError(typeof data?.error === "string" ? data.error : "Planned trips could not be loaded."); return; }
+      setTrips(data);
+      setListError(null);
+    } catch {
+      setListError("Network error while loading planned trips.");
+    } finally {
+      setListLoaded(true);
+    }
   }, []);
 
-  useEffect(() => { loadTrips(); }, [loadTrips]);
+  useEffect(() => { if (session) loadTrips(); }, [session, loadTrips]);
 
-  const selectTrip = async (trip: Trip) => {
-    setSelected(trip); setError(null); setSuccess(null);
-    setSelectedVehicleId(trip.vehicleId ?? ""); setSelectedDriverId(trip.driverId ?? "");
-    setLoadingCandidates(true);
+  const loadCandidates = useCallback(async (trip: OperationalTripDto) => {
+    setLoadingCandidates(true); setCandidateError(null);
     try {
-      const cap = trip.requiredTankerCapacityLtr ?? 0;
       const [vRes, dRes] = await Promise.all([
-        fetch(`/api/fleet/eligible-vehicles?capacity=${cap}`),
-        fetch("/api/fleet/eligible-drivers"),
+        fetch(`/api/fleet/eligible-vehicles?tripId=${trip.id}`),
+        fetch(`/api/fleet/eligible-drivers?tripId=${trip.id}`),
       ]);
-      const vData = vRes.ok ? await vRes.json() : {};
-      const dData = dRes.ok ? await dRes.json() : {};
-      const vList: VehicleCandidate[] = vData.results ?? vData.candidates ?? vData.vehicles ?? [];
-      const dList: DriverCandidate[] = dData.results ?? dData.candidates ?? dData.drivers ?? [];
-      setVehicles(vList);
-      setDrivers(dList);
-      // Surface recommendation:
-      const recV = vList.find(v => v.recommended) ?? vList.find(v => v.eligible);
-      const recD = dList.find(d => d.recommended) ?? dList.find(d => d.eligible);
-      setRec({ vehicle: recV, driver: recD });
-    } finally { setLoadingCandidates(false); }
-  };
+      const vData = await readJson(vRes);
+      const dData = await readJson(dRes);
+      if (!vRes.ok || !dRes.ok) {
+        setCandidateError((typeof vData?.error === "string" && vData.error) || (typeof dData?.error === "string" && dData.error) || "Candidates could not be loaded.");
+      }
+      setVehicles(((vData?.results ?? []) as VehicleCandidate[]).sort((a, b) => ORDER_OF[a.availability] - ORDER_OF[b.availability]));
+      setDrivers(((dData?.results ?? []) as DriverCandidate[]).sort((a, b) => ORDER_OF[a.availability] - ORDER_OF[b.availability]));
+    } catch {
+      setCandidateError("Network error while loading candidates.");
+    } finally {
+      setLoadingCandidates(false);
+    }
+  }, []);
 
-  const assign = async () => {
+  // (Re)load candidates whenever the selected trip changes identity.
+  useEffect(() => {
+    if (!selected) return;
+    setSelectedVehicleId(selected.vehicle?.id ?? "");
+    setSelectedDriverId(selected.driver?.id ?? "");
+    loadCandidates(selected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, loadCandidates]);
+
+  const replaceTrip = (dto: OperationalTripDto) => setTrips((list) => list.map((t) => (t.id === dto.id ? dto : t)));
+
+  async function assign() {
     if (!selected) return;
     setAssigning(true); setError(null); setSuccess(null);
-    const body: any = {};
-    if (selectedVehicleId) body.vehicleId = selectedVehicleId;
-    if (selectedDriverId) body.driverId = selectedDriverId;
-    const res = await fetch(`/api/trips/${selected.id}/assign`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const data = await res.json();
-    if (!res.ok) { setError(data.error ?? "Assignment failed"); setAssigning(false); return; }
-    setSuccess("Resources assigned successfully.");
-    await loadTrips();
-    // Refresh selected:
-    const fresh = await fetch(`/api/trips/${selected.id}`);
-    if (fresh.ok) { const d = await fresh.json(); setSelected(d.trip ?? d); }
-    setAssigning(false);
-  };
+    const body: { vehicleId?: string; driverId?: string } = {};
+    if (selectedVehicleId && selectedVehicleId !== selected.vehicle?.id) body.vehicleId = selectedVehicleId;
+    if (selectedDriverId && selectedDriverId !== selected.driver?.id) body.driverId = selectedDriverId;
+    try {
+      const res = await fetch(`/api/trips/${selected.id}/assign`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await readJson(res);
+      if (!res.ok) { setError(typeof data?.error === "string" ? data.error : "Assignment failed"); return; }
+      // Refresh from the server — never assume what was persisted.
+      const fresh = await fetch(`/api/trips/${selected.id}`);
+      const dto = fresh.ok ? await readJson(fresh) : data?.trip;
+      if (dto?.id) replaceTrip(dto);
+      setSuccess("Resources assigned. The trip remains PLANNED until you dispatch it.");
+      await loadCandidates(dto?.id ? dto : selected);
+    } catch {
+      setError("Network error — assignment was not confirmed.");
+    } finally {
+      setAssigning(false);
+    }
+  }
 
-  const dispatch = async () => {
+  async function dispatch() {
     if (!selected) return;
     setDispatching(true); setError(null); setSuccess(null);
-    const res = await fetch(`/api/trips/${selected.id}/dispatch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-    const data = await res.json();
-    if (!res.ok) { setError(data.error ?? "Dispatch failed"); setDispatching(false); return; }
-    setSuccess(`Trip ${selected.tripNumber ?? selected.id} dispatched! ✓`);
-    await loadTrips(); setSelected(null);
-    setDispatching(false);
-  };
+    try {
+      const res = await fetch(`/api/trips/${selected.id}/dispatch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const data = await readJson(res);
+      if (!res.ok) { setError(typeof data?.error === "string" ? data.error : "Dispatch failed"); return; }
+      setSuccess(`Trip ${selected.tripNumber} dispatched to ${selected.driver?.name ?? "the driver"}.`);
+      setSelectedId(null);
+      await loadTrips();
+    } catch {
+      setError("Network error — dispatch was not confirmed.");
+    } finally {
+      setDispatching(false);
+    }
+  }
 
-  const isAssigned = selected && (selected.vehicleId || selectedVehicleId) && (selected.driverId || selectedDriverId);
-  const canDispatch = selected?.status === "PLANNED" && !!(selected.vehicleId && selected.driverId);
+  const pendingChange = !!selected && (
+    (selectedVehicleId !== "" && selectedVehicleId !== (selected.vehicle?.id ?? "")) ||
+    (selectedDriverId !== "" && selectedDriverId !== (selected.driver?.id ?? ""))
+  );
+  // Dispatch is enabled from PERSISTED server state only — never from an unsaved selection.
+  const canDispatch = !!selected && selected.status === "PLANNED" && selected.isAssigned && !pendingChange;
+  const eligibleVehicleCount = vehicles.filter((v) => v.eligible).length;
+  const eligibleDriverCount = drivers.filter((d) => d.eligible).length;
+
+  if (sessionLoading || !session) {
+    return <AdminShell title="Assignment Workspace"><p className="p-6 text-steel text-sm">Loading…</p></AdminShell>;
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-5">
-        <h1 className="text-lg font-semibold text-ink">Assignment Workspace</h1>
-        <p className="text-sm text-steel">Select a planned trip to assign resources and dispatch.</p>
-      </div>
-
-      <div className="flex gap-6">
-        {/* Trip list */}
-        <div className="w-80 flex-shrink-0 bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="p-3 border-b border-slate-100 text-xs font-semibold text-steel uppercase">Planned Trips ({trips.length})</div>
-          <div className="overflow-y-auto max-h-[700px]">
-            {trips.length === 0 ? <div className="p-4 text-sm text-steel">No planned trips.</div> : trips.map(t => (
-              <button key={t.id} onClick={() => selectTrip(t)}
-                className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 ${selected?.id === t.id ? "bg-aqua/5 border-l-2 border-l-aqua" : ""}`}>
-                <div className="text-sm font-medium text-ink">#{t.tripNumber ?? t.id.slice(-6)}</div>
-                <div className="text-xs text-steel">{t.customer?.name ?? "—"} · {t.site?.name ?? "—"}</div>
-                <div className="text-xs text-steel">{t.requiredTankerCapacityLtr ? `${t.requiredTankerCapacityLtr.toLocaleString()} L` : "—"}</div>
-                <div className="mt-1 flex gap-1">
-                  {t.vehicleId ? <span className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">Vehicle ✓</span> : <span className="text-xs bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">No vehicle</span>}
-                  {t.driverId ? <span className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">Driver ✓</span> : <span className="text-xs bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">No driver</span>}
-                </div>
-              </button>
-            ))}
+    <AdminShell title="Assignment Workspace">
+      <div className="p-6 max-w-7xl space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-ink">Assignment Workspace</h1>
+            <p className="text-sm text-steel">Assign an exact-capacity tanker and an available driver to each planned trip, then dispatch it.</p>
           </div>
+          <a href="/dispatch" className="btn btn-md btn-outline">← Order Intake &amp; Planning</a>
         </div>
 
-        {/* Assignment panel */}
-        {selected ? (
-          <div className="flex-1 space-y-4">
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">{error}</div>}
-            {success && <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-lg p-3">{success}</div>}
+        {success && <div className="rounded-lg border border-ok/30 bg-okLight px-4 py-3 text-sm text-ok">{success}</div>}
 
-            {/* Trip summary */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-ink">Trip #{selected.tripNumber ?? selected.id.slice(-6)}</div>
-                  <div className="text-sm text-steel">{selected.customer?.name ?? "Customer"} → {selected.site?.name ?? "Site"}</div>
-                  <div className="text-sm text-steel mt-1">Required capacity: <strong>{selected.requiredTankerCapacityLtr?.toLocaleString() ?? "—"} L</strong> (exact match required)</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-steel">Current assignment</div>
-                  <div className="text-sm">{selected.vehicle?.plate ?? "No vehicle"}</div>
-                  <div className="text-sm">{selected.driver?.name ?? "No driver"}</div>
-                </div>
-              </div>
+        <div className="flex flex-col lg:flex-row gap-5">
+          {/* Planned trip list */}
+          <section className="card lg:w-80 shrink-0 overflow-hidden" aria-label="Planned Trips">
+            <div className="card-header">
+              <h2 className="text-sm font-semibold text-ink">Planned Trips <span className="text-steel font-normal">({trips.length})</span></h2>
+              <button onClick={loadTrips} className="text-2xs text-aquaDark font-medium hover:underline">Refresh</button>
             </div>
-
-            {/* Recommendation banner */}
-            {(rec.vehicle || rec.driver) && (
-              <div className="bg-aqua/5 border border-aqua/20 rounded-xl p-4">
-                <div className="text-sm font-semibold text-aqua mb-2">⭐ Recommendation</div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  {rec.vehicle && <div><div className="font-medium">{rec.vehicle.candidate.plate}</div><div className="text-steel">{rec.vehicle.candidate.capacityLiters?.toLocaleString()} L · {rec.vehicle.reason}</div></div>}
-                  {rec.driver && <div><div className="font-medium">{rec.driver.candidate.name}</div><div className="text-steel">{rec.driver.reason}</div></div>}
-                </div>
-                <button onClick={() => {
-                  if (rec.vehicle?.eligible) setSelectedVehicleId(rec.vehicle.candidate.id);
-                  if (rec.driver?.eligible) setSelectedDriverId(rec.driver.candidate.id);
-                }} className="mt-3 text-sm bg-aqua text-white px-4 py-1.5 rounded-lg font-medium">Accept Recommendation</button>
-              </div>
-            )}
-
-            {loadingCandidates ? <div className="py-8 text-center text-steel text-sm">Loading eligible candidates…</div> : (
-              <div className="grid grid-cols-2 gap-4">
-                {/* Vehicles */}
-                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="p-3 border-b border-slate-100 text-xs font-semibold text-steel uppercase">Tanker / Vehicle Candidates</div>
-                  <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
-                    {vehicles.length === 0 ? <div className="p-4 text-sm text-steel">No vehicle data.</div> : vehicles.map(v => {
-                      const isRec = rec.vehicle?.candidate.id === v.candidate.id;
-                      return (
-                        <label key={v.candidate.id} className={`flex items-start gap-3 p-3 ${!v.eligible ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-slate-50"} ${selectedVehicleId === v.candidate.id ? "bg-aqua/5" : ""}`}>
-                          <input type="radio" name="vehicle" disabled={!v.eligible} value={v.candidate.id} checked={selectedVehicleId === v.candidate.id} onChange={() => v.eligible && setSelectedVehicleId(v.candidate.id)} className="mt-0.5 accent-aqua" />
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium">{v.candidate.plate}</span>
-                              <EligibilityBadge eligible={v.eligible} recommended={isRec} />
-                            </div>
-                            <div className="text-xs text-steel">{v.candidate.capacityLiters?.toLocaleString() ?? "—"} L · {v.candidate.status}</div>
-                            <div className="text-xs text-steel/70 mt-0.5">{v.reason}</div>
-                          </div>
-                        </label>
-                      );
-                    })}
+            <div className="max-h-[720px] overflow-y-auto divide-y divide-slate-100">
+              {listError && <div className="p-4 text-sm text-danger">{listError}</div>}
+              {!listLoaded ? <div className="p-4 text-sm text-steel">Loading…</div> : trips.length === 0 ? (
+                <div className="p-4 text-sm text-steel">No planned trips. Plan trips from the Order Queue.</div>
+              ) : trips.map((t) => (
+                <button key={t.id} onClick={() => { setSelectedId(t.id); setError(null); setSuccess(null); }}
+                  className={`w-full text-left px-4 py-3 hover:bg-slate-50 ${selectedId === t.id ? "bg-aquaLight/40 border-l-2 border-l-aqua" : ""}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-ink">{t.tripNumber}</span>
+                    {t.isAssigned
+                      ? <span className="badge bg-okLight text-ok">Ready</span>
+                      : <span className="badge bg-warnLight text-warn">Needs assignment</span>}
                   </div>
-                </div>
-
-                {/* Drivers */}
-                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="p-3 border-b border-slate-100 text-xs font-semibold text-steel uppercase">Driver Candidates</div>
-                  <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
-                    {drivers.length === 0 ? <div className="p-4 text-sm text-steel">No driver data.</div> : drivers.map(d => {
-                      const isRec = rec.driver?.candidate.id === d.candidate.id;
-                      return (
-                        <label key={d.candidate.id} className={`flex items-start gap-3 p-3 ${!d.eligible ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-slate-50"} ${selectedDriverId === d.candidate.id ? "bg-aqua/5" : ""}`}>
-                          <input type="radio" name="driver" disabled={!d.eligible} value={d.candidate.id} checked={selectedDriverId === d.candidate.id} onChange={() => d.eligible && setSelectedDriverId(d.candidate.id)} className="mt-0.5 accent-aqua" />
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-medium">{d.candidate.name}</span>
-                              <EligibilityBadge eligible={d.eligible} recommended={isRec} />
-                            </div>
-                            <div className="text-xs text-steel">{d.candidate.status}</div>
-                            <div className="text-xs text-steel/70 mt-0.5">{d.reason}</div>
-                          </div>
-                        </label>
-                      );
-                    })}
+                  <div className="text-xs text-steel mt-0.5">{t.customer?.name ?? "—"} · {t.site?.label ?? t.deliveryAddress ?? "—"}</div>
+                  <div className="text-xs text-steel">Required: {t.requiredTankerCapacityLtr != null ? litres(t.requiredTankerCapacityLtr) : "no size requirement"}</div>
+                  <div className="mt-1 grid grid-cols-2 gap-1 text-2xs">
+                    <span>Tanker: {t.vehicle ? <b className="text-ink">{t.vehicle.plateNumber}</b> : <span className="text-warn font-medium">Unassigned</span>}</span>
+                    <span>Driver: {t.driver ? <b className="text-ink">{t.driver.name ?? t.driver.driverCode}</b> : <span className="text-warn font-medium">Unassigned</span>}</span>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* Action bar */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-3">
-              <button onClick={assign} disabled={assigning || (!selectedVehicleId && !selectedDriverId)}
-                className="bg-slate-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-slate-800">
-                {assigning ? "Assigning…" : "Assign Resources"}
-              </button>
-              <button onClick={dispatch} disabled={dispatching || !canDispatch}
-                className="bg-aqua text-white px-5 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 hover:bg-aqua/90">
-                {dispatching ? "Dispatching…" : "Dispatch Trip →"}
-              </button>
-              {!canDispatch && <div className="text-xs text-steel">Dispatch requires both driver and vehicle assigned.</div>}
+                </button>
+              ))}
             </div>
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-steel text-sm">Select a planned trip from the list to begin assignment.</div>
-        )}
+          </section>
+
+          {/* Assignment panel */}
+          {selected ? (
+            <div className="flex-1 space-y-4 min-w-0">
+              {error && <div className="rounded-lg border border-danger/30 bg-dangerLight px-4 py-3 text-sm text-danger">{error}</div>}
+
+              <section className="card card-body" aria-label="Trip detail">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <h2 className="text-base font-semibold text-ink">Trip {selected.tripNumber}</h2>
+                  <StatusBadge status={selected.status} />
+                  {selected.order && (
+                    <span className={`badge ${selected.order.orderType === "B2B_CONTRACT" ? "bg-infoLight text-info" : "bg-aquaLight text-aquaDark"}`}>
+                      {selected.order.orderType === "B2B_CONTRACT" ? "B2B Contract" : "B2C Direct"}
+                    </span>
+                  )}
+                </div>
+                <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+                  <Detail label="Trip Number" value={selected.tripNumber} />
+                  <Detail label="Customer" value={selected.customer?.name ?? "—"} />
+                  <Detail label="Site" value={selected.site ? `${selected.site.label}${selected.site.siteCode ? ` · ${selected.site.siteCode}` : ""}` : selected.deliveryAddress ?? "—"} />
+                  <Detail label="Order" value={selected.order ? `${selected.order.orderNumber}${selected.order.contract ? ` · ${selected.order.contract.contractNumber}` : ""}` : "—"} />
+                  <Detail label="Required Capacity" value={selected.requiredTankerCapacityLtr != null ? `${litres(selected.requiredTankerCapacityLtr)} (exact match)` : "No size requirement"} />
+                  <Detail label="Loading Point" value={selected.loadingPoint?.name ?? "—"} />
+                  <Detail label="Current Tanker" value={selected.vehicle ? `${selected.vehicle.plateNumber} · ${litres(selected.vehicle.capacityLiters)}` : "Unassigned"} warn={!selected.vehicle} />
+                  <Detail label="Current Driver" value={selected.driver ? selected.driver.name ?? selected.driver.driverCode ?? "Driver" : "Unassigned"} warn={!selected.driver} />
+                </dl>
+              </section>
+
+              {candidateError && <div className="rounded-lg border border-warn/30 bg-warnLight px-4 py-3 text-sm text-warn">{candidateError}</div>}
+
+              {loadingCandidates ? <div className="card card-body text-center text-sm text-steel">Checking tanker and driver eligibility…</div> : (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <CandidateList
+                    title="Tankers"
+                    emptyText="No tankers are registered in this fleet."
+                    noneEligibleText={`No tanker qualifies: ${vehicles.length} checked. See each tanker's reason below.`}
+                    eligibleCount={eligibleVehicleCount}
+                    rows={vehicles.map((v) => ({
+                      id: v.candidate.id,
+                      title: v.candidate.plateNumber,
+                      sub: `${litres(v.candidate.capacityLiters)}${v.candidate.vehicleCode ? ` · ${v.candidate.vehicleCode}` : ""} · status ${v.candidate.status}`,
+                      availability: v.availability, eligible: v.eligible, reason: v.reason,
+                    }))}
+                    selectedId={selectedVehicleId}
+                    currentId={selected.vehicle?.id ?? null}
+                    onSelect={setSelectedVehicleId}
+                    name="vehicle"
+                  />
+                  <CandidateList
+                    title="Drivers"
+                    emptyText="No drivers are registered for this company."
+                    noneEligibleText={`No driver qualifies: ${drivers.length} checked. See each driver's reason below.`}
+                    eligibleCount={eligibleDriverCount}
+                    rows={drivers.map((d) => ({
+                      id: d.candidate.id,
+                      title: d.candidate.name ?? d.candidate.driverCode ?? "Driver",
+                      sub: `${d.candidate.driverCode ? `${d.candidate.driverCode} · ` : ""}status ${d.candidate.status}`,
+                      availability: d.availability, eligible: d.eligible, reason: d.reason,
+                    }))}
+                    selectedId={selectedDriverId}
+                    currentId={selected.driver?.id ?? null}
+                    onSelect={setSelectedDriverId}
+                    name="driver"
+                  />
+                </div>
+              )}
+
+              <section className="card card-body flex flex-wrap items-center gap-3" aria-label="Actions">
+                <button onClick={assign} disabled={assigning || !pendingChange}
+                  className="btn btn-lg bg-ink text-white hover:bg-slate-800 disabled:opacity-50">
+                  {assigning ? "Assigning…" : "Assign Resources"}
+                </button>
+                <button onClick={dispatch} disabled={dispatching || !canDispatch} className="btn btn-lg btn-primary disabled:opacity-40">
+                  {dispatching ? "Dispatching…" : "Dispatch Trip →"}
+                </button>
+                <p className="text-xs text-steel">
+                  {pendingChange
+                    ? "Save the assignment before dispatching."
+                    : selected.isAssigned
+                      ? "Tanker and driver assigned. Dispatch sends the trip to the driver."
+                      : "Dispatch requires both a tanker and a driver to be assigned."}
+                </p>
+              </section>
+            </div>
+          ) : (
+            <div className="flex-1 card card-body flex items-center justify-center text-sm text-steel min-h-[200px]">
+              {deepLinkTripId && listLoaded && !trips.some((t) => t.id === deepLinkTripId)
+                ? "That trip is no longer awaiting assignment — it may already be dispatched or completed."
+                : "Select a planned trip to review eligibility, assign resources and dispatch."}
+            </div>
+          )}
+        </div>
       </div>
+    </AdminShell>
+  );
+}
+
+function Detail({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+  return (
+    <div>
+      <dt className="text-2xs uppercase tracking-wide text-steel">{label}</dt>
+      <dd className={warn ? "text-warn font-medium" : "text-ink"}>{value}</dd>
     </div>
+  );
+}
+
+const AVAILABILITY_STYLE: Record<Availability, string> = {
+  AVAILABLE: "bg-okLight text-ok",
+  BUSY: "bg-warnLight text-warn",
+  INELIGIBLE: "bg-slate-100 text-steel",
+};
+
+function CandidateList({ title, rows, selectedId, currentId, onSelect, name, emptyText, noneEligibleText, eligibleCount }: {
+  title: string; name: string; emptyText: string; noneEligibleText: string; eligibleCount: number;
+  rows: { id: string; title: string; sub: string; availability: Availability; eligible: boolean; reason: string }[];
+  selectedId: string; currentId: string | null; onSelect: (id: string) => void;
+}) {
+  return (
+    <section className="card overflow-hidden" aria-label={title}>
+      <div className="card-header">
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
+        <span className="text-2xs text-steel">{eligibleCount} of {rows.length} available</span>
+      </div>
+      {rows.length > 0 && eligibleCount === 0 && (
+        <div className="px-4 py-2 text-xs text-warn bg-warnLight border-b border-warn/20">{noneEligibleText}</div>
+      )}
+      <div className="divide-y divide-slate-100 max-h-[360px] overflow-y-auto">
+        {rows.length === 0 ? <div className="p-4 text-sm text-steel">{emptyText}</div> : rows.map((r) => (
+          <label key={r.id} className={`flex items-start gap-3 px-4 py-3 ${r.eligible ? "cursor-pointer hover:bg-slate-50" : "opacity-70 cursor-not-allowed"} ${selectedId === r.id ? "bg-aquaLight/40" : ""}`}>
+            <input type="radio" name={name} className="mt-1 accent-aqua" disabled={!r.eligible} checked={selectedId === r.id} onChange={() => r.eligible && onSelect(r.id)} />
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-ink">{r.title}</span>
+                <span className={`badge ${AVAILABILITY_STYLE[r.availability]}`}>{r.availability}</span>
+                {currentId === r.id && <span className="badge bg-infoLight text-info">Assigned</span>}
+              </div>
+              <div className="text-xs text-steel">{r.sub}</div>
+              <div className="text-xs text-steel/80 mt-0.5">{r.reason}</div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </section>
   );
 }

@@ -237,7 +237,8 @@ describe("Bulk Water Fleet capacity cleanup (Part 9, items 43-52)", () => {
     }
   });
   it("49. dispatch plan-trip says 'order(s) selected', not legacy 'load(s) total'", () => {
-    expect(dispatch).toContain("order(s) selected");
+    // P2-02: Plan Trip is per queued order (one order → one planned tanker trip).
+    expect(dispatch).toContain("Plan trip for {order.orderNumber}");
     expect(dispatch).not.toContain("load(s) total");
   });
   it("51/52. plate number stays a manual required input; no faked vehicle internal code", () => {
@@ -254,7 +255,7 @@ describe("Existing records & regression (Part 7, Part 9 items 53-69)", () => {
     expect(src("scripts/seedData.ts")).not.toContain("rejectCodeChange");
   });
   it("no schema/migration/pricing/billing/ERP/driver changes; dispatch runtime untouched", () => {
-    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(25); // P2-01 added migration 0021
+    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(26); // P2-02 added migration 0025 (unassigned trip planning) // P2-01 added migration 0021
     expect(src("lib/contractPricing.ts")).toContain("PricingEngineError");
     const stop = src("app/api/trips/[id]/stops/[stopId]/route.ts");
     expect(stop).toContain("Task P.2"); expect(stop).toContain("autoCloseTripIfAllStopsResolved");

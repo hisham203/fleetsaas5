@@ -64,7 +64,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const events = await db.query.tripLifecycleEvents.findMany({
     where: and(eq(tripLifecycleEvents.tripId, id), eq(tripLifecycleEvents.tenantId, tenantId)),
-    orderBy: asc(tripLifecycleEvents.id),
+    // Chronological (event ids are random UUIDs, so ordering by id was not).
+    orderBy: [asc(tripLifecycleEvents.createdAt), asc(tripLifecycleEvents.id)],
     columns: {
       id: true, eventType: true, lat: true, lng: true,
       notes: true, loadedLiters: true, deliveredLiters: true, createdAt: true,
@@ -113,10 +114,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
   if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
 
+  // P2-02: driver identity — a driver can only record events on the trip
+  // they are assigned to (same rule the GET handler and stop route apply).
+  if (driverRole) {
+    const driverRecord = await db.query.drivers.findFirst({
+      where: and(eq(drivers.userId, (session as any).user.id), eq(drivers.tenantId, tenantId)),
+    });
+    if (!driverRecord || driverRecord.id !== trip.driverId) {
+      return NextResponse.json({ error: "You are not assigned to this trip", errorCode: "NOT_ASSIGNED" }, { status: 403 });
+    }
+  }
+
   // P2-02: DISPATCHED → ARRIVED_LOADING is the first driver action (no separate Start).
-  // P2-02: DISPATCHED is the required state before a driver can begin.
+  // P2-02: DISPATCHED is the required state before a driver can record ANY
+  // operational stage (UNLOADING_COMPLETE / CLOSED are recorded server-side
+  // by the ePOD in the stop route).
   // Also allow STARTED (internal state set when ARRIVED_LOADING is recorded from DISPATCHED).
-  if (driverRole && eventType === "ARRIVED_LOADING" && trip.status !== "DISPATCHED" && trip.status !== "STARTED") {
+  const isStageEvent = (STAGE_SEQUENCE as readonly string[]).includes(eventType);
+  const driverStageStatuses = ["DISPATCHED", "IN_PROGRESS", "STARTED", "ARRIVED_LOADING", "LOADING_COMPLETE", "ARRIVED_SITE"];
+  if (driverRole && isStageEvent && trip.status !== "DISPATCHED" && !driverStageStatuses.includes(trip.status)) {
     return NextResponse.json({ error: `Trip not dispatched (status: ${trip.status}). Supervisor must dispatch first.`, errorCode: "TRIP_NOT_DISPATCHED" }, { status: 422 });
   }
 
@@ -132,17 +148,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .filter((t) => (STAGE_SEQUENCE as readonly string[]).includes(t));
 
     const stageIdx = STAGE_SEQUENCE.indexOf(eventType as typeof STAGE_SEQUENCE[number]);
-    const lastCompleted = completedStages.length > 0
-      ? STAGE_SEQUENCE.indexOf(completedStages[completedStages.length - 1] as typeof STAGE_SEQUENCE[number])
-      : -1;
+    // P2-02: the furthest stage reached (independent of row order — event ids
+    // are random, so "last row returned" is not a reliable notion of latest).
+    const lastCompleted = completedStages.reduce(
+      (max, t) => Math.max(max, STAGE_SEQUENCE.indexOf(t as typeof STAGE_SEQUENCE[number])), -1
+    );
+    const currentStage = lastCompleted >= 0 ? STAGE_SEQUENCE[lastCompleted] : null;
 
-    // Must be exactly the next stage (or STARTED for a fresh trip):
-    if (stageIdx !== lastCompleted + 1) {
+    // Must be exactly the next stage. P2-02: STARTED is optional — a fresh
+    // dispatched trip may begin directly with ARRIVED_LOADING.
+    const skipsOptionalStart = lastCompleted === -1 && eventType === "ARRIVED_LOADING";
+    if (stageIdx !== lastCompleted + 1 && !skipsOptionalStart) {
       const nextExpected = STAGE_SEQUENCE[lastCompleted + 1] ?? "NONE";
       return NextResponse.json({
-        error: `Invalid stage transition. Current stage: ${completedStages[completedStages.length - 1] ?? "NONE"}. Next expected: ${nextExpected}.`,
+        error: `Invalid stage transition. Current stage: ${currentStage ?? "NONE"}. Next expected: ${nextExpected}.`,
         nextExpected,
-        current: completedStages[completedStages.length - 1] ?? null,
+        current: currentStage,
       }, { status: 422 });
     }
   }

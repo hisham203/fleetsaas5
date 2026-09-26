@@ -22,6 +22,7 @@ import { getSessionFromRequest, getSessionTenantId } from "@/lib/auth";
 import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
 import { eq, and, not } from "drizzle-orm";
 import { genId } from "@/lib/helpers";
+import { getVehicleEligibility, getDriverEligibility, getTripCapacityRequirement } from "@/lib/dispatchEligibility";
 
 const DISPATCHABLE_STATUSES = ["PLANNED"];
 
@@ -55,6 +56,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!trip.driverId || !trip.vehicleId) {
     return NextResponse.json({ error: "Trip must have a driver and vehicle assigned before dispatch", errorCode: "MISSING_ASSIGNMENT" }, { status: 422 });
   }
+
+  // P2-02: resources must STILL be eligible at the moment of dispatch —
+  // maintenance / off-duty status and STRICT capacity equality are
+  // re-derived here, never trusted from assignment time. Conflicts with
+  // other trips (BUSY) are decided by the authoritative locked check below
+  // (409 DRIVER_CONFLICT / VEHICLE_CONFLICT), not by this pre-check.
+  const { required, mixed } = await getTripCapacityRequirement(trip.id);
+  if (mixed) {
+    return NextResponse.json({ error: "Trip orders require different tanker capacities", errorCode: "TANKER_CAPACITY_MIXED" }, { status: 422 });
+  }
+  const vehicleCheck = (await getVehicleEligibility(tenantId, required, { excludeTripId: trip.id })).find(r => r.candidate.id === trip.vehicleId);
+  if (!vehicleCheck || vehicleCheck.availability === "INELIGIBLE") {
+    const capacityMismatch = required != null && vehicleCheck != null && vehicleCheck.candidate.capacityLiters !== required;
+    return NextResponse.json({
+      error: `Assigned tanker is not eligible: ${vehicleCheck?.reason ?? "vehicle not found in tenant"}`,
+      errorCode: capacityMismatch ? "TANKER_CAPACITY_MISMATCH" : "VEHICLE_INELIGIBLE",
+    }, { status: 422 });
+  }
+  const driverCheck = (await getDriverEligibility(tenantId, { excludeTripId: trip.id })).find(r => r.candidate.id === trip.driverId);
+  if (!driverCheck || driverCheck.availability === "INELIGIBLE") {
+    return NextResponse.json({
+      error: `Assigned driver is not eligible: ${driverCheck?.reason ?? "driver not found in tenant"}`,
+      errorCode: "DRIVER_INELIGIBLE",
+    }, { status: 422 });
+  }
+  const assignedDriverId = trip.driverId;
+  const assignedVehicleId = trip.vehicleId;
 
   // Serialised dispatch — SELECT FOR UPDATE prevents two concurrent requests from
   // both passing the conflict check before either updates status to DISPATCHED.
@@ -123,6 +151,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Step 6: All locks held, no conflicts — atomically dispatch:
     dispatchedAt = new Date(); // dispatchedAt: now — recorded atomically inside lock
     await tx.update(trips).set({ status: "DISPATCHED", dispatchedAt, dispatchedBy: userId }).where(eq(trips.id, id));
+    // Dispatch is the event that puts resources into active operational use.
+    // They return to AVAILABLE when the trip reaches its terminal state
+    // (stop resolution auto-close, or PATCH /api/trips/[id] {action:"complete"}).
+    await tx.update(drivers).set({ status: "ON_TRIP" }).where(eq(drivers.id, assignedDriverId));
+    await tx.update(vehicles).set({ status: "IN_TRIP" }).where(eq(vehicles.id, assignedVehicleId));
     await tx.insert(tripLifecycleEvents).values({
       id: genId(), tenantId, tripId: id, eventType: "DISPATCHED",
       actorUserId: userId, driverId: trip.driverId, notes: "Trip dispatched to driver",

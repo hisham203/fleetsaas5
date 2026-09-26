@@ -72,9 +72,13 @@ describe("Dispatch/trip behavior treats every loading point as unconditionally u
     // warehouse the tenant has is offered, unconditionally — matching
     // this task's own audit conclusion that nothing currently filters
     // on any lifecycle state (since none exists).
-    const selectBlock = dispatchSource.slice(dispatchSource.indexOf("Loading point / warehouse…") - 50, dispatchSource.indexOf("Loading point / warehouse…") + 200);
-    expect(selectBlock).toContain("warehouses.map");
+    // P2-02: the Plan Trip selector lists every loading point returned by
+    // GET /api/loading-points (all tenant warehouses, unfiltered).
+    const selectBlock = dispatchSource.slice(dispatchSource.indexOf("Loading Point <span") - 50, dispatchSource.indexOf("Loading Point <span") + 400);
+    expect(selectBlock).toContain("loadingPoints.map");
     expect(selectBlock).not.toContain(".filter(");
+    const lpRoute = fs.readFileSync(path.join(process.cwd(), "app/api/loading-points/route.ts"), "utf8");
+    expect(lpRoute).toContain("where: eq(warehouses.tenantId, tenantId)");
   });
 
   it("trip creation accepts any warehouse belonging to the tenant, with no lifecycle-state check", async () => {

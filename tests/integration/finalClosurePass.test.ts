@@ -283,10 +283,11 @@ describe("Site-scoped contract eligibility", () => {
 
   it("16. dispatch page requests eligible contracts with locationId after site selection", () => {
     const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
-    expect(src).toContain("onNewLocationChange");
-    expect(src).toContain("locationId");
+    // P2-02 NewOrderPanel: chooseSite → /api/contracts/eligible?customerId&locationId
+    expect(src).toContain("async function chooseSite");
+    expect(src).toContain("new URLSearchParams({ customerId, locationId: id })");
     expect(src).toContain("/api/contracts/eligible");
-    expect(src).toContain("customerSites");
+    expect(src).toContain("/api/customers/${id}/locations");
   });
 });
 
@@ -343,17 +344,23 @@ describe("Vehicle compatibility display and enforcement", () => {
   });
 
   it("20. dispatch page shows compatible/incompatible vehicle labels", () => {
-    const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
-    expect(src).toContain("Incompatible");
-    expect(src).toContain("Eligible");
-    expect(src).toContain("requiredTripCapacity");
-    expect(src).toContain("hasMixedCapacities");
+    // P2-02: tanker selection moved to the supervisor's Assignment Workspace,
+    // which labels every candidate AVAILABLE / BUSY / INELIGIBLE with its reason
+    // (strict capacity equality computed server-side in lib/dispatchEligibility.ts).
+    const src = require("fs").readFileSync("app/dispatch/assign/page.tsx", "utf8");
+    expect(src).toContain("INELIGIBLE");
+    expect(src).toContain("v.reason");
+    expect(src).toContain("/api/fleet/eligible-vehicles?tripId=");
+    expect(src).toContain("requiredTankerCapacityLtr");
   });
 
   it("21. Create Trip disabled when incompatible vehicle is selected (source check)", () => {
-    const src = require("fs").readFileSync("app/dispatch/page.tsx", "utf8");
-    expect(src).toContain("hasMixedCapacities ||");
-    expect(src).toContain("requiredTripCapacity != null && availableVehicles.find");
+    // P2-02: an ineligible tanker cannot be selected (radio disabled) and the
+    // server re-validates on assignment; mixed capacities are rejected at planning.
+    const src = require("fs").readFileSync("app/dispatch/assign/page.tsx", "utf8");
+    expect(src).toContain("disabled={!r.eligible}");
+    const route = require("fs").readFileSync("app/api/trips/route.ts", "utf8");
+    expect(route).toContain("TANKER_CAPACITY_MIXED");
   });
 
   it("22. mixed required capacities in same trip are rejected (server)", async () => {
