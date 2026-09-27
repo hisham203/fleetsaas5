@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AdminShell from "@/components/AdminShell";
 import StatusBadge from "@/components/StatusBadge";
+import { PageHeader, MetricCard, Btn, EmptyState, LoadingState } from "@/components/ds";
 import LiveMap from "@/components/LiveMap";
 import { resolveTripMapPosition } from "@/lib/mapPosition";
 import { useRequireSession } from "@/lib/useSession";
@@ -206,24 +207,27 @@ function DispatchPageInner() {
   const detailTrip = allTrips.find((t) => t.id === detailTripId) ?? null;
 
   if (sessionLoading || !session) {
-    return <AdminShell title="Dispatch (Live)"><p className="p-6 text-steel text-sm">Loading…</p></AdminShell>;
+    return <AdminShell title="Dispatch (Live)"><div className="p-6"><LoadingState label="Loading dispatch workspace…" /></div></AdminShell>;
   }
 
   return (
     <AdminShell title="Dispatch (Live)">
       <div className="p-6 space-y-5 max-w-7xl">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-ink">Order Intake &amp; Trip Planning</h1>
-            <p className="text-sm text-steel">Create bulk-water orders and plan unassigned trips. Tanker and driver assignment happens in the Assignment Workspace.</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowNewOrder((s) => !s)} className="btn btn-md btn-primary">
-              {showNewOrder ? "Close new order" : "+ New Order"}
-            </button>
-            <a href="/dispatch/assign" className="btn btn-md btn-outline">Assignment Workspace →</a>
-          </div>
-        </div>
+        <PageHeader
+          title="Planning & Dispatch"
+          subtitle="Create orders and plan unassigned trips. Assignment and dispatch happen in the Assignment Workspace."
+          breadcrumbs={[{ label: "Operations" }, { label: "Planning & Dispatch" }]}
+          actions={
+            <div className="flex gap-2">
+              <Btn variant="secondary" onClick={() => setShowNewOrder((s) => !s)}>
+                {showNewOrder ? "Close" : "+ New Order"}
+              </Btn>
+              <a href="/dispatch/assign" className="inline-flex items-center gap-1.5 rounded-lg text-sm font-medium px-3.5 py-2 bg-white border border-slate-200 text-ink hover:bg-paper transition-colors">
+                Assignment Workspace →
+              </a>
+            </div>
+          }
+        />
 
         {deepLinkNotice && (
           <div className="rounded-lg border border-warn/30 bg-warnLight px-4 py-3 text-sm text-warn flex items-center justify-between gap-3">
@@ -243,9 +247,12 @@ function DispatchPageInner() {
         {loadError && <div className="rounded-lg border border-warn/30 bg-warnLight px-4 py-3 text-sm text-warn">{loadError}</div>}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Kpi label="Orders awaiting planning" value={queue.length} />
-          <Kpi label="Planned trips" value={plannedTrips.length} sub={`${unassigned} awaiting assignment · ${plannedTrips.length - unassigned} ready to dispatch`} />
-          <Kpi label="Active trips" value={activeTrips.length} sub="Dispatched and in progress" />
+          <MetricCard label="Orders awaiting planning" value={queue.length} accent={queue.length > 0 ? "warn" : "default"} />
+          <MetricCard label="Planned trips" value={plannedTrips.length}
+            trendLabel={`${unassigned} awaiting assignment · ${plannedTrips.length - unassigned} ready to dispatch`}
+            accent={unassigned > 0 ? "warn" : "ok"} />
+          <MetricCard label="Active trips" value={activeTrips.length}
+            trendLabel="Dispatched and in progress" accent={activeTrips.length > 0 ? "info" : "default"} />
         </div>
 
         {escalations.length > 0 && <EscalationsPanel escalations={escalations} onChange={load} />}
@@ -286,7 +293,7 @@ function DispatchPageInner() {
                     />
                   ) : (
                     <div className="mt-3">
-                      <button onClick={() => setSelected([o.id])} className="btn btn-sm btn-primary">Plan Trip</button>
+                      <Btn variant="primary" size="sm" onClick={() => setSelected([o.id])}>Plan Trip</Btn>
                     </div>
                   )}
                 </div>
