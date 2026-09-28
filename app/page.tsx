@@ -3,8 +3,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
+// P2-02 / Milestone A: ADMIN now lands on the Command Center.
+// Other roles retain their existing destinations.
 const ROLE_DESTINATIONS: Record<string, string> = {
-  ADMIN: "/admin",
+  ADMIN: "/command",        // Milestone A: Command Center replaces /admin as default
   DISPATCHER: "/dispatch",
   DRIVER: "/driver",
   CUSTOMER: "/b2b",
