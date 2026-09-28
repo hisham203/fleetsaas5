@@ -106,16 +106,23 @@ export const NAV_DOMAINS: NavDomain[] = [
     id: "operations",
     label: "Operations",
     icon: ICONS.operations,
-    href: "/dispatch",
+    href: "/operations",
     maturity: "ACTIVE",
     groups: [
       {
-        id: "workflow",
-        label: "Workflow",
+        id: "workspace",
+        label: "Workspace",
         modules: [
+          { id: "ops-workspace", label: "Operations Workspace", href: "/operations", icon: ICONS.commandCenter, maturity: "ACTIVE" },
           { id: "dispatch", label: "Planning & Dispatch", href: "/dispatch", icon: ICONS.dispatch, maturity: "ACTIVE" },
           { id: "assign", label: "Assignment Workspace", href: "/dispatch/assign", icon: ICONS.trips, maturity: "ACTIVE" },
-          { id: "exceptions", label: "Exceptions", href: "/admin?tab=exceptions", icon: ICONS.exceptions, maturity: "PARTIAL" },
+        ],
+      },
+      {
+        id: "visibility",
+        label: "Visibility",
+        modules: [
+          { id: "exceptions", label: "Exceptions", href: "/operations/exceptions", icon: ICONS.exceptions, maturity: "ACTIVE" },
           { id: "loading-points", label: "Loading Points", href: "/admin/loading-points", icon: ICONS.loadingPoints, maturity: "ACTIVE" },
         ],
       },
