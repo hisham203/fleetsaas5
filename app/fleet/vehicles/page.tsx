@@ -105,7 +105,7 @@ export default function VehiclesPage() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map(v => (
                     <VehicleRow key={v.id} v={v}
-                      onView={(v) => window.location.href = `/admin?tab=fleet&vehicleId=${v.id}`} />
+                      onView={(v) => window.location.href = `/fleet/vehicles/${v.id}`} />
                   ))}
                 </tbody>
               </table>
