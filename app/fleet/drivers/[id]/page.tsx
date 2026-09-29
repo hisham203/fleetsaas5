@@ -23,6 +23,10 @@ interface Trip {
   dispatchedAt?: string; completedAt?: string;
   vehicle?: { plateNumber: string };
 }
+interface ExpenseClaim {
+  id: string; expenseRef?: string; category: string; amount: number;
+  status: string; description?: string; tripId?: string; createdAt?: string;
+}
 interface ScoreMetric {
   period: string;
   tripsCompleted: number; tripsFailed: number;
@@ -44,14 +48,16 @@ export default function Driver360Page() {
   const [driver, setDriver] = useState<Driver | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expenses, setExpenses] = useState<ExpenseClaim[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("overview");
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
-    const [driversRes, tripsRes] = await Promise.allSettled([
+    const [driversRes, tripsRes, expRes] = await Promise.allSettled([
       fetch("/api/drivers"),
       fetch("/api/trips"),
+      fetch("/api/expenses?driverId=" + id),
     ]);
     let found: Driver | null = null;
     if (driversRes.status === "fulfilled" && driversRes.value.ok) {
@@ -64,6 +70,10 @@ export default function Driver360Page() {
       const all = await tripsRes.value.json();
       const driverTrips = (Array.isArray(all) ? all : []).filter((t: any) => t.driverId === id || t.driver?.id === id);
       setTrips(driverTrips);
+    }
+    if (expRes.status === "fulfilled" && expRes.value.ok) {
+      const expData = await expRes.value.json();
+      setExpenses(Array.isArray(expData) ? expData : []);
     }
     setLoading(false);
   }, [id]);
@@ -86,9 +96,11 @@ export default function Driver360Page() {
   const completed = trips.filter(t => t.status === "COMPLETED");
   const failed = trips.filter(t => t.status === "FAILED");
 
+  const pendingExpenses = expenses.filter(e => e.status === "PENDING").length;
   const TABS = [
     { id: "overview", label: "Overview" },
     { id: "trips", label: `Trips (${trips.length})` },
+    { id: "expenses", label: `Expenses (${expenses.length})` },
   ];
 
   return (
@@ -173,6 +185,57 @@ export default function Driver360Page() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+        {tab === "expenses" && (
+          <div className="space-y-4">
+            {/* EXP-001: Driver expense submission currently fails with CONFIGURE_NUMBERING.
+                Display only — submission not available until EXP-001 is resolved. */}
+            {pendingExpenses > 0 && (
+              <div className="flex items-center gap-2 px-4 py-3 bg-warnLight rounded-lg text-sm text-warn border border-warn/20">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9.303 3.376c.866 1.5-.217 3.374-1.948 3.374H4.645c-1.73 0-2.813-1.874-1.948-3.374l6.949-12.002c.866-1.5 3.032-1.5 3.898 0L20.303 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <span>{pendingExpenses} pending expense{pendingExpenses !== 1 ? "s" : ""} awaiting review.</span>
+              </div>
+            )}
+            {expenses.length === 0 ? (
+              <EmptyState title="No expense claims" description="No expense claims found for this driver." />
+            ) : (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-paper">
+                        {["Ref", "Category", "Amount (SAR)", "Status", "Trip", "Date"].map(h => (
+                          <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3 whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {expenses.map(e => (
+                        <tr key={e.id} className="hover:bg-paper">
+                          <td className="px-4 py-3 text-sm font-mono text-steel">{e.expenseRef ?? "—"}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-ink">{e.category}</td>
+                          <td className="px-4 py-3 text-sm tabular-nums font-medium">{e.amount.toLocaleString()}</td>
+                          <td className="px-4 py-3"><StatusBadge status={e.status} size="xs" /></td>
+                          <td className="px-4 py-3">
+                            {e.tripId ? (
+                              <button onClick={() => router.push(`/operations/trips/${e.tripId}`)}
+                                className="text-xs text-aqua hover:underline">View →</button>
+                            ) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-steel">{fmtDt(e.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-4 py-2.5 border-t border-slate-100 text-xs text-steel">
+                  {expenses.length} expense claims
+                </div>
               </div>
             )}
           </div>

@@ -1,93 +1,244 @@
 "use client";
+/**
+ * Fleet Maintenance Workspace — Milestone C Closure
+ *
+ * Genuine tenant-wide maintenance workspace using GET /api/fleet/maintenance.
+ * No single-vehicle bias. All vehicles, all records.
+ *
+ * Does NOT add maintenance scheduling (no schema support).
+ * Does NOT change BR-15 (opening a record → MAINTENANCE status).
+ */
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import AdminShell from "@/components/AdminShell";
-import { PageContainer, PageHeader, StatusBadge, EmptyState, LoadingState, MetricCard, FilterBar, Btn } from "@/components/ds";
+import {
+  PageContainer, PageHeader, StatusBadge, FilterBar,
+  EmptyState, LoadingState, MetricCard, Btn,
+} from "@/components/ds";
 
-type MaintenanceRecord = { id: string; vehicleId: string; type: string; status: string; description?: string; scheduledAt?: string; completedAt?: string; cost?: number; vehicle?: { plateNumber?: string; plate?: string } };
+interface VehicleIdentity {
+  id: string; plateNumber: string; vehicleType: string;
+  vehicleCode?: string; status: string;
+}
+interface MaintenanceRecord {
+  id: string; vehicleId: string; type: string; description: string;
+  status: string; odometerReading?: number; cost?: number;
+  openedAt?: string; completedAt?: string;
+  vehicle: VehicleIdentity | null;
+}
 
-function fmtDate(d?: string) { if (!d) return "—"; return new Date(d).toLocaleDateString("en-SA", { day:"numeric", month:"short", year:"2-digit" }); }
+const TYPE_LABELS: Record<string, string> = {
+  PREVENTIVE: "Preventive",
+  CORRECTIVE: "Corrective",
+  EMERGENCY: "Emergency",
+};
 
-export default function MaintenancePage() {
+function fmtDate(dt?: string | null) {
+  if (!dt) return "—";
+  return new Date(dt).toLocaleDateString("en-SA", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export default function FleetMaintenanceWorkspacePage() {
+  const router = useRouter();
   const [records, setRecords] = useState<MaintenanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [vehicles, setVehicles] = useState<any[]>([]);
-  const [selectedVehicle, setSelectedVehicle] = useState("ALL");
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [typeFilter, setTypeFilter] = useState("ALL");
+  const [vehicleFilter, setVehicleFilter] = useState("ALL");
+
+  // Derived: unique vehicles for filter dropdown
+  const vehicles = Array.from(
+    new Map(
+      records.filter((r) => r.vehicle).map((r) => [r.vehicleId, r.vehicle!])
+    ).values()
+  ).sort((a, b) => a.plateNumber.localeCompare(b.plateNumber));
 
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const vRes = await fetch("/api/vehicles");
-      if (vRes.ok) {
-        const vData = await vRes.json();
-        const vList = Array.isArray(vData) ? vData : [];
-        setVehicles(vList);
-        if (vList.length > 0) {
-          const mRes = await fetch(`/api/vehicles/${vList[0].id}/maintenance`);
-          if (mRes.ok) {
-            const mData = await mRes.json();
-            const allRecords = Array.isArray(mData) ? mData : [];
-            setRecords(allRecords.map((r: any) => ({ ...r, vehicle: vList[0] })));
-          }
-        }
-      }
-    } catch (e) { console.error(e); }
+    setLoading(true); setError(null);
+    const r = await fetch("/api/fleet/maintenance");
+    if (!r.ok) {
+      setError(r.status === 401 ? "Unauthorized." : "Failed to load maintenance records.");
+      setLoading(false); return;
+    }
+    const data = await r.json();
+    setRecords(Array.isArray(data) ? data : []);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = records.filter(r => {
-    const matchSearch = !search || (r.type ?? "").toLowerCase().includes(search.toLowerCase()) || (r.description ?? "").toLowerCase().includes(search.toLowerCase());
-    return matchSearch;
+  const filtered = records.filter((r) => {
+    const q = search.toLowerCase();
+    const matchSearch = !q ||
+      (r.vehicle?.plateNumber ?? "").toLowerCase().includes(q) ||
+      r.type.toLowerCase().includes(q) ||
+      r.description.toLowerCase().includes(q) ||
+      (r.vehicle?.vehicleCode ?? "").toLowerCase().includes(q);
+    const matchStatus = statusFilter === "ALL" || r.status === statusFilter;
+    const matchType = typeFilter === "ALL" || r.type === typeFilter;
+    const matchVehicle = vehicleFilter === "ALL" || r.vehicleId === vehicleFilter;
+    return matchSearch && matchStatus && matchType && matchVehicle;
   });
 
-  const counts = { total: records.length, open: records.filter(r=>r.status==="OPEN").length, completed: records.filter(r=>r.status==="COMPLETED").length };
+  const open = records.filter((r) => r.status === "OPEN").length;
+  const completed = records.filter((r) => r.status === "COMPLETED").length;
+  const uniqueVehicles = new Set(records.map((r) => r.vehicleId)).size;
+  const totalCost = records
+    .filter((r) => r.cost != null)
+    .reduce((sum, r) => sum + (r.cost ?? 0), 0);
 
   return (
-    <AdminShell title="Maintenance">
+    <AdminShell title="Fleet Maintenance">
       <PageContainer>
         <PageHeader
-          title="Maintenance"
-          subtitle="Vehicle maintenance records"
+          title="Fleet Maintenance"
+          subtitle="Tenant-wide maintenance records — all vehicles"
           breadcrumbs={[{ label: "Fleet" }, { label: "Maintenance" }]}
-          actions={<Btn variant="primary" size="sm" onClick={load}>Refresh</Btn>}
+          actions={<Btn variant="ghost" size="sm" onClick={load}>↺ Refresh</Btn>}
         />
-        <div className="mb-4 text-xs text-steel bg-warnLight rounded-lg px-4 py-2">
-          Showing maintenance records for the first registered vehicle. Full fleet maintenance view is planned for Milestone C.
+
+        {error && (
+          <div className="mb-4 px-4 py-3 bg-dangerLight rounded-lg text-sm text-danger">{error}</div>
+        )}
+
+        {/* KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <MetricCard label="Total Records" value={records.length} />
+          <MetricCard label="Open" value={open}
+            accent={open > 0 ? "warn" : "default"}
+            trendLabel={open > 0 ? "Active work items" : "None open"} />
+          <MetricCard label="Completed" value={completed} accent="ok" />
+          <MetricCard label="Vehicles Affected" value={uniqueVehicles} />
         </div>
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <MetricCard label="Total Records" value={counts.total} />
-          <MetricCard label="Open" value={counts.open} accent="warn" />
-          <MetricCard label="Completed" value={counts.completed} accent="ok" />
-        </div>
-        <FilterBar search={search} onSearch={setSearch} onClear={() => setSearch("")} />
-        {loading ? <LoadingState /> : filtered.length === 0 ? (
-          <EmptyState title="No maintenance records" description="No maintenance records found for this vehicle." />
+
+        {/* Filters */}
+        <FilterBar
+          search={search}
+          onSearch={setSearch}
+          filters={
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-aqua/30"
+              >
+                <option value="ALL">All statuses</option>
+                <option value="OPEN">Open</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-aqua/30"
+              >
+                <option value="ALL">All types</option>
+                <option value="PREVENTIVE">Preventive</option>
+                <option value="CORRECTIVE">Corrective</option>
+                <option value="EMERGENCY">Emergency</option>
+              </select>
+
+              {vehicles.length > 1 && (
+                <select
+                  value={vehicleFilter}
+                  onChange={(e) => setVehicleFilter(e.target.value)}
+                  className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-aqua/30"
+                >
+                  <option value="ALL">All vehicles</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>{v.plateNumber}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          }
+          onClear={() => {
+            setSearch("");
+            setStatusFilter("ALL");
+            setTypeFilter("ALL");
+            setVehicleFilter("ALL");
+          }}
+        />
+
+        {loading ? (
+          <LoadingState label="Loading maintenance records…" />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title="No maintenance records found"
+            description={
+              search || statusFilter !== "ALL" || typeFilter !== "ALL" || vehicleFilter !== "ALL"
+                ? "Try adjusting your filters."
+                : "No maintenance records for this fleet yet."
+            }
+          />
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-card">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-paper">
-                    {["Type", "Description", "Status", "Scheduled", "Completed", "Cost"].map(h => (
-                      <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                    {["Vehicle", "Status", "Type", "Description", "Opened", "Closed", "Odometer", "Cost (SAR)"].map((h) => (
+                      <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filtered.map(r => (
-                    <tr key={r.id} className="hover:bg-paper">
-                      <td className="px-4 py-3 text-sm font-medium text-ink">{r.type}</td>
-                      <td className="px-4 py-3 text-sm text-steel max-w-xs truncate">{r.description ?? "—"}</td>
-                      <td className="px-4 py-3"><StatusBadge status={r.status} size="sm" /></td>
-                      <td className="px-4 py-3 text-sm text-steel">{fmtDate(r.scheduledAt)}</td>
-                      <td className="px-4 py-3 text-sm text-steel">{fmtDate(r.completedAt)}</td>
-                      <td className="px-4 py-3 text-sm text-ink tabular-nums">{r.cost != null ? `SAR ${r.cost.toLocaleString()}` : "—"}</td>
+                  {filtered.map((r) => (
+                    <tr key={r.id} className="hover:bg-paper transition-colors">
+                      {/* Vehicle — links to Vehicle 360 */}
+                      <td className="px-4 py-3">
+                        {r.vehicle ? (
+                          <button
+                            onClick={() => router.push(`/fleet/vehicles/${r.vehicleId}`)}
+                            className="text-left"
+                          >
+                            <div className="text-sm font-semibold text-aqua hover:underline">
+                              {r.vehicle.plateNumber}
+                            </div>
+                            <div className="text-xs text-steel">{r.vehicle.vehicleType}</div>
+                            {r.vehicle.status === "MAINTENANCE" && (
+                              <StatusBadge status="MAINTENANCE" size="xs" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="text-sm text-steel">{r.vehicleId.slice(0, 8)}…</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={r.status} size="sm" />
+                      </td>
+                      <td className="px-4 py-3 text-sm font-medium text-ink">
+                        {TYPE_LABELS[r.type] ?? r.type}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-steel max-w-xs truncate">
+                        {r.description}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-steel whitespace-nowrap">
+                        {fmtDate(r.openedAt)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-steel whitespace-nowrap">
+                        {fmtDate(r.completedAt)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-steel tabular-nums">
+                        {r.odometerReading?.toLocaleString() ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-sm tabular-nums">
+                        {r.cost != null ? r.cost.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-steel">{filtered.length} of {records.length} records</span>
+              {totalCost > 0 && (
+                <span className="text-xs text-steel">
+                  Total cost: <span className="font-medium text-ink">SAR {totalCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </span>
+              )}
             </div>
           </div>
         )}
