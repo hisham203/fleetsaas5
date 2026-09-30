@@ -6,32 +6,17 @@ import { getSessionFromRequest, hasRole, getSessionTenantId } from "@/lib/auth";
 import { genId } from "@/lib/helpers";
 import { eq, and } from "drizzle-orm";
 import { checkPermission, PERMISSIONS } from "@/lib/requirePermission";
+import { RECOMMENDED_NUMBERING_DEFAULTS } from "@/lib/numberingDefaults";
 
 // RC1 — Apply recommended Smarty1 numbering series. Requires explicit
 // ADMIN confirmation (preview=true shows what would be created; POST
 // with confirm=true actually creates them). Never overwrites existing
 // series. Never runs automatically.
-const RECOMMENDED = [
-  // Core master data
-  { entityType: "CUSTOMER", seriesCode: "CUSTOMER_MAIN", displayName: "Customer", prefix: "C", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "CUSTOMER_SITE", seriesCode: "CUSTOMER_SITE_MAIN", displayName: "Customer Site", prefix: "S", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "SUPPLIER", seriesCode: "SUPPLIER_MAIN", displayName: "Supplier", prefix: "V", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "VEHICLE", seriesCode: "VEHICLE_MAIN", displayName: "Vehicle", prefix: "VH", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "DRIVER", seriesCode: "DRIVER_MAIN", displayName: "Driver", prefix: "D", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "LOADING_POINT", seriesCode: "LOADING_POINT_MAIN", displayName: "Loading Point", prefix: "LP", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "ITEM_GROUP", seriesCode: "ITEM_GROUP_MAIN", displayName: "Item Group", prefix: "IG", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "ITEM_CATEGORY", seriesCode: "ITEM_CATEGORY_MAIN", displayName: "Item Category", prefix: "IC", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "ITEM_SUBCATEGORY", seriesCode: "ITEM_SUBCATEGORY_MAIN", displayName: "Item Subcategory", prefix: "ISC", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "ITEM", seriesCode: "ITEM_MAIN", displayName: "Item", prefix: "I", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "WORKSHOP", seriesCode: "WORKSHOP_MAIN", displayName: "Workshop", prefix: "W", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "MAINTENANCE_WAREHOUSE", seriesCode: "MAINT_WAREHOUSE_MAIN", displayName: "Maintenance Warehouse", prefix: "WH", seriesSegment: "06", paddingLength: 3 },
-  // RC1 Phase 1 operational: documents must have ERP numbers — no fallback allowed
-  { entityType: "CONTRACT", seriesCode: "CONTRACT_MAIN", displayName: "Contract", prefix: "CNT", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "EXPENSE", seriesCode: "EXPENSE_MAIN", displayName: "Expense Claim", prefix: "EXP", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "PURCHASE_REQUISITION", seriesCode: "PR_MAIN", displayName: "Purchase Requisition", prefix: "PR", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "PURCHASE_ORDER", seriesCode: "PO_MAIN", displayName: "Purchase Order", prefix: "PO", seriesSegment: "06", paddingLength: 3 },
-  { entityType: "GOODS_RECEIPT", seriesCode: "GR_MAIN", displayName: "Goods Receipt", prefix: "GRN", seriesSegment: "06", paddingLength: 3 },
-];
+//
+// The canonical list lives in lib/numberingDefaults.ts — both this route
+// and tenant signup consume the same RECOMMENDED_NUMBERING_DEFAULTS so
+// they can never diverge (EXP-001 architecture closure).
+const RECOMMENDED = RECOMMENDED_NUMBERING_DEFAULTS;
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
