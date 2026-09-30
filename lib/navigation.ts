@@ -132,9 +132,17 @@ export const NAV_DOMAINS: NavDomain[] = [
     id: "fleet",
     label: "Fleet",
     icon: ICONS.fleet,
-    href: "/admin?tab=fleet",
+    href: "/fleet/overview",
     maturity: "ACTIVE",
     groups: [
+      {
+        id: "summary",
+        label: "Overview",
+        modules: [
+          { id: "fleet-overview", label: "Fleet Overview", href: "/fleet/overview", icon: ICONS.fleet, maturity: "ACTIVE" },
+          { id: "compliance", label: "Compliance", href: "/fleet/compliance", icon: ICONS.roles, maturity: "ACTIVE" },
+        ],
+      },
       {
         id: "assets",
         label: "Assets",
@@ -144,12 +152,12 @@ export const NAV_DOMAINS: NavDomain[] = [
         ],
       },
       {
-        id: "ops",
-        label: "Operations",
+        id: "maintenance-ops",
+        label: "Maintenance & Ops",
         modules: [
           { id: "maintenance", label: "Maintenance", href: "/fleet/maintenance", icon: ICONS.maintenance, maturity: "ACTIVE" },
-          { id: "fuel", label: "Fuel", href: "/admin?tab=fuel", icon: ICONS.fuel, maturity: "PARTIAL" },
-          { id: "tyres", label: "Tyres", href: "/admin?tab=tyres", icon: ICONS.tyres, maturity: "PARTIAL" },
+          { id: "fuel", label: "Fuel", href: "/fleet/fuel", icon: ICONS.fuel, maturity: "ACTIVE" },
+          { id: "tyres", label: "Tyres", href: "/fleet/tyres", icon: ICONS.tyres, maturity: "ACTIVE" },
           { id: "workshops", label: "Workshops", href: "/admin/workshops", icon: ICONS.workshops, maturity: "ACTIVE" },
         ],
       },

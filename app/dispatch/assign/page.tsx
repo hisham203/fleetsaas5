@@ -89,6 +89,16 @@ function VehicleCard({ v, selected, onSelect }: { v: VehicleCandidate; selected:
       {v.eligible && selected && (
         <p className="mt-1.5 text-2xs text-aqua font-medium">✓ Selected</p>
       )}
+      {/* Vehicle 360 deep-link — non-disruptive, stops click propagation */}
+      <a
+        href={`/fleet/vehicles/${v.candidate.id}`}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="mt-1.5 text-2xs text-steel hover:text-aqua block"
+      >
+        Fleet details →
+      </a>
     </button>
   );
 }
