@@ -2,13 +2,14 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
-import { tenants, users, warehouses, inventoryItems } from "@/lib/db/schema";
+import { tenants, users, warehouses, inventoryItems, numberingSeries } from "@/lib/db/schema";
 import { genId } from "@/lib/helpers";
 import { hashPassword, createSession, SESSION_COOKIE } from "@/lib/auth";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { logSignupSuccess, logSignupFailure, logRateLimitHit } from "@/lib/logger";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { RECOMMENDED_NUMBERING_DEFAULTS } from "@/lib/numberingDefaults";
 
 // Signup creates a real tenant + admin + warehouse per call — a more
 // expensive and more abuse-prone operation than a login attempt, so this
@@ -29,11 +30,19 @@ const signupSchema = z.object({
 });
 
 // Multi-tenant onboarding: one call creates a brand-new, fully isolated
-// company — tenant row, its first Admin user, and a default warehouse with
-// starter inventory so the new tenant isn't staring at an empty Inventory
-// tab. Every subsequent request is scoped to this tenant via the session
-// (see lib/auth.ts getSessionTenantId) — the client never gets to choose
-// which tenant it's operating on.
+// company — tenant row, its first Admin user, a default warehouse with
+// starter inventory, and all recommended numbering series.
+// The numbering series bootstrap runs inside the same transaction so that
+// a functional tenant is never created without the configuration required
+// for core workflows (expenses, contracts, etc.). ON CONFLICT DO NOTHING
+// is safe inside a Postgres transaction — it uses the same connection/tx
+// and the unique constraint on (tenantId, entityType) guarantees
+// idempotency without aborting the transaction.
+//
+// EXP-001 root cause fixed: pre-fix signup omitted numbering bootstrap
+// entirely. Post-fix: bootstrap is atomic with tenant creation.
+// Canonical series list lives in lib/numberingDefaults.ts — consumed here
+// and by Settings → Apply Recommended so both surfaces are always in sync.
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
   const ipCheck = checkRateLimit(`signup:ip:${ip}`, SIGNUP_IP_LIMIT, SIGNUP_WINDOW_MS);
@@ -65,6 +74,10 @@ export async function POST(req: NextRequest) {
   const warehouseId = genId();
   const passwordHash = await hashPassword(data.password);
 
+  // All tenant bootstrap is atomic — either the complete functional tenant
+  // exists (tenant + admin + warehouse + inventory + numbering series) or
+  // nothing is committed. The driver is node-postgres via Drizzle; tx.insert
+  // on the same tx object is safe and tested on multiple tables above.
   await db.transaction(async (tx) => {
     await tx.insert(tenants).values({ id: tenantId, name: data.companyName, sector: data.sector });
     await tx
@@ -83,6 +96,31 @@ export async function POST(req: NextRequest) {
       { id: genId(), tenantId, warehouseId, itemName: "19L Bottle - Full", quantity: 0, unit: "bottle" },
       { id: genId(), tenantId, warehouseId, itemName: "19L Bottle - Empty", quantity: 0, unit: "bottle" },
     ]);
+
+    // Recommended numbering series — sourced from lib/numberingDefaults.ts.
+    // ON CONFLICT DO NOTHING: the unique constraint on (tenantId, entityType)
+    // makes this safe for re-entrant calls (e.g., tests). Since tenantId is
+    // brand new in this transaction, conflicts are impossible in normal
+    // production usage; the clause only guards against unusual concurrent
+    // signups with the same generated tenantId (practically impossible but
+    // structurally safe).
+    const seriesValues = RECOMMENDED_NUMBERING_DEFAULTS.map((s) => ({
+      id: genId(),
+      tenantId,
+      entityType: s.entityType,
+      seriesCode: s.seriesCode,
+      displayName: s.displayName,
+      prefix: s.prefix,
+      seriesSegment: "06",
+      separator: "",
+      paddingLength: 3,
+      nextNumber: 1,
+      resetPolicy: "NEVER",
+      includeYear: false,
+      includeMonth: false,
+      status: "ACTIVE",
+    }));
+    await tx.insert(numberingSeries).values(seriesValues).onConflictDoNothing();
   });
 
   const { token, expiresAt } = await createSession("USER", userId);

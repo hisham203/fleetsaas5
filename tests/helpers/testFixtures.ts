@@ -1,5 +1,6 @@
 import { db } from "@/lib/db/client";
 import { users, drivers, vehicles, contracts, numberingSeries } from "@/lib/db/schema";
+import { SERIES_PREFIX_MAP } from "@/lib/numberingDefaults";
 import { genId } from "@/lib/helpers";
 import { hashPassword } from "@/lib/auth";
 import { loginAs } from "./request";
@@ -82,11 +83,11 @@ export async function ensureNumberingSeries(tenantId: string, entityType: string
   return id;
 }
 
-export const SERIES_PREFIX: Record<string, string> = {
-  SUPPLIER: "V", ITEM_GROUP: "IG", ITEM_CATEGORY: "IC", ITEM_SUBCATEGORY: "ISC", ITEM: "I", WORKSHOP: "W", MAINTENANCE_WAREHOUSE: "WH",
-  CUSTOMER: "C", CUSTOMER_SITE: "S", VEHICLE: "VH", DRIVER: "D", LOADING_POINT: "LP",
-  CONTRACT: "CNT", EXPENSE: "EXP", PURCHASE_REQUISITION: "PR", PURCHASE_ORDER: "PO", GOODS_RECEIPT: "GRN",
-};
+// Derived from lib/numberingDefaults.ts — single canonical source.
+// EXP-001 architecture: maintaining this as an independent copy was the
+// structural condition that could recreate CONFIGURE_NUMBERING defects.
+// Any future entity type must be added to lib/numberingDefaults.ts only.
+export const SERIES_PREFIX: Record<string, string> = SERIES_PREFIX_MAP;
 
 // Milestone AG — ensures all converted entity types have an active series
 // for the given tenant. Idempotent per tenant+entityType.
