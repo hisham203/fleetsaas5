@@ -662,13 +662,19 @@ Check:
 
         {/* Tab Bar */}
         <div className="bg-white border-b border-slate-200 px-6 flex gap-0 flex-shrink-0">
-          {(demoEnabled ? (["map", "events", "history", "demo"] as const) : (["map", "events", "history"] as const)).map(tab => (
+          {(["map", "events", "history", "demo"] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab ? "border-aqua text-aqua" : "border-transparent text-steel hover:text-ink"}`}>
+              disabled={tab === "demo" && !demoEnabled}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab ? "border-aqua text-aqua" :
+                tab === "demo" && !demoEnabled ? "border-transparent text-steel/40 cursor-not-allowed" :
+                "border-transparent text-steel hover:text-ink"
+              }`}
+              title={tab === "demo" && !demoEnabled ? "GPS Demo is disabled — set GPS_DEMO_ENABLED=true to enable" : undefined}>
               {tab === "map" && "🗺 Fleet Map"}
               {tab === "events" && `🔔 Operations${unread > 0 ? ` (${unread})` : ""}`}
               {tab === "history" && "📋 Trip History"}
-          {demoEnabled && tab === "demo" && "🎮 GPS Demo"}
+              {tab === "demo" && (demoEnabled ? "🎮 GPS Demo" : "🎮 GPS Demo [disabled]")}
             </button>
           ))}
         </div>

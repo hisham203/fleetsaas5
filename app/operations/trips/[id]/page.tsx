@@ -153,6 +153,8 @@ export default function Trip360Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("overview");
+  const [gpsHistory, setGpsHistory] = useState<{ lat: number; lng: number; speed: number | null; heading: number | null; recordedAt: string; source: string }[] | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
   const [dispatching, setDispatching] = useState(false);
 
   const load = useCallback(async () => {
@@ -236,12 +238,26 @@ export default function Trip360Page() {
   const hasPod = trip.stops.some((s) => s.epod != null);
 
   const TABS_DEF = [
-    { id: "overview", label: "Overview" },
-    { id: "timeline", label: "Timeline" },
-    { id: "stops", label: `Stops (${trip.stops.length})` },
+    { id: "overview",   label: "Overview" },
+    { id: "timeline",   label: "Timeline" },
+    { id: "stops",      label: `Stops (${trip.stops.length})` },
     { id: "assignment", label: "Assignment" },
     ...(hasPod ? [{ id: "pod", label: "POD" }] : []),
+    { id: "gps",        label: "GPS Trace" },
   ];
+
+  async function loadGpsTrace() {
+    if (gpsHistory !== null || !trip) return; // cached or no trip
+    setGpsLoading(true);
+    const res = await fetch(`/api/telematics/trips/${trip.id}/replay`).catch(() => null);
+    if (res?.ok) {
+      const data = await res.json();
+      setGpsHistory(data.actualTrace ?? []);
+    } else {
+      setGpsHistory([]);
+    }
+    setGpsLoading(false);
+  }
 
   const STAGES = [
     "TRIP_PLANNED", "ASSIGNED", "DISPATCHED",
@@ -323,7 +339,10 @@ export default function Trip360Page() {
         )}
 
         {/* Tabs */}
-        <Tabs tabs={TABS_DEF} active={tab} onChange={setTab} />
+        <Tabs tabs={TABS_DEF} active={tab} onChange={(t) => {
+          setTab(t);
+          if (t === "gps") loadGpsTrace();
+        }} />
 
         {/* ── OVERVIEW ── */}
         {tab === "overview" && (
@@ -558,6 +577,59 @@ export default function Trip360Page() {
                 title="No POD available"
                 description="POD is captured by the driver on delivery completion."
               />
+            )}
+          </div>
+        )}
+
+        {tab === "gps" && (
+          <div className="space-y-4">
+            <div className="bg-infoLight/20 border border-info/20 rounded-xl p-4 text-xs text-steel">
+              <strong>Actual GPS Trace</strong> — positions recorded from the vehicle/driver during this trip.
+              This is NOT a computed or planned route. Demo (simulated) positions are marked with DEMO source.
+            </div>
+            {gpsLoading ? (
+              <div className="text-sm text-steel text-center py-8">Loading GPS trace…</div>
+            ) : gpsHistory === null ? (
+              <div className="text-sm text-steel text-center py-8">Click GPS Trace tab to load.</div>
+            ) : gpsHistory.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-card p-8 text-center text-steel text-sm">
+                No GPS data recorded for this trip.{trip.status !== "COMPLETED" ? " GPS is updated live during active trips." : ""}
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-100 bg-paper flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-ink">GPS Trace ({gpsHistory.length} points)</h2>
+                    <p className="text-xs text-steel mt-0.5">Chronological — oldest first</p>
+                  </div>
+                  <a href={`/telematics/replay?tripId=${trip.id}`}
+                    className="text-xs text-aqua hover:underline font-medium">Full Replay →</a>
+                </div>
+                <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-paper border-b border-slate-100">
+                      <tr>
+                        {["#","Time","Lat","Lng","Speed (m/s)","Heading","Source"].map(h => (
+                          <th key={h} className="text-left font-semibold text-steel px-4 py-2">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {gpsHistory.map((p, i) => (
+                        <tr key={i} className={p.source === "DEMO" ? "bg-warnLight/20" : "hover:bg-paper"}>
+                          <td className="px-4 py-1.5 text-steel">{i + 1}</td>
+                          <td className="px-4 py-1.5 font-mono">{new Date(p.recordedAt).toLocaleTimeString("en-SA")}</td>
+                          <td className="px-4 py-1.5 font-mono">{p.lat.toFixed(5)}</td>
+                          <td className="px-4 py-1.5 font-mono">{p.lng.toFixed(5)}</td>
+                          <td className="px-4 py-1.5">{p.speed != null ? p.speed.toFixed(1) : "—"}</td>
+                          <td className="px-4 py-1.5">{p.heading != null ? `${Math.round(p.heading)}°` : "—"}</td>
+                          <td className={`px-4 py-1.5 font-medium ${p.source === "DEMO" ? "text-warn" : "text-steel"}`}>{p.source}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
         )}

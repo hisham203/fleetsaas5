@@ -183,6 +183,13 @@
       "when": 1789990000000,
       "tag": "0025_p2_02_unassigned_trip_planning",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790812800000,
+      "tag": "0026_milestone_d_telematics_core",
+      "breakpoints": true
     }
   ]
 }

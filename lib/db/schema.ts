@@ -5,7 +5,7 @@
 // test suite existed to validate the migration didn't change behavior —
 // see README's "Database: Postgres" section for setup.
 
-import { pgTable, text, integer, real, boolean, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, real, boolean, timestamp, uniqueIndex, index, json } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 const createdAt = () =>
@@ -2042,6 +2042,9 @@ export const vehicleGpsHistory = pgTable("vehicle_gps_history", {
   heading: real("heading"),            // degrees 0–360
 
   recordedAt: timestamp("recorded_at", { mode: "date" }).notNull().defaultNow(),
+  // Milestone D: persistent source provenance (DEVICE | DRIVER_APP | DEMO)
+  // Backfill: all rows before 0026 have DEFAULT 'DRIVER_APP' (correct attribution for P2-01 pings)
+  source: text("source").notNull().default("DRIVER_APP"),
 });
 
 // Operational event feed: geofence arrivals, GPS stale alerts, late trips, etc.
@@ -2090,3 +2093,140 @@ export const roleAuditLog = pgTable("role_audit_log", {
   detail: text("detail"),
   createdAt: createdAt(),
 });
+
+
+// ── Milestone D: Telematics Core ──────────────────────────────────────────────
+
+export const telematicsProviders = pgTable("telematics_providers", {
+  id:           text("id").primaryKey(),
+  tenantId:     text("tenant_id").notNull(),
+  name:         text("name").notNull(),
+  providerType: text("provider_type").notNull(), // HARDWARE_DEVICE | PLATFORM_API | DRIVER_APP | DEMO
+  status:       text("status").notNull().default("ACTIVE"),
+  webhookTokenHash: text("webhook_token_hash"), // bcrypt hash only — never plaintext
+  config:       json("config"),                // non-secret configuration
+  notes:        text("notes"),
+  createdAt:    timestamp("created_at", { mode: "date" }).notNull().$defaultFn(() => new Date()),
+  updatedAt:    timestamp("updated_at", { mode: "date" }).$defaultFn(() => new Date()),
+});
+
+export const telematicsDevices = pgTable("telematics_devices", {
+  id:               text("id").primaryKey(),
+  tenantId:         text("tenant_id").notNull(),
+  providerId:       text("provider_id").notNull().references(() => telematicsProviders.id),
+  deviceIdentifier: text("device_identifier").notNull(),
+  externalId:       text("external_id"),
+  deviceType:       text("device_type").notNull().default("GPS_TRACKER"), // GPS_TRACKER | OBD | MOBILE | VIRTUAL
+  status:           text("status").notNull().default("UNASSIGNED"),       // ACTIVE | INACTIVE | OFFLINE | FAULT | UNASSIGNED
+  serialNumber:     text("serial_number"),
+  firmwareVersion:  text("firmware_version"),
+  lastCommunication: timestamp("last_communication", { mode: "date" }),
+  lastGpsFix:       timestamp("last_gps_fix", { mode: "date" }),
+  lastLat:          real("last_lat"),
+  lastLng:          real("last_lng"),
+  metadata:         json("metadata"),
+  notes:            text("notes"),
+  createdAt:        timestamp("created_at", { mode: "date" }).notNull().$defaultFn(() => new Date()),
+  updatedAt:        timestamp("updated_at", { mode: "date" }).$defaultFn(() => new Date()),
+});
+
+// DB guarantees: at most one CURRENT (unassigned_at IS NULL) assignment per device
+// and per vehicle (partial unique indexes). Closed records not deduplicated.
+// CHECK vda_time_order: unassigned_at IS NULL OR unassigned_at >= assigned_at
+export const vehicleDeviceAssignments = pgTable("vehicle_device_assignments", {
+  id:           text("id").primaryKey(),
+  tenantId:     text("tenant_id").notNull(),
+  vehicleId:    text("vehicle_id").notNull(), // SOFT reference to vehicles.id (platform convention)
+  deviceId:     text("device_id").notNull().references(() => telematicsDevices.id),
+  assignedAt:   timestamp("assigned_at", { mode: "date" }).notNull().defaultNow(),
+  unassignedAt: timestamp("unassigned_at", { mode: "date" }), // NULL = currently active
+  assignedBy:   text("assigned_by"),
+  notes:        text("notes"),
+  createdAt:    timestamp("created_at", { mode: "date" }).notNull().$defaultFn(() => new Date()),
+});
+
+// DB CHECKs enforce valid geography: center_lat ∈ [-90,90], center_lng ∈ [-180,180], radius > 0
+export const geofenceDefinitions = pgTable("geofence_definitions", {
+  id:            text("id").primaryKey(),
+  tenantId:      text("tenant_id").notNull(),
+  name:          text("name").notNull(),
+  category:      text("category").notNull().default("CUSTOM"), // LOADING_POINT | CUSTOMER_SITE | DEPOT | WAREHOUSE | CUSTOM
+  centerLat:     real("center_lat").notNull(),
+  centerLng:     real("center_lng").notNull(),
+  radiusMeters:  integer("radius_meters").notNull().default(200),
+  status:        text("status").notNull().default("ACTIVE"),
+  metadata:      json("metadata"),
+  notes:         text("notes"),
+  createdAt:     timestamp("created_at", { mode: "date" }).notNull().$defaultFn(() => new Date()),
+  updatedAt:     timestamp("updated_at", { mode: "date" }).$defaultFn(() => new Date()),
+});
+
+export const geofenceEvents = pgTable("geofence_events", {
+  id:          text("id").primaryKey(),
+  tenantId:    text("tenant_id").notNull(),
+  geofenceId:  text("geofence_id").notNull().references(() => geofenceDefinitions.id),
+  vehicleId:   text("vehicle_id").notNull(),
+  deviceId:    text("device_id"),
+  tripId:      text("trip_id"),
+  driverId:    text("driver_id"),
+  eventType:   text("event_type").notNull(), // ENTER | EXIT
+  lat:         real("lat").notNull(),
+  lng:         real("lng").notNull(),
+  speed:       real("speed"),
+  eventAt:     timestamp("event_at", { mode: "date" }).notNull(),
+  createdAt:   createdAt(),
+});
+
+export const telemetryEvents = pgTable("telemetry_events", {
+  id:             text("id").primaryKey(),
+  tenantId:       text("tenant_id").notNull(),
+  eventType:      text("event_type").notNull(),  // GPS_OFFLINE | GPS_RESTORED | GEOFENCE_ENTER | GEOFENCE_EXIT |
+                                                  // SPEEDING | HARSH_BRAKING | HARSH_ACCELERATION | IDLE |
+                                                  // DEVICE_FAULT | POWER_LOSS | DEVICE_ONLINE | DEVICE_OFFLINE
+  severity:       text("severity").notNull().default("INFO"),
+  status:         text("status").notNull().default("OPEN"),   // OPEN | ACKNOWLEDGED | RESOLVED
+  deviceId:       text("device_id"),
+  vehicleId:      text("vehicle_id"),
+  driverId:       text("driver_id"),
+  tripId:         text("trip_id"),
+  providerId:     text("provider_id"),
+  source:         text("source").notNull().default("DRIVER_APP"),
+  lat:            real("lat"),
+  lng:            real("lng"),
+  eventAt:        timestamp("event_at", { mode: "date" }).notNull(),
+  metadata:       json("metadata"),
+  acknowledgedBy: text("acknowledged_by"),
+  acknowledgedAt: timestamp("acknowledged_at", { mode: "date" }),
+  createdAt:      createdAt(),
+});
+
+// ── Milestone D Relations ─────────────────────────────────────────────────────
+export const telematicsProvidersRelations = relations(telematicsProviders, ({ many }) => ({
+  devices: many(telematicsDevices),
+}));
+
+export const telematicsDevicesRelations = relations(telematicsDevices, ({ one, many }) => ({
+  provider: one(telematicsProviders, {
+    fields: [telematicsDevices.providerId],
+    references: [telematicsProviders.id],
+  }),
+  assignments: many(vehicleDeviceAssignments),
+}));
+
+export const vehicleDeviceAssignmentsRelations = relations(vehicleDeviceAssignments, ({ one }) => ({
+  device: one(telematicsDevices, {
+    fields: [vehicleDeviceAssignments.deviceId],
+    references: [telematicsDevices.id],
+  }),
+}));
+
+export const geofenceDefinitionsRelations = relations(geofenceDefinitions, ({ many }) => ({
+  events: many(geofenceEvents),
+}));
+
+export const geofenceEventsRelations = relations(geofenceEvents, ({ one }) => ({
+  geofence: one(geofenceDefinitions, {
+    fields: [geofenceEvents.geofenceId],
+    references: [geofenceDefinitions.id],
+  }),
+}));

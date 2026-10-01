@@ -22,7 +22,7 @@ export async function runMigrations(connectionString = process.env.DATABASE_URL)
 // (`npm run db:migrate`), not when imported by the test suite.
 if (require.main === module) {
   runMigrations()
-    .then((url) => console.log(`Migrations applied to ${url}`))
+    .then(() => console.log("Migrations applied successfully."))
     .catch((e) => {
       console.error(e);
       process.exit(1);
