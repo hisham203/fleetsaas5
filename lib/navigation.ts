@@ -251,22 +251,23 @@ export const NAV_DOMAINS: NavDomain[] = [
     id: "administration",
     label: "Administration",
     icon: ICONS.administration,
-    href: "/admin/settings",
+    href: "/administration/users",
     maturity: "ACTIVE",
     groups: [
       {
         id: "access",
         label: "Access Control",
         modules: [
-          { id: "users", label: "Users & Access", href: "/administration/users", icon: ICONS.users, maturity: "ACTIVE" },
-          { id: "roles", label: "Roles & Permissions", href: "/settings/roles", icon: ICONS.roles, maturity: "ACTIVE" },
+          { id: "users",  label: "Users & Access",       href: "/administration/users",  icon: ICONS.users,    maturity: "ACTIVE" },
+          { id: "roles",  label: "Roles & Permissions",  href: "/administration/roles",  icon: ICONS.roles,    maturity: "ACTIVE" },
         ],
       },
       {
         id: "config",
         label: "Configuration",
         modules: [
-          { id: "org-settings", label: "Organization", href: "/admin/settings", icon: ICONS.settings, maturity: "ACTIVE" },
+          { id: "numbering", label: "Numbering & Sequences", href: "/administration/numbering",     icon: ICONS.settings, maturity: "ACTIVE" },
+          { id: "org",       label: "Organization",          href: "/administration/organization",  icon: ICONS.settings, maturity: "ACTIVE" },
           { id: "erp", label: "Integrations", href: "/admin?tab=integrations", icon: ICONS.erp, maturity: "PARTIAL" },
         ],
       },

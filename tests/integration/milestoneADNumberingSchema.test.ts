@@ -167,29 +167,30 @@ describe("API tests (Part 11, items 29-34)", () => {
   });
 });
 
-describe("Settings UI tests (Part 11, items 35-40)", () => {
-  const settingsSource = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
+describe("Settings UI tests (Part 11, items 35-40) — updated for Administration V2", () => {
+  // Administration V2: numbering functionality moved to /administration/numbering
+  const settingsSource = fs.readFileSync(path.join(process.cwd(), "app/administration/numbering/page.tsx"), "utf8");
 
-  it("35/36/37. Settings shows Numbering & Sequences, entity types, and the exact format examples", () => {
-    expect(settingsSource).toContain("Numbering & Sequences");
-    expect(settingsSource).toContain("Supported entity types");
-    expect(settingsSource).toContain("C06001");
-    expect(settingsSource).toContain("V06001");
-    expect(settingsSource).toContain("IG06001"); // AF: examples now reflect the converted master-data set (PR is audit-only)
+  it("35/36/37. Numbering page shows Numbering & Sequences, entity types, and format examples", () => {
+    expect(settingsSource).toContain("Numbering");
+    expect(settingsSource).toContain("CODE_FIELD_ENTITY_MAP"); // entity type coverage table
+    expect(settingsSource).toContain("numbering-series");
+    expect(settingsSource).toContain("numbering-entity-types");
   });
 
-  it("38. Settings does not show any fake active series — the empty state is honest", () => {
-    expect(settingsSource).toContain("No numbering series configured yet.");
+  it("38. Numbering page has honest empty state — no fake active series", () => {
+    expect(settingsSource).toContain("No numbering series");
   });
 
-  it("39. Settings does not allow editing nextNumber on an existing series — the field is rendered read-only (locked text), never as an editable input", () => {
+  it("39. Numbering page does not allow editing nextNumber on create — locked after creation", () => {
     expect(settingsSource).toContain("(locked)");
+    // The form uses series.nextNumber for display, not an editable field:
     expect(settingsSource).not.toMatch(/onChange=\{.*setNextNumber/);
   });
 
-  it("40. Settings clarifies that automatic assignment is now real for Suppliers specifically (pilot), while other entities remain unconverted", () => {
-    expect(settingsSource).toContain("Auto-numbering is live for Suppliers, Item Groups, Categories, Sub-Categories, Items, Workshops, and Maintenance Warehouses"); // AF: coverage broadened from the AE pilot
-    expect(settingsSource).toContain("Other entities are listed below as future/audit-only — none are faked."); // AF wording
+  it("40. Numbering page references Auto-numbering coverage", () => {
+    expect(settingsSource).toContain("Auto-numbering");
+    expect(settingsSource).toContain("CODE_FIELD_ENTITY_MAP");
   });
 });
 

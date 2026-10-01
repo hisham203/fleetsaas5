@@ -119,7 +119,7 @@ function adminSidebarSections(setTab: (t: TabKey) => void): AdminNavSection[] {
         item("Automation", "automation"),
         item("Field Ops", "fieldops"),
         item("Executive", "executive"),
-        { label: "Settings", href: "/admin/settings" },
+        { label: "Administration", href: "/administration/users" },
       ],
     },
   ];

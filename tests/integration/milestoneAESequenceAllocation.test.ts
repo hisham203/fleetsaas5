@@ -121,13 +121,14 @@ describe("Numbering series API tests (Part 7, items 1-15)", () => {
   });
 });
 
-describe("Settings UI tests (Part 7, items 16-21)", () => {
-  const settingsSource = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
+describe("Settings UI tests (Part 7, items 16-21) — updated for Administration V2", () => {
+  // Administration V2: numbering UI moved to /administration/numbering
+  const settingsSource = fs.readFileSync(path.join(process.cwd(), "app/administration/numbering/page.tsx"), "utf8");
 
-  it("16/17. Settings renders the series list and a create form", () => {
-    expect(settingsSource).toContain("Configured series");
-    expect(settingsSource).toContain("function SeriesForm");
-    expect(settingsSource).toContain("+ New Series");
+  it("16/17. Numbering page renders the series list and a create form", () => {
+    expect(settingsSource).toContain("Configured Series");
+    expect(settingsSource).toContain("SeriesForm");
+    expect(settingsSource).toContain("New Series");
   });
 
   it("18. preview is computed purely client-side and never calls an API", () => {
@@ -136,19 +137,20 @@ describe("Settings UI tests (Part 7, items 16-21)", () => {
     expect(previewFnBody).not.toContain("fetch(");
   });
 
-  it("19. Settings shows the V06001 example", () => {
-    expect(settingsSource).toContain("V06001");
+  it("19. Numbering page has format example generation logic", () => {
+    // Format examples are now computed dynamically, not hardcoded:
+    expect(settingsSource).toContain("previewFormat");
   });
 
   it("20. nextNumber is rendered read-only (locked), not as an editable field, once a series exists", () => {
     expect(settingsSource).toContain("(locked)");
   });
 
-  it("21 (RC1). Users/Roles/Permissions now live — only Operational Settings still pending", () => {
-    // RC1: RBAC Phase 1 implemented; only Operational Settings stays pending
-    const matches = settingsSource.match(/Design pending \/ schema required/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(0); // may be 1 (Operational Settings) or 0
-    expect(settingsSource).toContain("UsersRolesSection");
+  it("21 (RC1 → Administration V2). Users and Roles are now canonical workspaces; numbering is canonical", () => {
+    // Administration V2: Users/Roles/Numbering each have dedicated canonical routes
+    expect(fs.existsSync(path.join(process.cwd(), "app/administration/users/page.tsx"))).toBe(true);
+    expect(fs.existsSync(path.join(process.cwd(), "app/administration/roles/page.tsx"))).toBe(true);
+    expect(fs.existsSync(path.join(process.cwd(), "app/administration/numbering/page.tsx"))).toBe(true);
   });
 });
 

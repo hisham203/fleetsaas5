@@ -299,17 +299,21 @@ describe("Procurement UX fixes (Part 7)", () => {
 
 // ── Settings RBAC UI ──────────────────────────────────────────────────────────
 describe("Settings Users & Roles UI (Part 8)", () => {
-  it("26. settings page has UsersRolesSection component", () => {
-    const settings = src("app/admin/settings/page.tsx");
-    expect(settings).toContain("UsersRolesSection");
+  it("26. canonical users page has full role assignment functionality", () => {
+    // Administration V2: user/role management is in /administration/users
+    const settings = src("app/administration/users/page.tsx");
     expect(settings).toContain("/api/user-roles");
     expect(settings).toContain("/api/roles");
     expect(settings).toContain("Assign role");
+    expect(settings).toContain("onAssign");
   });
 
-  it("27. roles page shows RC1 Live badge", () => {
-    const settings = src("app/admin/settings/page.tsx");
-    expect(settings).toContain("RC1 Live");
+  it("27. canonical roles page has RC1-equivalent RBAC workspace (3 tabs)", () => {
+    // Administration V2: roles workspace is in /administration/roles
+    const rolesPage = src("app/administration/roles/page.tsx");
+    expect(rolesPage).toContain("Permission Matrix");
+    expect(rolesPage).toContain("Audit");
+    expect(rolesPage).toContain("/api/roles");
   });
 });
 
