@@ -61,7 +61,7 @@ export const DEFAULT_SECTIONS: AdminNavSection[] = [
       { label: "Procurement", href: "/admin/procurement" },
       { label: "Master Items", href: "/admin/master-items" },
       { label: "Workshops", href: "/admin/workshops" },
-      { label: "Settings", href: "/admin/settings" },
+      { label: "Administration", href: "/administration/users" },
     ],
   },
 ];

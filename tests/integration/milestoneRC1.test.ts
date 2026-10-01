@@ -254,8 +254,9 @@ describe("Apply Recommended Numbering (Part 5)", () => {
     expect((await res2.json()).created).toBe(0);
   });
 
-  it("24. Settings page has Apply Recommended Numbering UI", () => {
-    const settings = src("app/admin/settings/page.tsx");
+  it("24. Canonical numbering page has Apply Recommended Numbering UI", () => {
+    // Administration V2: Apply Recommended is in /administration/numbering
+    const settings = src("app/administration/numbering/page.tsx");
     expect(settings).toContain("ApplyRecommendedNumbering");
     expect(settings).toContain("numbering-apply-recommended");
     expect(settings).toContain("Preview");

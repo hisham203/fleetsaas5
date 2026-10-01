@@ -214,19 +214,23 @@ describe("Core master data audit decisions (Part 10, items 30-35)", () => {
   });
 });
 
-describe("Settings UI (Part 10, items 36-40)", () => {
-  const s = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
-  it("36/37. renders converted, schema-gap and audit-only statuses from CODE_FIELD_ENTITY_MAP", () => {
+describe("Settings UI (Part 10, items 36-40) — updated for Administration V2", () => {
+  // Administration V2: numbering UI is at /administration/numbering
+  const s = fs.readFileSync(path.join(process.cwd(), "app/administration/numbering/page.tsx"), "utf8");
+  it("36/37. canonical numbering page renders CODE_FIELD_ENTITY_MAP statuses", () => {
     expect(s).toContain("CODE_FIELD_ENTITY_MAP");
-    expect(s).toContain("Schema gap (proposed)");
-    expect(s).toContain("Audit-only / future");
+    // Status labels from the coverage table:
+    expect(s).toContain("Active");   // converted → shown as "Active"
+    expect(s).toContain("Planned");  // audit-only → shown as "Planned"
   });
-  it("38. shows the AF example list", () => {
-    for (const ex of ["C06001", "S06001", "VH06001", "D06001", "CN06001", "EX06001", "LP06001", "IG06001", "IC06001", "ISC06001", "I06001", "W06001", "WH06001"]) expect(s).toContain(ex);
+  it("38. numbering page has format preview capability", () => {
+    // Example formats are now rendered dynamically via previewFormat():
+    expect(s).toContain("previewFormat");
+    expect(s).toContain("numbering-entity-types");
   });
-  it("39/40. never auto-creates a series; preview stays client-side; imports only the client-safe module", () => {
+  it("39/40. never auto-creates a series; preview stays client-side; imports only client-safe module", () => {
     expect(s).not.toContain("ensureSeries"); expect(s).not.toContain("seedSeries");
-    expect(s).toContain("Preview (does not consume a number)");
+    expect(s).toContain("no number consumed");  // canonical page wording
     expect(s).toContain('from "@/lib/numberingFormat"');
     expect(s).not.toContain('from "@/lib/numbering"');
     expect(s).not.toContain("businessCodes");

@@ -284,8 +284,9 @@ describe("UI and coverage (Part 6, Part 9)", () => {
     }
   });
 
-  it("28. Settings coverage table shows all 5 new entities as 'converted'", () => {
-    const settings = src("app/admin/settings/page.tsx");
+  it("28. Canonical numbering page coverage table shows CODE_FIELD_ENTITY_MAP; no schema gaps", () => {
+    // Administration V2: coverage table is in /administration/numbering
+    const settings = src("app/administration/numbering/page.tsx");
     expect(settings).toContain("CODE_FIELD_ENTITY_MAP");
     const noGaps = CODE_FIELD_ENTITY_MAP.filter(m => m.status === "schema-gap");
     expect(noGaps.length).toBe(0);

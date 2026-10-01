@@ -133,26 +133,40 @@ describe("Sidebar order consistency fix (Milestone AC, Part 3)", () => {
 });
 
 describe("Settings module (Milestone AC, Part 4)", () => {
-  it("15/16. Settings link appears in both sidebar sources and /admin/settings exists", () => {
-    expect(shellSource()).toContain('{ label: "Settings", href: "/admin/settings" }');
-    expect(adminPageSource()).toContain('{ label: "Settings", href: "/admin/settings" }');
+  it("15/16. Administration link appears in sidebar sources and canonical /administration/* routes exist", () => {
+    // Administration architecture V2: /admin/settings is now a compatibility redirect.
+    // The sidebar now points to /administration/users as the Administration entry.
+    expect(shellSource()).toContain("/administration/users");
+    // /admin/settings still exists as a compatibility redirect:
     expect(fs.existsSync(path.join(process.cwd(), "app/admin/settings/page.tsx"))).toBe(true);
+    // Canonical routes exist:
+    expect(fs.existsSync(path.join(process.cwd(), "app/administration/numbering/page.tsx"))).toBe(true);
+    expect(fs.existsSync(path.join(process.cwd(), "app/administration/roles/page.tsx"))).toBe(true);
+    expect(fs.existsSync(path.join(process.cwd(), "app/administration/users/page.tsx"))).toBe(true);
   });
 
-  it("17/18/19/20. Settings shows Numbering & Sequences, Users & Access, Roles & Permissions, and Operational Settings cards", () => {
-    const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
-    expect(source).toContain("Numbering & Sequences");
-    expect(source).toContain("Users & Access");
-    expect(source).toContain("Roles & Permissions");
-    expect(source).toContain("Operational Settings");
+  it("17/18/19/20. Administration canonical pages cover Numbering, Users, Roles (formerly single Settings page)", () => {
+    // Administration V2: functionality split into dedicated canonical pages:
+    const numbSrc = fs.readFileSync(path.join(process.cwd(), "app/administration/numbering/page.tsx"), "utf8");
+    const userSrc = fs.readFileSync(path.join(process.cwd(), "app/administration/users/page.tsx"), "utf8");
+    const roleSrc = fs.readFileSync(path.join(process.cwd(), "app/administration/roles/page.tsx"), "utf8");
+    expect(numbSrc).toContain("Numbering");
+    expect(userSrc).toContain("Users");
+    expect(roleSrc).toContain("Roles");
+    expect(roleSrc).toContain("Permission Matrix");
   });
 
-  it("21. the three remaining design-pending cards (Users & Access, Roles & Permissions, Operational Settings) still clearly mark themselves as such; Numbering & Sequences became a full configuration UI in Milestone AE (Suppliers pilot)", () => {
-    const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
-    // RC1: Users/Roles is now live; Operational Settings stays pending
-    const matches = source.match(/Design pending \/ schema required/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(0); // RC1: some cards promoted to live
-    expect(source).toContain("Auto-numbering is live for Suppliers, Item Groups, Categories, Sub-Categories, Items, Workshops, and Maintenance Warehouses"); // AF: coverage broadened from the AE pilot
+  it("21. Administration V2: Users, Roles, and Numbering are now live canonical workspaces (not design-pending cards)", () => {
+    // Administration V2: all three are now implemented canonical routes:
+    const numbSrc = fs.readFileSync(path.join(process.cwd(), "app/administration/numbering/page.tsx"), "utf8");
+    // The numbering page still has the coverage acknowledgment:
+    expect(numbSrc).toContain("Auto-numbering");
+    // Users page is a full management workspace, not display-only:
+    const userSrc = fs.readFileSync(path.join(process.cwd(), "app/administration/users/page.tsx"), "utf8");
+    expect(userSrc).toContain("CreateUserForm");
+    // Roles page has Permission Matrix tab:
+    const roleSrc = fs.readFileSync(path.join(process.cwd(), "app/administration/roles/page.tsx"), "utf8");
+    expect(roleSrc).toContain("PermissionMatrixTab");
   });
 });
 
@@ -163,9 +177,9 @@ describe("Numbering audit findings preserved (Milestone AC, Part 5/6 — design 
     expect(source).toContain('Date.now().toString(36).toUpperCase()');
   });
 
-  it("23/24. Milestone AD's real Settings fetches are empty-safe reads only, never client-side number generation or fabricated data", () => {
-    const source = fs.readFileSync(path.join(process.cwd(), "app/admin/settings/page.tsx"), "utf8");
-    expect(source).toContain('fetch("/api/settings/numbering-series")');
+  it("23/24. Canonical numbering page fetches are empty-safe reads only, never client-side number generation or fabricated data", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "app/administration/numbering/page.tsx"), "utf8");
+    expect(source).toContain('/api/settings/numbering-series');
     expect(source).not.toContain("Math.random()");
     expect(source).not.toContain("Date.now()");
   });

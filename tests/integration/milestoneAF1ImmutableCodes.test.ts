@@ -210,8 +210,8 @@ describe("Settings series hardening (Part 9, items 30-42)", () => {
       expect((await PATCH(makeRequest(`/api/settings/numbering-series/${s.id}`, { method: "PATCH", cookie, body: b }), params(s.id))).status).toBe(400);
     }
   });
-  it("30/42. Settings uses the registry dropdown for entityType and surfaces API errors", () => {
-    const s = src("app/admin/settings/page.tsx");
+  it("30/42. Canonical numbering page uses the registry dropdown for entityType and surfaces API errors", () => {
+    const s = src("app/administration/numbering/page.tsx");
     expect(s).toContain("Select entity type");
     expect(s).not.toMatch(/placeholder="Entity type"/);
     expect(s).toContain("extractErrorMessage");

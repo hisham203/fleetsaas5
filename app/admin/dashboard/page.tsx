@@ -54,7 +54,7 @@ export default function DashboardPage() {
           <div className="card card-body">
             <h2 className="font-medium text-sm mb-3">Operational Modules</h2>
             <div className="space-y-2">
-              {[["Procurement", "/admin/procurement"], ["Inventory", "/admin/inventory"], ["Maintenance", "/admin?tab=maintenance"], ["Expenses", "/admin/expenses"], ["Settings", "/admin/settings"]].map(([label, href]) => (
+              {[["Procurement", "/admin/procurement"], ["Inventory", "/admin/inventory"], ["Maintenance", "/admin?tab=maintenance"], ["Expenses", "/admin/expenses"], ["Administration", "/administration/users"]].map(([label, href]) => (
                 <a key={href} href={href} className="block text-aquaDark text-sm hover:underline">{label as string} →</a>
               ))}
             </div>
