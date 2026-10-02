@@ -50,6 +50,13 @@ const ALLOWLIST: Record<string, { classification: string; reason: string }> = {
   "inbound/teltonika/[token]/route.ts:POST": { classification: "INFRA:DEVICE_WEBHOOK", reason: "Teltonika inbound webhook — bcrypt token auth; no user session" },
   "telematics/providers/[id]/route.ts:GET":  { classification: "PERMISSION:TENANT_SETTINGS", reason: "Provider details — checkPermission(TENANT_SETTINGS)" },
   "telematics/providers/[id]/token/route.ts:POST": { classification: "PERMISSION:TENANT_SETTINGS", reason: "Token generation — ADMIN + checkPermission(TENANT_SETTINGS)" },
+  // Milestone I — Analytics V2
+  "analytics/overview/route.ts:GET":   { classification: "PERMISSION:REPORTS_OPERATIONS_VIEW", reason: "Analytics overview — checkPermission(REPORTS_OPERATIONS_VIEW)" },
+  "analytics/operations/route.ts:GET": { classification: "PERMISSION:REPORTS_OPERATIONS_VIEW", reason: "Operations analytics — checkPermission(REPORTS_OPERATIONS_VIEW)" },
+  "analytics/fleet/route.ts:GET":      { classification: "PERMISSION:REPORTS_FLEET_VIEW",      reason: "Fleet analytics — checkPermission(REPORTS_FLEET_VIEW)" },
+  "analytics/drivers/route.ts:GET":    { classification: "PERMISSION:REPORTS_OPERATIONS_VIEW", reason: "Driver analytics — checkPermission(REPORTS_OPERATIONS_VIEW)" },
+  "analytics/costs/route.ts:GET":      { classification: "PERMISSION:REPORTS_FINANCE_VIEW",    reason: "Cost analytics — checkPermission(REPORTS_FINANCE_VIEW)" },
+  "analytics/telematics/route.ts:GET": { classification: "PERMISSION:REPORTS_FLEET_VIEW",      reason: "Telematics quality — checkPermission(REPORTS_FLEET_VIEW)" },
 };
 
 function findFiles(dir: string): string[] {
