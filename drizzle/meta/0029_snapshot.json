@@ -1,0 +1,14 @@
+{
+  "id": "0029_milestone_h_hardware_adapter",
+  "prevId": "0028_milestone_fg_alerts_eta",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

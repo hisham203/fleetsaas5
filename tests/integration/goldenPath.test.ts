@@ -262,7 +262,8 @@ describe("Business rules", () => {
     expect(all.filter((f) => f.startsWith("0026_"))).toEqual(["0026_milestone_d_telematics_core.sql"]);
     expect(all.filter((f) => f.startsWith("0027_"))).toEqual(["0027_milestone_e_fleet_intelligence.sql"]);
     expect(all.filter((f) => f.startsWith("0028_"))).toEqual(["0028_milestone_fg_alerts_eta.sql"]);
-    // No migration 0029+ yet:
-    expect(all.filter((f) => Number(f.slice(0, 4)) >= 29)).toEqual([]);
+    expect(all.filter((f) => f.startsWith("0029_"))).toEqual(["0029_milestone_h_hardware_adapter.sql"]);
+    // No migration 0030+ yet:
+    expect(all.filter((f) => Number(f.slice(0, 4)) >= 30)).toEqual([]);
   });
 });
