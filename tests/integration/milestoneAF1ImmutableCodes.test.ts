@@ -255,7 +255,7 @@ describe("Existing records & regression (Part 7, Part 9 items 53-69)", () => {
     expect(src("scripts/seedData.ts")).not.toContain("rejectCodeChange");
   });
   it("no schema/migration/pricing/billing/ERP/driver changes; dispatch runtime untouched", () => {
-    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(26); // P2-02 added migration 0025 (unassigned trip planning) // P2-01 added migration 0021
+    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter((f) => f.endsWith(".sql")).length).toBe(27); // Milestone D added migration 0026 (telematics core)
     expect(src("lib/contractPricing.ts")).toContain("PricingEngineError");
     const stop = src("app/api/trips/[id]/stops/[stopId]/route.ts");
     expect(stop).toContain("Task P.2"); expect(stop).toContain("autoCloseTripIfAllStopsResolved");

@@ -286,15 +286,17 @@ describe("Commercial regression", () => {
     expect(src).not.toContain("db.insert(invoices)");
   });
 
-  it("30. P2-03 migration NOT included in P2-02", () => {
+  it("30. P2-03 GPS source migration not in P2-02; source column added in Milestone D (0026)", () => {
     const fs = require("fs");
     // P2-02 migration file exists:
     expect(fs.existsSync("drizzle/0024_p2_02_dispatch_rbac.sql")).toBe(true);
-    // P2-03 GPS source migration does NOT exist in this package:
+    // A standalone P2-03 GPS source migration never shipped (source landed in Milestone D 0026):
     expect(fs.existsSync("drizzle/0024_p2_03_gps_source.sql")).toBe(false);
-    // No source column in vehicleGpsHistory:
+    // Milestone D migration 0026 adds the source column:
+    expect(fs.existsSync("drizzle/0026_milestone_d_telematics_core.sql")).toBe(true);
     const schema = fs.readFileSync("lib/db/schema.ts", "utf8");
     const gpsHistory = schema.slice(schema.indexOf("vehicleGpsHistory = pgTable"), schema.indexOf("\n});\n", schema.indexOf("vehicleGpsHistory = pgTable")) + 5);
-    expect(gpsHistory).not.toContain('"source"');
+    // Milestone D added source column to vehicleGpsHistory:
+    expect(gpsHistory).toContain('source');
   });
 });

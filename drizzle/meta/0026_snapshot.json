@@ -1,0 +1,14 @@
+{
+  "id": "0026_milestone_d_telematics_core",
+  "prevId": "0025_p2_02_unassigned_trip_planning",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

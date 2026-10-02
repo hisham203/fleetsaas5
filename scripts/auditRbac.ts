@@ -21,6 +21,20 @@ const ALLOWLIST: Record<string, { classification: string; reason: string }> = {
   "trips/[id]/demo-route/route.ts:GET":  { classification: "DEVELOPMENT:DEMO", reason: "Demo route — Platform Admin only" },
   "trips/[id]/lifecycle/route.ts:GET":   { classification: "PERMISSION:TRIPS_VIEW+IDENTITY:DRIVER", reason: "checkPermission(TRIPS_VIEW) then DRIVER identity gate" },
   "trips/[id]/lifecycle/route.ts:POST":  { classification: "PERMISSION:TRIPS_VIEW+IDENTITY:DRIVER", reason: "checkPermission(TRIPS_VIEW) then DRIVER identity gate" },
+  // Milestone D — Telematics routes use hasRole(ADMIN|DISPATCHER) + checkPermission(TRIPS_VIEW_LIVE)
+  // All telematics data is operational fleet data — TRIPS_VIEW_LIVE is the correct permission boundary
+  "telematics/overview/route.ts:GET":             { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Telematics overview — checkPermission(TRIPS_VIEW_LIVE)" },
+  "telematics/devices/route.ts:GET":              { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Device list — hasRole(ADMIN|DISPATCHER) guards fleet ops" },
+  "telematics/devices/route.ts:POST":             { classification: "PERMISSION:TRIPS_VIEW_LIVE+IDENTITY:ADMIN", reason: "Register device — ADMIN only" },
+  "telematics/devices/[id]/assign/route.ts:POST": { classification: "PERMISSION:TRIPS_VIEW_LIVE+IDENTITY:ADMIN", reason: "Device assignment — ADMIN only" },
+  "telematics/devices/[id]/unassign/route.ts:POST": { classification: "PERMISSION:TRIPS_VIEW_LIVE+IDENTITY:ADMIN", reason: "Device unassign — ADMIN only" },
+  "telematics/providers/route.ts:GET":            { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Provider list — hasRole(ADMIN|DISPATCHER)" },
+  "telematics/providers/route.ts:POST":           { classification: "PERMISSION:TRIPS_VIEW_LIVE+IDENTITY:ADMIN", reason: "Register provider — ADMIN only" },
+  "telematics/geofences/route.ts:GET":            { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Geofence list — hasRole(ADMIN|DISPATCHER)" },
+  "telematics/geofences/route.ts:POST":           { classification: "PERMISSION:TRIPS_VIEW_LIVE+IDENTITY:ADMIN", reason: "Create geofence — ADMIN only" },
+  "telematics/events/route.ts:GET":               { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Telemetry events — hasRole(ADMIN|DISPATCHER)" },
+  "telematics/events/route.ts:PATCH":             { classification: "PERMISSION:TRIPS_VIEW_LIVE+IDENTITY:ADMIN", reason: "Acknowledge events — ADMIN|DISPATCHER" },
+  "telematics/trips/[id]/replay/route.ts:GET":    { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Trip GPS replay — hasRole(ADMIN|DISPATCHER)" },
 };
 
 function findFiles(dir: string): string[] {

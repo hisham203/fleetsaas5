@@ -167,14 +167,25 @@ export const NAV_DOMAINS: NavDomain[] = [
     id: "telematics",
     label: "Telematics",
     icon: ICONS.telematics,
-    href: "/control-tower",
-    maturity: "PARTIAL",
+    href: "/telematics/overview",
+    maturity: "ACTIVE",
     groups: [
       {
         id: "tracking",
         label: "Tracking",
         modules: [
-          { id: "live-map", label: "Live Tracking", href: "/control-tower", icon: ICONS.liveFleet, maturity: "ACTIVE" },
+          { id: "telematics-overview", label: "Overview",       href: "/telematics/overview",   icon: ICONS.telematics, maturity: "ACTIVE" },
+          { id: "live-map",           label: "Live Tracking",   href: "/control-tower",          icon: ICONS.liveFleet,  maturity: "ACTIVE" },
+          { id: "trip-replay",        label: "Trip Replay",     href: "/telematics/replay",       icon: ICONS.trips,      maturity: "ACTIVE" },
+        ],
+      },
+      {
+        id: "devices",
+        label: "Devices & Geofences",
+        modules: [
+          { id: "devices",    label: "Device Registry", href: "/telematics/devices",    icon: ICONS.settings,   maturity: "ACTIVE" },
+          { id: "geofences",  label: "Geofences",        href: "/telematics/geofences",  icon: ICONS.telematics, maturity: "ACTIVE" },
+          { id: "tel-events", label: "Events & Alerts",  href: "/telematics/events",     icon: ICONS.exceptions, maturity: "ACTIVE" },
         ],
       },
     ],
@@ -268,6 +279,7 @@ export const NAV_DOMAINS: NavDomain[] = [
         modules: [
           { id: "numbering", label: "Numbering & Sequences", href: "/administration/numbering",     icon: ICONS.settings, maturity: "ACTIVE" },
           { id: "org",       label: "Organization",          href: "/administration/organization",  icon: ICONS.settings, maturity: "ACTIVE" },
+          { id: "tel-providers", label: "Telematics Providers", href: "/administration/telematics-providers", icon: ICONS.telematics, maturity: "ACTIVE" },
           { id: "erp", label: "Integrations", href: "/admin?tab=integrations", icon: ICONS.erp, maturity: "PARTIAL" },
         ],
       },

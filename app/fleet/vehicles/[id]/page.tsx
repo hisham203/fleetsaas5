@@ -65,6 +65,7 @@ export default function Vehicle360Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("overview");
+  const [telemetry, setTelemetry] = useState<{ gpsStatus: string; lat: number | null; lng: number | null; lastPingAt: string | null; device: { id: string; deviceIdentifier: string; status: string } | null } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -79,6 +80,19 @@ export default function Vehicle360Page() {
     } else { setError("Network error."); }
     if (fuelRes.status === "fulfilled" && fuelRes.value.ok) setFuel(await fuelRes.value.json() ?? []);
     if (tyreRes.status === "fulfilled" && tyreRes.value.ok) setTyres(await tyreRes.value.json() ?? []);
+    // Telematics tab: fetch latest GPS position from fleet/positions and device from telematics
+    const posRes = await fetch("/api/fleet/positions").catch(() => null);
+    if (posRes?.ok) {
+      const posData = await posRes.json();
+      const vPos = (posData.positions ?? []).find((p: any) => p.vehicleId === id);
+      setTelemetry({
+        gpsStatus: vPos?.gpsStatus ?? "OFFLINE",
+        lat: vPos?.lat ?? null,
+        lng: vPos?.lng ?? null,
+        lastPingAt: vPos?.lastPingAt ?? null,
+        device: null, // device registry from telematicsDevices not yet fetched in vehicle-specific endpoint
+      });
+    }
     setLoading(false);
   }, [id]);
 
@@ -102,11 +116,12 @@ export default function Vehicle360Page() {
   const totalFuelLiters = fuel.reduce((sum, f) => sum + f.litersFilled, 0);
 
   const TABS = [
-    { id: "overview", label: "Overview" },
-    { id: "trips", label: `Trips (${ops.recentTrips.length})` },
+    { id: "overview",    label: "Overview" },
+    { id: "trips",       label: `Trips (${ops.recentTrips.length})` },
     { id: "maintenance", label: `Maintenance (${ops.maintenanceRecords.length})` },
-    { id: "fuel", label: `Fuel (${fuel.length})` },
-    { id: "tyres", label: `Tyres (${tyres.length})` },
+    { id: "fuel",        label: `Fuel (${fuel.length})` },
+    { id: "tyres",       label: `Tyres (${tyres.length})` },
+    { id: "telematics",  label: "Telematics" },
   ];
 
   return (
@@ -354,6 +369,50 @@ export default function Vehicle360Page() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {tab === "telematics" && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-card p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-ink mb-3">Live GPS Status</h3>
+              {telemetry ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-steel w-28">GPS Status</span>
+                    <span className={`text-sm font-semibold ${
+                      telemetry.gpsStatus === "LIVE" ? "text-ok" :
+                      telemetry.gpsStatus === "STALE" ? "text-warn" : "text-steel"
+                    }`}>● {telemetry.gpsStatus}</span>
+                  </div>
+                  {telemetry.lat != null && <div className="flex items-center gap-3">
+                    <span className="text-xs text-steel w-28">Last Position</span>
+                    <span className="text-sm font-mono text-ink">{telemetry.lat.toFixed(6)}, {telemetry.lng?.toFixed(6)}</span>
+                  </div>}
+                  {telemetry.lastPingAt && <div className="flex items-center gap-3">
+                    <span className="text-xs text-steel w-28">Last Ping</span>
+                    <span className="text-sm text-ink">{new Date(telemetry.lastPingAt).toLocaleString("en-SA")}</span>
+                  </div>}
+                  {telemetry.gpsStatus === "OFFLINE" && telemetry.lat == null && (
+                    <p className="text-xs text-steel italic mt-2">No GPS data recorded. Vehicle must be on an active DISPATCHED trip for GPS to update.</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-steel">Loading GPS status…</p>
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-ink mb-2">Device Registry</h3>
+              <p className="text-xs text-steel">
+                Device assignments are managed in{" "}
+                <a href="/telematics/devices" className="text-aqua underline">Telematics → Device Registry</a>.
+              </p>
+            </div>
+            <div>
+              <a href="/control-tower" className="text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2 inline-block hover:bg-white text-ink">
+                🗺 Open Live Tracking →
+              </a>
+            </div>
           </div>
         )}
       </PageContainer>
