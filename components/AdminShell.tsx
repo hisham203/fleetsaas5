@@ -13,7 +13,7 @@
  * Backward-compatible: all props still accepted, sections/activeKey still work.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV_DOMAINS, type NavDomain, type NavModule } from "@/lib/navigation";
 
@@ -238,6 +238,54 @@ export default function AdminShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  // Milestone F+G: Notification bell state
+  const [notifUnread, setNotifUnread] = useState(0);
+  const [notifPanel, setNotifPanel] = useState(false);
+  const [notifList, setNotifList] = useState<Array<{ id: string; message: string; read: boolean; severity: string; entityRoute: string | null; entityType: string | null; createdAt: string }>>([]);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const fetchNotifs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications?unread=false&limit=20");
+      if (res.ok) {
+        const data = await res.json();
+        setNotifList(data.notifications ?? []);
+        setNotifUnread(data.unreadCount ?? 0);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchNotifs();
+    const id = setInterval(fetchNotifs, 60_000); // poll every 60s
+    return () => clearInterval(id);
+  }, [fetchNotifs]);
+
+  // Close panel on outside click:
+  useEffect(() => {
+    if (!notifPanel) return;
+    const handler = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setNotifPanel(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [notifPanel]);
+
+  async function markAllRead() {
+    await fetch("/api/notifications", { method: "PATCH" }).catch(() => {});
+    setNotifList(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifUnread(0);
+  }
+
+  async function markOneRead(id: string, route: string | null) {
+    await fetch(`/api/notifications/${id}`, { method: "PATCH" }).catch(() => {});
+    setNotifList(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    setNotifUnread(prev => Math.max(0, prev - 1));
+    if (route) router.push(route);
+    else setNotifPanel(false);
+  }
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [overrideDomainId, setOverrideDomainId] = useState<string | null>(null);
@@ -353,12 +401,71 @@ export default function AdminShell({
             <span className="hidden sm:inline text-xs">Search</span>
             <kbd className="hidden lg:inline text-2xs text-slate-400 bg-paper px-1.5 rounded border border-slate-200">⌘K</kbd>
           </button>
-          {/* Notification bell */}
-          <button className="p-2 rounded-lg text-steel hover:text-ink hover:bg-paper transition-colors" title="Notifications" aria-label="Notifications">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-            </svg>
-          </button>
+          {/* Notification bell — Milestone F+G: functional */}
+          <div className="relative" ref={panelRef}>
+            <button
+              onClick={() => setNotifPanel(v => !v)}
+              className="relative p-2 rounded-lg text-steel hover:text-ink hover:bg-paper transition-colors"
+              title="Notifications" aria-label="Notifications"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+              </svg>
+              {notifUnread > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-danger text-white text-2xs rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 font-semibold">
+                  {notifUnread > 99 ? "99+" : notifUnread}
+                </span>
+              )}
+            </button>
+
+            {/* Notification panel */}
+            {notifPanel && (
+              <div className="absolute right-0 top-10 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50 max-h-[480px] flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                  <span className="text-sm font-semibold text-ink">Notifications</span>
+                  <div className="flex items-center gap-2">
+                    {notifUnread > 0 && (
+                      <button onClick={markAllRead} className="text-xs text-aqua hover:underline">Mark all read</button>
+                    )}
+                    <button onClick={() => setNotifPanel(false)} className="text-steel hover:text-ink text-lg leading-none">×</button>
+                  </div>
+                </div>
+
+                <div className="overflow-y-auto flex-1">
+                  {notifList.length === 0 ? (
+                    <p className="text-xs text-steel text-center py-8">No notifications yet.</p>
+                  ) : (
+                    notifList.map(n => (
+                      <button
+                        key={n.id}
+                        onClick={() => markOneRead(n.id, n.entityRoute)}
+                        className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-paper transition-colors ${!n.read ? "bg-infoLight/10" : ""}`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
+                            n.severity === "CRITICAL" ? "bg-danger" :
+                            n.severity === "WARNING"  ? "bg-warn" : "bg-info"
+                          }`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-ink leading-snug">{n.message}</p>
+                            <p className="text-2xs text-steel mt-0.5">
+                              {new Date(n.createdAt).toLocaleString("en-SA", { dateStyle: "short", timeStyle: "short" })}
+                              {n.entityType && <span className="ml-1 text-aqua">→ {n.entityType}</span>}
+                            </p>
+                          </div>
+                          {!n.read && <span className="w-1.5 h-1.5 bg-aqua rounded-full shrink-0 mt-1" />}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                <div className="px-4 py-2 border-t border-slate-100">
+                  <a href="/telematics/alerts" className="text-xs text-aqua hover:underline">View all alerts →</a>
+                </div>
+              </div>
+            )}
+          </div>
           {/* Avatar */}
           <div className="w-8 h-8 rounded-full bg-aqua/20 flex items-center justify-center text-aqua text-xs font-semibold shrink-0">
             S

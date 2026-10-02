@@ -272,6 +272,12 @@ export const trips = pgTable("trips", {
   lastPingAt: timestamp("last_ping_at", { mode: "date" }),
   // Milestone E: derived operational state (MOVING|IDLE|STOPPED|UNKNOWN) set by GPS ingestion
   operationalState: text("operational_state"),
+  // Milestone F+G: Live ETA cache (written by /api/trips/[id]/eta)
+  etaCalculatedAt:    timestamp("eta_calculated_at", { mode: "date" }),
+  etaDistanceMeters:  integer("eta_distance_meters"),
+  etaDurationSeconds: integer("eta_duration_seconds"),
+  etaArrivalAt:       timestamp("eta_arrival_at", { mode: "date" }),
+  baselineEtaAt:      timestamp("baseline_eta_at", { mode: "date" }), // set once at dispatch
   startedAt: timestamp("started_at", { mode: "date" }),
   completedAt: timestamp("completed_at", { mode: "date" }),
   // P2-02: Dispatch governance
@@ -1505,13 +1511,21 @@ export const automationLogs = pgTable("automation_logs", {
 // A lightweight in-app notification log — simulated, same honesty caveat
 // as exceptions.customerNotified and escalations.notifiedAt elsewhere in
 // this build: no real email/SMS/push provider is wired in here.
+// Milestone F+G extended: per-user targeting, severity, deep-link entity, alert linkage
 export const notifications = pgTable("notifications", {
-  id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull(),
-  orderId: text("order_id"),
-  message: text("message").notNull(),
-  read: boolean("read").notNull().default(false),
-  createdAt: createdAt(),
+  id:          text("id").primaryKey(),
+  tenantId:    text("tenant_id").notNull(),
+  userId:      text("user_id"),              // NULL = tenant-wide broadcast
+  orderId:     text("order_id"),
+  message:     text("message").notNull(),
+  type:        text("type").notNull().default("INFO"),
+  severity:    text("severity").notNull().default("INFO"), // INFO | WARNING | CRITICAL
+  entityType:  text("entity_type"),          // TRIP | VEHICLE | DRIVER | DEVICE | GEOFENCE
+  entityId:    text("entity_id"),
+  entityRoute: text("entity_route"),         // front-end deep-link path
+  alertId:     text("alert_id"),             // FK to telemetry_events.id
+  read:        boolean("read").notNull().default(false),
+  createdAt:   createdAt(),
 });
 
 // ---------- BR-23: Task, Expense & Field Activity Management ----------
@@ -2199,6 +2213,9 @@ export const telemetryEvents = pgTable("telemetry_events", {
   metadata:       json("metadata"),
   acknowledgedBy: text("acknowledged_by"),
   acknowledgedAt: timestamp("acknowledged_at", { mode: "date" }),
+  // Milestone F+G: full OPEN → ACKNOWLEDGED → RESOLVED lifecycle
+  resolvedBy:     text("resolved_by"),
+  resolvedAt:     timestamp("resolved_at", { mode: "date" }),
   createdAt:      createdAt(),
 });
 

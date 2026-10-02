@@ -188,6 +188,7 @@ export const NAV_DOMAINS: NavDomain[] = [
           { id: "devices",    label: "Device Registry", href: "/telematics/devices",    icon: ICONS.settings,   maturity: "ACTIVE" },
           { id: "geofences",  label: "Geofences",        href: "/telematics/geofences",  icon: ICONS.telematics, maturity: "ACTIVE" },
           { id: "tel-events", label: "Events & Alerts",  href: "/telematics/events",     icon: ICONS.exceptions, maturity: "ACTIVE" },
+          { id: "alerts",     label: "Alerts Workspace",href: "/telematics/alerts",      icon: ICONS.exceptions, maturity: "ACTIVE" },
         ],
       },
     ],

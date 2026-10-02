@@ -38,6 +38,14 @@ const ALLOWLIST: Record<string, { classification: string; reason: string }> = {
   // Milestone E — Fleet Intelligence routes
   "fleet/intelligence/route.ts:GET":              { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Fleet intelligence — checkPermission(TRIPS_VIEW_LIVE)" },
   "telematics/fleet-dashboard/route.ts:GET":      { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Fleet intelligence dashboard — checkPermission(TRIPS_VIEW_LIVE)" },
+  // Milestone F+G — Alerts, ETA, Notifications, Cron
+  "trips/[id]/eta/route.ts:GET":          { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Live ETA — checkPermission(TRIPS_VIEW_LIVE)" },
+  "trips/[id]/eta/route.ts:POST":         { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Force ETA refresh — checkPermission(TRIPS_VIEW_LIVE)" },
+  "alerts/route.ts:GET":                  { classification: "PERMISSION:CONTROL_TOWER_VIEW", reason: "Alert workspace — checkPermission(CONTROL_TOWER_VIEW)" },
+  "alerts/[id]/route.ts:PATCH":           { classification: "PERMISSION:CONTROL_TOWER_MANAGE_EVENTS", reason: "Acknowledge/resolve alert — checkPermission(CONTROL_TOWER_MANAGE_EVENTS)" },
+  "notifications/route.ts:PATCH":         { classification: "PERMISSION:TRIPS_VIEW", reason: "Mark all notifications read — checkPermission(TRIPS_VIEW)" },
+  "notifications/[id]/route.ts:PATCH":    { classification: "PERMISSION:TRIPS_VIEW", reason: "Mark notification read — checkPermission(TRIPS_VIEW)" },
+  "cron/device-health/route.ts:GET":      { classification: "INFRA:CRON", reason: "Protected by CRON_SECRET header — no user auth; infrastructure endpoint" },
 };
 
 function findFiles(dir: string): string[] {

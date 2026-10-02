@@ -1,0 +1,14 @@
+{
+  "id": "0028_milestone_fg_alerts_eta",
+  "prevId": "0027_milestone_e_fleet_intelligence",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
