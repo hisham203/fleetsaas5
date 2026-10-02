@@ -256,12 +256,12 @@ describe("Business rules", () => {
     expect(exists).toBe(true);
   });
 
-  it("B4. Migration 0025 belongs to P2-02; migration 0026 belongs to Milestone D (telematics core)", () => {
+  it("B4. Migrations 0025 (P2-02), 0026 (Milestone D), 0027 (Milestone E) all present", () => {
     const all: string[] = require("fs").readdirSync("drizzle").filter((f: string) => f.endsWith(".sql"));
     expect(all.filter((f) => f.startsWith("0025_"))).toEqual(["0025_p2_02_unassigned_trip_planning.sql"]);
-    // Milestone D adds 0026_milestone_d_telematics_core.sql:
     expect(all.filter((f) => f.startsWith("0026_"))).toEqual(["0026_milestone_d_telematics_core.sql"]);
-    // No migration 0027+ yet:
-    expect(all.filter((f) => Number(f.slice(0, 4)) >= 27)).toEqual([]);
+    expect(all.filter((f) => f.startsWith("0027_"))).toEqual(["0027_milestone_e_fleet_intelligence.sql"]);
+    // No migration 0028+ yet:
+    expect(all.filter((f) => Number(f.slice(0, 4)) >= 28)).toEqual([]);
   });
 });

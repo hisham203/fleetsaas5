@@ -550,12 +550,12 @@ describe("M. Telematics navigation", () => {
     expect(src).toContain('href: "/telematics/events"');
   });
 
-  it("M2. Telematics domain landing is /telematics/overview (not /control-tower)", () => {
+  it("M2. Telematics domain landing is /telematics/fleet-intelligence (Milestone E upgrade)", () => {
     const src = readFileSync(join(process.cwd(), "lib/navigation.ts"), "utf8");
-    const domainIdx = src.indexOf('"telematics"');
-    const hrefIdx = src.indexOf('href:', domainIdx);
-    const hrefValue = src.slice(hrefIdx + 6, hrefIdx + 40);
-    expect(hrefValue).toContain("/telematics/overview");
+    // Milestone E upgraded the domain landing from /telematics/overview to /telematics/fleet-intelligence:
+    expect(src).toContain('"/telematics/fleet-intelligence"');
+    // overview still accessible as a sub-module:
+    expect(src).toContain('href: "/telematics/overview"');
   });
 
   it("M3. Administration includes Telematics Providers", () => {

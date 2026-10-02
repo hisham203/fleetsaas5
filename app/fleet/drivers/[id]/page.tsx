@@ -51,6 +51,8 @@ export default function Driver360Page() {
   const [expenses, setExpenses] = useState<ExpenseClaim[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("overview");
+  const [telEvents, setTelEvents] = useState<Array<{ id: string; eventType: string; severity: string; status: string; eventAt: string; tripId: string | null }>>([]);
+  const [scorecard, setScorecard] = useState<{ score: number; tripsCompleted: number; ordersDelivered: number; ordersFailed: number; onTimeRate: number | null } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -75,6 +77,20 @@ export default function Driver360Page() {
       const expData = await expRes.value.json();
       setExpenses(Array.isArray(expData) ? expData : []);
     }
+    // Load scorecard and telemetry events for this driver:
+    const [scorecardRes, telRes] = await Promise.allSettled([
+      fetch("/api/scorecards/drivers"),
+      fetch(`/api/telematics/events?vehicleId=&driverId=${id}&limit=50`),
+    ]);
+    if (scorecardRes.status === "fulfilled" && scorecardRes.value.ok) {
+      const all = await scorecardRes.value.json();
+      const mine = Array.isArray(all) ? all.find((s: any) => s.driverId === id) : null;
+      if (mine) setScorecard(mine);
+    }
+    if (telRes.status === "fulfilled" && telRes.value.ok) {
+      const d = await telRes.value.json();
+      setTelEvents(d.events ?? []);
+    }
     setLoading(false);
   }, [id]);
 
@@ -98,9 +114,10 @@ export default function Driver360Page() {
 
   const pendingExpenses = expenses.filter(e => e.status === "PENDING").length;
   const TABS = [
-    { id: "overview", label: "Overview" },
-    { id: "trips", label: `Trips (${trips.length})` },
-    { id: "expenses", label: `Expenses (${expenses.length})` },
+    { id: "overview",  label: "Overview" },
+    { id: "scorecard", label: "Scorecard" },
+    { id: "trips",     label: `Trips (${trips.length})` },
+    { id: "expenses",  label: `Expenses (${expenses.length})` },
   ];
 
   return (
@@ -189,6 +206,46 @@ export default function Driver360Page() {
             )}
           </div>
         )}
+        {tab === "scorecard" && (
+          <div className="space-y-4">
+            {scorecard ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 text-center">
+                    <p className="text-2xl font-bold text-aqua">{scorecard.score}</p>
+                    <p className="text-xs text-steel uppercase mt-1">Performance Score</p>
+                    <p className="text-2xs text-steel/60 mt-0.5">0–100 composite</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 text-center">
+                    <p className="text-2xl font-bold text-ink">{scorecard.tripsCompleted}</p>
+                    <p className="text-xs text-steel uppercase mt-1">Trips Completed</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 text-center">
+                    <p className="text-2xl font-bold text-ink">{scorecard.ordersDelivered}</p>
+                    <p className="text-xs text-steel uppercase mt-1">Deliveries</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-card p-4 text-center">
+                    <p className="text-2xl font-bold text-ink">
+                      {scorecard.onTimeRate != null ? `${Math.round(scorecard.onTimeRate * 100)}%` : "—"}
+                    </p>
+                    <p className="text-xs text-steel uppercase mt-1">On-Time Rate</p>
+                  </div>
+                </div>
+                <div className="bg-infoLight/20 border border-info/20 rounded-xl p-4 text-xs text-steel">
+                  <strong>Score components:</strong> on-time delivery rate, delivery success rate, and trip volume
+                  (configurable weights in Administration → Scorecards).
+                  Telemetry-based driver behavior events (harsh braking, acceleration, speeding) are
+                  <strong> not yet available</strong> — hardware device data required.
+                </div>
+              </>
+            ) : (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-card p-8 text-center text-steel text-sm">
+                No scorecard data yet. Scorecard is calculated after trips are completed and orders resolved.
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === "expenses" && (
           <div className="space-y-4">
             {/* EXP-001: Driver expense submission currently fails with CONFIGURE_NUMBERING.

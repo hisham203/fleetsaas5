@@ -20,11 +20,13 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const status = url.searchParams.get("status");
   const vehicleId = url.searchParams.get("vehicleId");
+  const driverId = url.searchParams.get("driverId");
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
 
   const conditions = [eq(telemetryEvents.tenantId, tenantId)];
   if (status) conditions.push(eq(telemetryEvents.status, status));
   if (vehicleId) conditions.push(eq(telemetryEvents.vehicleId, vehicleId));
+  if (driverId) conditions.push(eq(telemetryEvents.driverId, driverId));
 
   const events = await db.query.telemetryEvents.findMany({
     where: and(...conditions as [any, ...any[]]),

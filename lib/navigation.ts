@@ -167,16 +167,18 @@ export const NAV_DOMAINS: NavDomain[] = [
     id: "telematics",
     label: "Telematics",
     icon: ICONS.telematics,
-    href: "/telematics/overview",
+    href: "/telematics/fleet-intelligence",
     maturity: "ACTIVE",
     groups: [
       {
         id: "tracking",
-        label: "Tracking",
+        label: "Fleet Intelligence",
         modules: [
-          { id: "telematics-overview", label: "Overview",       href: "/telematics/overview",   icon: ICONS.telematics, maturity: "ACTIVE" },
-          { id: "live-map",           label: "Live Tracking",   href: "/control-tower",          icon: ICONS.liveFleet,  maturity: "ACTIVE" },
-          { id: "trip-replay",        label: "Trip Replay",     href: "/telematics/replay",       icon: ICONS.trips,      maturity: "ACTIVE" },
+          { id: "fleet-intel",        label: "Fleet Dashboard",   href: "/telematics/fleet-intelligence", icon: ICONS.telematics, maturity: "ACTIVE" },
+          { id: "live-fleet",         label: "Live Fleet",         href: "/telematics/live",               icon: ICONS.liveFleet,  maturity: "ACTIVE" },
+          { id: "telematics-overview", label: "Overview",          href: "/telematics/overview",           icon: ICONS.telematics, maturity: "ACTIVE" },
+          { id: "live-map",           label: "Live Map",           href: "/control-tower",                 icon: ICONS.liveFleet,  maturity: "ACTIVE" },
+          { id: "trip-replay",        label: "Trip Replay",        href: "/telematics/replay",              icon: ICONS.trips,      maturity: "ACTIVE" },
         ],
       },
       {

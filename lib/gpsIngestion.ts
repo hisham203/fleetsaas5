@@ -28,6 +28,8 @@ import { trips, vehicleGpsHistory } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { genId } from "@/lib/helpers";
 import { checkAndEmitGeofenceEvents } from "@/lib/operationalEventHelper";
+import { MOVING_SPEED_THRESHOLD_MS } from "@/lib/fleetState";
+import { evaluateNamedGeofences } from "@/lib/geofenceEvaluator";
 
 // ── Normalised GPS payload ────────────────────────────────────────────────────
 export type GpsPing = {
@@ -72,9 +74,17 @@ export function validateGpsPing(data: Partial<GpsPing>): ValidationError[] {
 export async function persistGpsPing(ping: GpsPing): Promise<void> {
   const now = ping.recordedAt ?? new Date();
   await Promise.all([
-    // Latest position on the trip (fast map lookup):
+    // Latest position on the trip (fast map lookup) + derived operational state:
     db.update(trips)
-      .set({ currentLat: ping.lat, currentLng: ping.lng, lastPingAt: now })
+      .set({
+        currentLat: ping.lat,
+        currentLng: ping.lng,
+        lastPingAt: now,
+        // Derive operationalState from speed where available:
+        operationalState: ping.speed != null
+          ? ping.speed > MOVING_SPEED_THRESHOLD_MS ? "MOVING" : "IDLE"
+          : "UNKNOWN",
+      })
       .where(eq(trips.id, ping.tripId)),
     // Historical trail (operational review + route replay):
     db.insert(vehicleGpsHistory).values({
@@ -96,6 +106,7 @@ export async function persistGpsPing(ping: GpsPing): Promise<void> {
 
 // ── Stage 3: Geofence (async, non-blocking) ───────────────────────────────────
 export function processGpsGeofence(ping: GpsPing): void {
+  // P2-01: operational geofence events (warehouse/customer site suggestions):
   checkAndEmitGeofenceEvents({
     tenantId: ping.tenantId,
     tripId: ping.tripId,
@@ -103,5 +114,17 @@ export function processGpsGeofence(ping: GpsPing): void {
     driverId: ping.driverId,
     lat: ping.lat,
     lng: ping.lng,
+  }).catch(() => {});
+
+  // Milestone E: evaluate named geofence_definitions with ENTER/EXIT state machine:
+  evaluateNamedGeofences({
+    tenantId: ping.tenantId,
+    vehicleId: ping.vehicleId,
+    tripId: ping.tripId,
+    driverId: ping.driverId,
+    lat: ping.lat,
+    lng: ping.lng,
+    speed: ping.speed,
+    pingAt: ping.recordedAt,
   }).catch(() => {}); // never throw in the calling request path
 }
