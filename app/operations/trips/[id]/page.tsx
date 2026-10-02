@@ -155,6 +155,8 @@ export default function Trip360Page() {
   const [tab, setTab] = useState("overview");
   const [gpsHistory, setGpsHistory] = useState<{ lat: number; lng: number; speed: number | null; heading: number | null; recordedAt: string; source: string }[] | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [etaData, setEtaData] = useState<any>(null);
+  const [etaLoading, setEtaLoading] = useState(false);
   const [dispatching, setDispatching] = useState(false);
 
   const load = useCallback(async () => {
@@ -239,12 +241,21 @@ export default function Trip360Page() {
 
   const TABS_DEF = [
     { id: "overview",   label: "Overview" },
+    { id: "live",       label: "Live Execution" },
     { id: "timeline",   label: "Timeline" },
     { id: "stops",      label: `Stops (${trip.stops.length})` },
     { id: "assignment", label: "Assignment" },
     ...(hasPod ? [{ id: "pod", label: "POD" }] : []),
     { id: "gps",        label: "GPS Trace" },
   ];
+
+  async function loadEta() {
+    if (!trip || !["STARTED","DISPATCHED","ARRIVED_LOADING","LOADING_COMPLETE","ARRIVED_SITE"].includes(trip.status)) return;
+    setEtaLoading(true);
+    const res = await fetch(`/api/trips/${trip.id}/eta`).catch(() => null);
+    if (res?.ok) setEtaData(await res.json());
+    setEtaLoading(false);
+  }
 
   async function loadGpsTrace() {
     if (gpsHistory !== null || !trip) return; // cached or no trip
@@ -342,6 +353,7 @@ export default function Trip360Page() {
         <Tabs tabs={TABS_DEF} active={tab} onChange={(t) => {
           setTab(t);
           if (t === "gps") loadGpsTrace();
+          if (t === "live") loadEta();
         }} />
 
         {/* ── OVERVIEW ── */}
@@ -578,6 +590,97 @@ export default function Trip360Page() {
                 description="POD is captured by the driver on delivery completion."
               />
             )}
+          </div>
+        )}
+
+        {tab === "live" && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-ink">Live ETA & Progress</h3>
+                <button onClick={loadEta} className="text-xs text-aqua hover:underline">↺ Refresh ETA</button>
+              </div>
+              {etaLoading ? (
+                <p className="text-xs text-steel">Calculating ETA…</p>
+              ) : !etaData ? (
+                <div>
+                  <p className="text-xs text-steel">Click Refresh ETA to calculate live ETA for this trip.</p>
+                  {!["STARTED","DISPATCHED","ARRIVED_LOADING","LOADING_COMPLETE","ARRIVED_SITE"].includes(trip.status) && (
+                    <p className="text-xs text-steel/60 mt-1">ETA is only available for active dispatched trips.</p>
+                  )}
+                </div>
+              ) : !etaData.available ? (
+                <div>
+                  <p className="text-xs text-steel">ETA unavailable — {etaData.reason?.replace(/_/g," ").toLowerCase()}</p>
+                  {etaData.lastKnownArrivalAt && (
+                    <p className="text-xs text-steel mt-1">
+                      Last known ETA: {new Date(etaData.lastKnownArrivalAt).toLocaleTimeString("en-SA")}
+                      <span className="text-steel/60 ml-1">(stale)</span>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <p className="text-xs text-steel mb-1">Est. Arrival</p>
+                    <p className="text-sm font-semibold text-ink">
+                      {new Date(etaData.estimatedArrivalAt).toLocaleTimeString("en-SA", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-steel mb-1">Remaining</p>
+                    <p className="text-sm font-semibold text-ink">
+                      {Math.round(etaData.durationSeconds / 60)} min · {(etaData.distanceMeters / 1000).toFixed(1)} km
+                    </p>
+                  </div>
+                  {etaData.etaStatus && (
+                    <div>
+                      <p className="text-xs text-steel mb-1">Status</p>
+                      <p className={`text-sm ${
+                        etaData.etaStatus === "ON_TIME" ? "text-ok font-semibold" :
+                        etaData.etaStatus === "AT_RISK" ? "text-warn font-semibold" :
+                        "text-danger font-semibold"
+                      }`}>{etaData.etaStatus.replace("_"," ")}</p>
+                    </div>
+                  )}
+                  {etaData.delayMinutes !== null && etaData.delayMinutes !== 0 && (
+                    <div>
+                      <p className="text-xs text-steel mb-1">vs Baseline</p>
+                      <p className={`text-sm font-semibold ${etaData.delayMinutes > 0 ? "text-danger" : "text-ok"}`}>
+                        {etaData.delayMinutes > 0 ? `+${etaData.delayMinutes} min` : `${etaData.delayMinutes} min`}
+                      </p>
+                    </div>
+                  )}
+                  <p className="col-span-2 sm:col-span-4 text-2xs text-steel/50">
+                    ETA {etaData.quality === "LIVE" ? "calculated now" : "from cache"} via Google Routes ·
+                    {etaData.baselineEtaAt ? ` Baseline: ${new Date(etaData.baselineEtaAt).toLocaleTimeString("en-SA")}` : " No baseline (not yet dispatched)"}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Current GPS position */}
+            {trip.currentLat && trip.currentLng && (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-card p-5">
+                <h3 className="text-sm font-semibold text-ink mb-3">Current Position</h3>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-steel mb-1">GPS Coordinates</p>
+                    <p className="font-mono text-ink">{trip.currentLat.toFixed(5)}, {trip.currentLng.toFixed(5)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => { setTab("gps"); loadGpsTrace(); }}
+                className="text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2 hover:bg-white text-ink">
+                📍 View GPS Trace →
+              </button>
+              <a href="/telematics/alerts" className="text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2 hover:bg-white text-ink">
+                🔔 View Alerts →
+              </a>
+            </div>
           </div>
         )}
 

@@ -150,7 +150,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // Step 6: All locks held, no conflicts — atomically dispatch:
     dispatchedAt = new Date(); // dispatchedAt: now — recorded atomically inside lock
-    await tx.update(trips).set({ status: "DISPATCHED", dispatchedAt, dispatchedBy: userId }).where(eq(trips.id, id));
+    // Milestone F+G: Set baselineEtaAt once at dispatch (never overwritten):
+    const baselineEtaAt = trip.estimatedDurationMinutes
+      ? new Date(dispatchedAt!.getTime() + trip.estimatedDurationMinutes * 60_000)
+      : null;
+    await tx.update(trips).set({ status: "DISPATCHED", dispatchedAt, dispatchedBy: userId, baselineEtaAt: baselineEtaAt as any }).where(eq(trips.id, id));
     // Dispatch is the event that puts resources into active operational use.
     // They return to AVAILABLE when the trip reaches its terminal state
     // (stop resolution auto-close, or PATCH /api/trips/[id] {action:"complete"}).

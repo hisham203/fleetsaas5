@@ -96,8 +96,9 @@ describe("workflow automation engine (BR-22)", () => {
     expect(firedLog.actionTaken).toBe("NOTIFY");
 
     const { GET: notificationsGet } = await import("@/app/api/notifications/route");
-    const notifications = await (await notificationsGet(makeRequest("/api/notifications", { cookie: adminCookie }))).json();
-    const notification = notifications.find((n: any) => n.orderId === order.id);
+    const notifResponse = await (await notificationsGet(makeRequest("/api/notifications", { cookie: adminCookie }))).json();
+    const notifications = notifResponse.notifications ?? notifResponse; // handle both old and new format
+    const notification = Array.isArray(notifications) ? notifications.find((n: any) => n.orderId === order.id) : undefined;
     expect(notification).toBeTruthy();
     expect(notification.message).toBe("New cash order for 15 bottles");
   });
