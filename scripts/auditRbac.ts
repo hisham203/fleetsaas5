@@ -46,6 +46,10 @@ const ALLOWLIST: Record<string, { classification: string; reason: string }> = {
   "notifications/route.ts:PATCH":         { classification: "PERMISSION:TRIPS_VIEW", reason: "Mark all notifications read — checkPermission(TRIPS_VIEW)" },
   "notifications/[id]/route.ts:PATCH":    { classification: "PERMISSION:TRIPS_VIEW", reason: "Mark notification read — checkPermission(TRIPS_VIEW)" },
   "cron/device-health/route.ts:GET":      { classification: "INFRA:CRON", reason: "Protected by CRON_SECRET header — no user auth; infrastructure endpoint" },
+  // Milestone H — Hardware Adapter
+  "inbound/teltonika/[token]/route.ts:POST": { classification: "INFRA:DEVICE_WEBHOOK", reason: "Teltonika inbound webhook — bcrypt token auth; no user session" },
+  "telematics/providers/[id]/route.ts:GET":  { classification: "PERMISSION:TENANT_SETTINGS", reason: "Provider details — checkPermission(TENANT_SETTINGS)" },
+  "telematics/providers/[id]/token/route.ts:POST": { classification: "PERMISSION:TENANT_SETTINGS", reason: "Token generation — ADMIN + checkPermission(TENANT_SETTINGS)" },
 };
 
 function findFiles(dir: string): string[] {

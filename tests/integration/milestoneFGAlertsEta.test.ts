@@ -112,7 +112,7 @@ describe("A. Migration 0028 schema integrity", () => {
   it("A5. Migration count is now 29", () => {
     const { readdirSync } = require("fs");
     const count = readdirSync(join(process.cwd(), "drizzle")).filter((f: string) => f.endsWith(".sql")).length;
-    expect(count).toBe(29); // 0000–0028
+    expect(count).toBe(30); // 0000–0028
   });
 });
 
@@ -503,7 +503,7 @@ describe("K. Protected domain regression", () => {
   it("K4. Migration count is 29", () => {
     const { readdirSync } = require("fs");
     const count = readdirSync(join(process.cwd(), "drizzle")).filter((f: string) => f.endsWith(".sql")).length;
-    expect(count).toBe(29);
+    expect(count).toBe(30);
   });
 });
 

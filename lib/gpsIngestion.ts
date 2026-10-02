@@ -43,6 +43,8 @@ export type GpsPing = {
   speed?: number | null;
   heading?: number | null;
   recordedAt?: Date;
+  // Milestone H: device provenance (set by hardware adapter; null for Driver App / Demo)
+  deviceId?: string | null;
 };
 
 export type ValidationError = { field: string; message: string };
@@ -99,7 +101,10 @@ export async function persistGpsPing(ping: GpsPing): Promise<void> {
       speed: ping.speed ?? null,
       heading: ping.heading ?? null,
       recordedAt: now,
-    }),
+      // Milestone H: device provenance — DEVICE when hardware; DRIVER_APP otherwise
+      source:   ping.deviceId ? "DEVICE" : "DRIVER_APP",
+      deviceId: ping.deviceId ?? null,
+    } as any),
   ]);
 }
 

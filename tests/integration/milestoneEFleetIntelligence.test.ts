@@ -442,7 +442,7 @@ describe("H. Protected domain regression", () => {
   it("H6. Migration count is now 28 (0000-0027)", () => {
     const { readdirSync } = require("fs");
     const migrations = readdirSync(join(process.cwd(), "drizzle")).filter((f: string) => f.endsWith(".sql"));
-    expect(migrations.length).toBe(29); // 0000–0028 (Milestone F+G added 0028)
+    expect(migrations.length).toBe(30); // 0000–0028 (Milestone F+G added 0028)
   });
 });
 

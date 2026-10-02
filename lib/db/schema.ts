@@ -2061,6 +2061,8 @@ export const vehicleGpsHistory = pgTable("vehicle_gps_history", {
   // Milestone D: persistent source provenance (DEVICE | DRIVER_APP | DEMO)
   // Backfill: all rows before 0026 have DEFAULT 'DRIVER_APP' (correct attribution for P2-01 pings)
   source: text("source").notNull().default("DRIVER_APP"),
+  // Milestone H: FK to telematics_devices.id — set when source='DEVICE'; null for DRIVER_APP/DEMO
+  deviceId: text("device_id"),
 });
 
 // Operational event feed: geofence arrivals, GPS stale alerts, late trips, etc.
@@ -2142,6 +2144,8 @@ export const telematicsDevices = pgTable("telematics_devices", {
   lastLng:          real("last_lng"),
   metadata:         json("metadata"),
   notes:            text("notes"),
+  // Milestone H: lifetime ping counter incremented by hardware adapter
+  totalPingsReceived: integer("total_pings_received").notNull().default(0),
   createdAt:        timestamp("created_at", { mode: "date" }).notNull().$defaultFn(() => new Date()),
   updatedAt:        timestamp("updated_at", { mode: "date" }).$defaultFn(() => new Date()),
 });
