@@ -1,6 +1,8 @@
 "use client";
 /**
  * Telematics Device Registry
+ * Milestone E: Enhanced with device health indicators.
+
  * Route: /telematics/devices
  */
 import { useState, useEffect, useCallback } from "react";
@@ -159,7 +161,16 @@ export default function DevicesPage() {
                     <td className="px-4 py-3 text-xs text-steel">{d.provider?.name ?? "—"}</td>
                     <td className="px-4 py-3"><StatusBadge status={d.status} size="xs" /></td>
                     <td className="px-4 py-3 text-xs text-steel font-mono">{d.assignedVehicleId ? d.assignedVehicleId.slice(0, 8) + "…" : "—"}</td>
-                    <td className="px-4 py-3 text-xs text-steel">{fmtAgo(d.lastCommunication)}</td>
+                    <td className="px-4 py-3 text-xs">
+                      <span className={
+                        d.lastCommunication == null ? "text-steel/50" :
+                        (Date.now() - new Date(d.lastCommunication).getTime() < 15*60*1000) ? "text-ok font-medium" :
+                        (Date.now() - new Date(d.lastCommunication).getTime() < 60*60*1000) ? "text-warn font-medium" :
+                        "text-danger font-medium"
+                      }>
+                        {d.lastCommunication == null ? "Never" : fmtAgo(d.lastCommunication)}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-xs text-steel">{fmtAgo(d.lastGpsFix)}</td>
                   </tr>
                 ))}

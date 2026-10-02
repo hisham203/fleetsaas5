@@ -1,0 +1,14 @@
+{
+  "id": "0027_milestone_e_fleet_intelligence",
+  "prevId": "0026_milestone_d_telematics_core",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

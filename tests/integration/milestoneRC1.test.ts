@@ -26,7 +26,7 @@ beforeAll(async () => {
 describe("RC1 migration and schema (Part 1)", () => {
   it("1. migration 0020 exists and is purely additive", () => {
     const sql = src("drizzle/0020_fat_dorian_gray.sql");
-    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter(f => f.endsWith(".sql")).length).toBe(27); // Milestone D added migration 0026 (telematics core)
+    expect(fs.readdirSync(path.join(process.cwd(), "drizzle")).filter(f => f.endsWith(".sql")).length).toBe(28); // Milestone E added migration 0027 (fleet intelligence)
     expect(sql).toContain('CREATE TABLE "trip_lifecycle_events"');
     expect(sql.toLowerCase()).not.toMatch(/drop|truncate|delete from|not null.*alter/);
   });

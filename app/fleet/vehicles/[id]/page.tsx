@@ -373,45 +373,60 @@ export default function Vehicle360Page() {
         )}
 
         {tab === "telematics" && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-card p-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-ink mb-3">Live GPS Status</h3>
+          <div className="space-y-4">
+            {/* GPS Health Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-card p-5">
+              <h3 className="text-sm font-semibold text-ink mb-3">Live GPS &amp; Operational State</h3>
               {telemetry ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-steel w-28">GPS Status</span>
-                    <span className={`text-sm font-semibold ${
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-steel mb-1">GPS Status</p>
+                    <p className={`text-sm font-semibold ${
                       telemetry.gpsStatus === "LIVE" ? "text-ok" :
-                      telemetry.gpsStatus === "STALE" ? "text-warn" : "text-steel"
-                    }`}>● {telemetry.gpsStatus}</span>
+                      telemetry.gpsStatus === "STALE" ? "text-warn" : "text-steel/50"
+                    }`}>● {telemetry.gpsStatus}</p>
                   </div>
-                  {telemetry.lat != null && <div className="flex items-center gap-3">
-                    <span className="text-xs text-steel w-28">Last Position</span>
-                    <span className="text-sm font-mono text-ink">{telemetry.lat.toFixed(6)}, {telemetry.lng?.toFixed(6)}</span>
-                  </div>}
-                  {telemetry.lastPingAt && <div className="flex items-center gap-3">
-                    <span className="text-xs text-steel w-28">Last Ping</span>
-                    <span className="text-sm text-ink">{new Date(telemetry.lastPingAt).toLocaleString("en-SA")}</span>
-                  </div>}
+                  {telemetry.lat != null && (
+                    <div>
+                      <p className="text-xs text-steel mb-1">Last Position</p>
+                      <p className="text-xs font-mono text-ink">{telemetry.lat.toFixed(5)}, {telemetry.lng?.toFixed(5)}</p>
+                    </div>
+                  )}
+                  {telemetry.lastPingAt && (
+                    <div>
+                      <p className="text-xs text-steel mb-1">Last Ping</p>
+                      <p className="text-xs text-ink">{new Date(telemetry.lastPingAt).toLocaleString("en-SA")}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-steel mb-1">Source</p>
+                    <p className="text-xs text-ink">Driver App (GPS Demo if enabled)</p>
+                  </div>
                   {telemetry.gpsStatus === "OFFLINE" && telemetry.lat == null && (
-                    <p className="text-xs text-steel italic mt-2">No GPS data recorded. Vehicle must be on an active DISPATCHED trip for GPS to update.</p>
+                    <p className="text-xs text-steel italic col-span-2">
+                      No GPS recorded. Vehicle must be on an active dispatched trip for GPS to update.
+                    </p>
                   )}
                 </div>
               ) : (
                 <p className="text-xs text-steel">Loading GPS status…</p>
               )}
             </div>
-            <div>
-              <h3 className="text-sm font-semibold text-ink mb-2">Device Registry</h3>
+
+            {/* Device */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-card p-5">
+              <h3 className="text-sm font-semibold text-ink mb-3">Telematics Device</h3>
               <p className="text-xs text-steel">
-                Device assignments are managed in{" "}
+                Device assignments and health are managed in{" "}
                 <a href="/telematics/devices" className="text-aqua underline">Telematics → Device Registry</a>.
               </p>
             </div>
-            <div>
-              <a href="/control-tower" className="text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2 inline-block hover:bg-white text-ink">
-                🗺 Open Live Tracking →
-              </a>
+
+            {/* Quick links */}
+            <div className="flex flex-wrap gap-2">
+              <a href="/control-tower" className="text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2 hover:bg-white text-ink">🗺 Live Tracking →</a>
+              <a href="/telematics/live" className="text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2 hover:bg-white text-ink">📊 Fleet Intelligence →</a>
+              <a href="/telematics/events" className="text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2 hover:bg-white text-ink">🔔 Events →</a>
             </div>
           </div>
         )}

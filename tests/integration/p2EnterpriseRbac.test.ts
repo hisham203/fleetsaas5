@@ -294,6 +294,8 @@ describe("Commercial regression", () => {
     expect(fs.existsSync("drizzle/0024_p2_03_gps_source.sql")).toBe(false);
     // Milestone D migration 0026 adds the source column:
     expect(fs.existsSync("drizzle/0026_milestone_d_telematics_core.sql")).toBe(true);
+    // Milestone E migration 0027 adds fleet intelligence:
+    expect(fs.existsSync("drizzle/0027_milestone_e_fleet_intelligence.sql")).toBe(true);
     const schema = fs.readFileSync("lib/db/schema.ts", "utf8");
     const gpsHistory = schema.slice(schema.indexOf("vehicleGpsHistory = pgTable"), schema.indexOf("\n});\n", schema.indexOf("vehicleGpsHistory = pgTable")) + 5);
     // Milestone D added source column to vehicleGpsHistory:

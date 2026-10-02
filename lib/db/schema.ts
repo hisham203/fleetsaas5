@@ -270,6 +270,8 @@ export const trips = pgTable("trips", {
   currentLat: real("current_lat"), // BR-12 Live Location Tracking (simulated GPS for this prototype)
   currentLng: real("current_lng"),
   lastPingAt: timestamp("last_ping_at", { mode: "date" }),
+  // Milestone E: derived operational state (MOVING|IDLE|STOPPED|UNKNOWN) set by GPS ingestion
+  operationalState: text("operational_state"),
   startedAt: timestamp("started_at", { mode: "date" }),
   completedAt: timestamp("completed_at", { mode: "date" }),
   // P2-02: Dispatch governance
@@ -2200,6 +2202,24 @@ export const telemetryEvents = pgTable("telemetry_events", {
   createdAt:      createdAt(),
 });
 
+
+// ── Milestone E: Fleet Intelligence ──────────────────────────────────────────
+
+// Tracks current inside/outside state per (vehicle, named geofence) pair.
+// Enables OUTSIDE→INSIDE transition detection (ENTER events) and
+// INSIDE→OUTSIDE (EXIT events) without querying full geofence_events history.
+// One row per (vehicle_id, geofence_id); upserted on each GPS ping.
+export const vehicleGeofenceState = pgTable("vehicle_geofence_state", {
+  id:            text("id").primaryKey(),
+  tenantId:      text("tenant_id").notNull(),
+  vehicleId:     text("vehicle_id").notNull(), // SOFT reference
+  geofenceId:    text("geofence_id").notNull().references(() => geofenceDefinitions.id),
+  currentState:  text("current_state").notNull().default("OUTSIDE"), // INSIDE | OUTSIDE
+  lastEnteredAt: timestamp("last_entered_at", { mode: "date" }),
+  lastExitedAt:  timestamp("last_exited_at", { mode: "date" }),
+  updatedAt:     timestamp("updated_at", { mode: "date" }).$defaultFn(() => new Date()),
+});
+
 // ── Milestone D Relations ─────────────────────────────────────────────────────
 export const telematicsProvidersRelations = relations(telematicsProviders, ({ many }) => ({
   devices: many(telematicsDevices),
@@ -2227,6 +2247,13 @@ export const geofenceDefinitionsRelations = relations(geofenceDefinitions, ({ ma
 export const geofenceEventsRelations = relations(geofenceEvents, ({ one }) => ({
   geofence: one(geofenceDefinitions, {
     fields: [geofenceEvents.geofenceId],
+    references: [geofenceDefinitions.id],
+  }),
+}));
+
+export const vehicleGeofenceStateRelations = relations(vehicleGeofenceState, ({ one }) => ({
+  geofence: one(geofenceDefinitions, {
+    fields: [vehicleGeofenceState.geofenceId],
     references: [geofenceDefinitions.id],
   }),
 }));

@@ -35,6 +35,9 @@ const ALLOWLIST: Record<string, { classification: string; reason: string }> = {
   "telematics/events/route.ts:GET":               { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Telemetry events — hasRole(ADMIN|DISPATCHER)" },
   "telematics/events/route.ts:PATCH":             { classification: "PERMISSION:TRIPS_VIEW_LIVE+IDENTITY:ADMIN", reason: "Acknowledge events — ADMIN|DISPATCHER" },
   "telematics/trips/[id]/replay/route.ts:GET":    { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Trip GPS replay — hasRole(ADMIN|DISPATCHER)" },
+  // Milestone E — Fleet Intelligence routes
+  "fleet/intelligence/route.ts:GET":              { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Fleet intelligence — checkPermission(TRIPS_VIEW_LIVE)" },
+  "telematics/fleet-dashboard/route.ts:GET":      { classification: "PERMISSION:TRIPS_VIEW_LIVE", reason: "Fleet intelligence dashboard — checkPermission(TRIPS_VIEW_LIVE)" },
 };
 
 function findFiles(dir: string): string[] {

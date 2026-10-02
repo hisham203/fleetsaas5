@@ -10,7 +10,7 @@
  * This page shows the ACTUAL GPS TRACE only. The planned route is not shown
  * here to avoid misleading the user about actual vehicle path.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AdminShell from "@/components/AdminShell";
 import { PageContainer, PageHeader, EmptyState, LoadingState, Btn } from "@/components/ds";
 
@@ -34,6 +34,19 @@ export default function TripReplayPage() {
   const [data, setData] = useState<ReplayData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<number>(0); // index into actualTrace for playback
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<1|2|4>(1);
+
+  // Playback effect:
+  useEffect(() => {
+    if (!playing || !data || cursor >= data.actualTrace.length - 1) {
+      setPlaying(false); return;
+    }
+    const ms = Math.round(500 / speed);
+    const tid = setTimeout(() => setCursor(c => c + 1), ms);
+    return () => clearTimeout(tid);
+  }, [playing, cursor, data, speed]);
 
   async function loadReplay() {
     if (!tripId.trim()) return;
@@ -45,6 +58,7 @@ export default function TripReplayPage() {
       setLoading(false); return;
     }
     setData(await res.json());
+    setCursor(0); setPlaying(false);
     setLoading(false);
   }
 
@@ -115,7 +129,25 @@ export default function TripReplayPage() {
                   <h2 className="text-sm font-semibold text-ink">Actual GPS Trace ({data.pointCount} points)</h2>
                   <p className="text-xs text-steel mt-0.5">Chronological — oldest first</p>
                 </div>
-                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                {/* Playback Controls */}
+              <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 bg-paper">
+                <button onClick={() => setCursor(0)} className="text-xs text-steel hover:text-ink" title="Reset">⏮</button>
+                <button onClick={() => setCursor(c => Math.max(0, c - 1))} className="text-xs text-steel hover:text-ink" title="Step back">⏪</button>
+                <button onClick={() => setPlaying(p => !p)}
+                  className="text-xs bg-aqua text-white px-3 py-1 rounded-lg font-medium hover:bg-aqua/90">
+                  {playing ? "⏸ Pause" : "▶ Play"}
+                </button>
+                <button onClick={() => setCursor(c => Math.min((data?.pointCount ?? 1) - 1, c + 1))} className="text-xs text-steel hover:text-ink" title="Step forward">⏩</button>
+                <span className="text-xs text-steel">Point {cursor + 1} / {data?.pointCount}</span>
+                <span className="text-xs text-steel ml-auto">Speed:</span>
+                {([1,2,4] as const).map(s => (
+                  <button key={s} onClick={() => setSpeed(s)}
+                    className={`text-xs px-2 py-0.5 rounded ${speed === s ? "bg-aqua text-white" : "bg-white border border-slate-200 text-steel"}`}>
+                    {s}x
+                  </button>
+                ))}
+              </div>
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 bg-paper border-b border-slate-100">
                       <tr>
@@ -126,7 +158,7 @@ export default function TripReplayPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {data.actualTrace.map((p, i) => (
-                        <tr key={i} className={`hover:bg-paper ${p.source === "DEMO" ? "bg-warnLight/20" : ""}`}>
+                        <tr key={i} onClick={() => setCursor(i)} className={`cursor-pointer ${i === cursor ? "bg-aqua/10 font-medium" : p.source === "DEMO" ? "bg-warnLight/20" : "hover:bg-paper"}`}>
                           <td className="px-4 py-1.5 text-steel">{i + 1}</td>
                           <td className="px-4 py-1.5 font-mono">{fmtTime(p.recordedAt)}</td>
                           <td className="px-4 py-1.5 font-mono">{p.lat.toFixed(6)}</td>
