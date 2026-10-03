@@ -248,15 +248,27 @@ export const NAV_DOMAINS: NavDomain[] = [
     id: "analytics",
     label: "Analytics",
     icon: ICONS.analytics,
-    href: "/admin/reports",
+    href: "/analytics/overview",
     maturity: "ACTIVE",
     groups: [
       {
-        id: "performance",
-        label: "Performance",
+        id: "analytics",
+        label: "Analytics",
         modules: [
-          { id: "reports", label: "Reports", href: "/analytics/reports", icon: ICONS.reports, maturity: "ACTIVE" },
-          { id: "scorecards", label: "Scorecards", href: "/admin?tab=scorecards", icon: ICONS.scorecards, maturity: "ACTIVE" },
+          { id: "analytics-overview",    label: "Overview",          href: "/analytics/overview",    icon: ICONS.analytics,    maturity: "ACTIVE" },
+          { id: "analytics-operations",  label: "Operations & SLA",  href: "/analytics/operations",  icon: ICONS.reports,      maturity: "ACTIVE" },
+          { id: "analytics-fleet",       label: "Fleet Performance", href: "/analytics/fleet",       icon: ICONS.vehicles,     maturity: "ACTIVE" },
+          { id: "analytics-drivers",     label: "Driver Performance",href: "/analytics/drivers",     icon: ICONS.drivers,      maturity: "ACTIVE" },
+          { id: "analytics-costs",       label: "Cost Intelligence", href: "/analytics/costs",       icon: ICONS.analytics,    maturity: "ACTIVE" },
+          { id: "analytics-telematics",  label: "Telematics Quality",href: "/analytics/telematics",  icon: ICONS.telematics,   maturity: "ACTIVE" },
+        ],
+      },
+      {
+        id: "reports",
+        label: "Reports",
+        modules: [
+          { id: "reports",    label: "Custom Reports", href: "/analytics/reports",     icon: ICONS.reports,    maturity: "ACTIVE" },
+          { id: "scorecards", label: "Scorecards",     href: "/admin?tab=scorecards",  icon: ICONS.scorecards, maturity: "ACTIVE" },
         ],
       },
     ],
