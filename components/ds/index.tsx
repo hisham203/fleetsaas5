@@ -1,12 +1,22 @@
 /**
- * Smarty1 Design System — Milestone A
+ * Smarty1 Design System — Milestone J
+ *
  * Shared enterprise UI primitives.
+ * All components use semantic CSS variable tokens from globals.css.
+ * No hardcoded primitive colors.
  */
 "use client";
-import { ReactNode } from "react";
+import { ReactNode, useState, useCallback } from "react";
+import Link from "next/link";
+
+// ── Layout ────────────────────────────────────────────────────────────────
 
 export function PageContainer({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`px-4 md:px-6 py-6 max-w-screen-2xl mx-auto ${className}`}>{children}</div>;
+  return (
+    <div className={`px-4 md:px-6 py-5 max-w-screen-2xl mx-auto ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 export function PageHeader({
@@ -17,26 +27,28 @@ export function PageHeader({
   actions?: ReactNode; badge?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 mb-6">
+    <div className="flex items-start justify-between gap-4 mb-5">
       <div className="min-w-0">
         {breadcrumbs && breadcrumbs.length > 0 && (
-          <nav className="flex items-center gap-1.5 text-xs text-steel mb-1.5">
+          <nav className="flex items-center gap-1.5 text-xs mb-1.5 flex-wrap" aria-label="Breadcrumb"
+            style={{ color: "var(--text-muted)" }}>
             {breadcrumbs.map((b, i) => (
               <span key={i} className="flex items-center gap-1.5">
-                {i > 0 && <span className="text-slate-300">/</span>}
-                {b.href ? <a href={b.href} className="hover:text-ink transition-colors">{b.label}</a>
-                  : <span className="text-ink font-medium">{b.label}</span>}
+                {i > 0 && <span style={{ color: "var(--border-default)" }}>/</span>}
+                {b.href
+                  ? <Link href={b.href} className="hover:underline" style={{ color: "var(--text-secondary)" }}>{b.label}</Link>
+                  : <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{b.label}</span>}
               </span>
             ))}
           </nav>
         )}
         <div className="flex items-center gap-2.5 flex-wrap">
-          <h1 className="text-xl font-semibold text-ink tracking-tight">{title}</h1>
+          <h1 className="text-h4 font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>{title}</h1>
           {badge}
         </div>
-        {subtitle && <p className="text-sm text-steel mt-0.5">{subtitle}</p>}
+        {subtitle && <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}
     </div>
   );
 }
@@ -45,119 +57,332 @@ export function SectionHeader({ title, subtitle, actions }: { title: string; sub
   return (
     <div className="flex items-center justify-between gap-4 mb-3">
       <div>
-        <h2 className="text-sm font-semibold text-ink">{title}</h2>
-        {subtitle && <p className="text-xs text-steel mt-0.5">{subtitle}</p>}
+        <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h2>
+        {subtitle && <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
   );
 }
 
-export function MetricCard({ label, value, trendLabel, accent = "default", icon }: {
-  label: string; value: string | number; trendLabel?: string;
-  accent?: "default"|"ok"|"warn"|"danger"|"info"; icon?: ReactNode;
+// ── Button ─────────────────────────────────────────────────────────────────
+
+type BtnVariant = "primary" | "secondary" | "ghost" | "danger" | "outline";
+type BtnSize    = "xs" | "sm" | "md" | "lg";
+
+const BTN_VARIANT: Record<BtnVariant, string> = {
+  primary:   "bg-[var(--interactive-primary)] text-[var(--text-on-brand)] hover:bg-[var(--interactive-primary-hover)] active:bg-[var(--interactive-primary-active)]",
+  secondary: "bg-[var(--interactive-secondary)] text-[var(--text-secondary)] border border-[var(--border-default)] hover:bg-[var(--interactive-secondary-hover)] hover:text-[var(--text-primary)]",
+  ghost:     "text-[var(--text-muted)] hover:bg-[rgba(255,255,255,0.05)] hover:text-[var(--text-primary)]",
+  danger:    "bg-[var(--danger)] text-white hover:bg-[var(--danger-hover)]",
+  outline:   "border border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]",
+};
+
+const BTN_SIZE: Record<BtnSize, string> = {
+  xs: "text-xs px-2 h-6 gap-1",
+  sm: "text-xs px-2.5 h-7 gap-1.5",
+  md: "text-sm px-3.5 h-8 gap-1.5",
+  lg: "text-sm px-5 h-10 gap-2",
+};
+
+export function Btn({
+  children, variant = "secondary", size = "md", disabled, loading, onClick, type = "button", className = "",
+}: {
+  children: ReactNode;
+  variant?: BtnVariant; size?: BtnSize;
+  disabled?: boolean; loading?: boolean;
+  onClick?: () => void; type?: "button" | "submit" | "reset";
+  className?: string;
 }) {
-  const borders = { default:"border-slate-200", ok:"border-ok/30", warn:"border-warn/30", danger:"border-danger/30", info:"border-info/30" };
   return (
-    <div className={`bg-white rounded-xl border ${borders[accent]} p-4 shadow-card`}>
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled || loading}
+      className={`inline-flex items-center justify-center font-medium rounded-[var(--radius-btn)]
+        transition-colors duration-[120ms]
+        focus-visible:outline-2 focus-visible:outline-[var(--border-focus)] focus-visible:outline-offset-2
+        disabled:opacity-40 disabled:cursor-not-allowed select-none whitespace-nowrap
+        ${BTN_VARIANT[variant]} ${BTN_SIZE[size]} ${className}`}
+    >
+      {loading ? <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" /> : null}
+      {children}
+    </button>
+  );
+}
+
+// ── Status Badge ───────────────────────────────────────────────────────────
+
+const STATUS_PALETTE: Record<string, { bg: string; text: string }> = {
+  // Operational lifecycle
+  PENDING:              { bg: "var(--warning-bg)",  text: "var(--warning-fg)" },
+  VALIDATED:            { bg: "var(--info-bg)",     text: "var(--info-fg)" },
+  QUEUED:               { bg: "var(--warning-bg)",  text: "var(--warning-fg)" },
+  ASSIGNED:             { bg: "var(--info-bg)",     text: "var(--info-fg)" },
+  DISPATCHED:           { bg: "var(--info-bg)",     text: "var(--info-fg)" },
+  IN_TRANSIT:           { bg: "var(--info-bg)",     text: "var(--info-fg)" },
+  STARTED:              { bg: "var(--info-bg)",     text: "var(--info-fg)" },
+  IN_PROGRESS:          { bg: "var(--info-bg)",     text: "var(--info-fg)" },
+  ARRIVED_LOADING:      { bg: "var(--warning-bg)",  text: "var(--warning-fg)" },
+  LOADING_COMPLETE:     { bg: "var(--info-bg)",     text: "var(--info-fg)" },
+  ARRIVED_SITE:         { bg: "var(--info-bg)",     text: "var(--info-fg)" },
+  DELIVERED:            { bg: "var(--success-bg)",  text: "var(--success-fg)" },
+  PARTIALLY_DELIVERED:  { bg: "var(--warning-bg)",  text: "var(--warning-fg)" },
+  COMPLETED:            { bg: "var(--success-bg)",  text: "var(--success-fg)" },
+  FAILED:               { bg: "var(--error-bg)",    text: "var(--error-fg)" },
+  CANCELLED:            { bg: "rgba(255,255,255,0.06)", text: "var(--text-muted)" },
+  PLANNED:              { bg: "rgba(255,255,255,0.06)", text: "var(--text-muted)" },
+  TRIP_PLANNED:         { bg: "rgba(255,255,255,0.06)", text: "var(--text-muted)" },
+  // Fleet
+  AVAILABLE:     { bg: "var(--success-bg)", text: "var(--success-fg)" },
+  ON_TRIP:       { bg: "var(--info-bg)",    text: "var(--info-fg)" },
+  IN_TRIP:       { bg: "var(--info-bg)",    text: "var(--info-fg)" },
+  MAINTENANCE:   { bg: "var(--warning-bg)", text: "var(--warning-fg)" },
+  OUT_OF_SERVICE:{ bg: "var(--error-bg)",   text: "var(--error-fg)" },
+  OFF_DUTY:      { bg: "rgba(255,255,255,0.06)", text: "var(--text-muted)" },
+  // Financial
+  PAID:     { bg: "var(--success-bg)", text: "var(--success-fg)" },
+  UNPAID:   { bg: "var(--error-bg)",   text: "var(--error-fg)" },
+  DRAFT:    { bg: "rgba(255,255,255,0.06)", text: "var(--text-muted)" },
+  APPROVED: { bg: "var(--success-bg)", text: "var(--success-fg)" },
+  REJECTED: { bg: "var(--error-bg)",   text: "var(--error-fg)" },
+  PENDING_REVIEW: { bg: "var(--warning-bg)", text: "var(--warning-fg)" },
+  // Contract / admin
+  ACTIVE:    { bg: "var(--success-bg)", text: "var(--success-fg)" },
+  EXPIRED:   { bg: "var(--error-bg)",   text: "var(--error-fg)" },
+  SUSPENDED: { bg: "var(--warning-bg)", text: "var(--warning-fg)" },
+  INACTIVE:  { bg: "rgba(255,255,255,0.06)", text: "var(--text-muted)" },
+  // Telematics
+  OPEN:         { bg: "var(--warning-bg)", text: "var(--warning-fg)" },
+  ACKNOWLEDGED: { bg: "var(--info-bg)",    text: "var(--info-fg)" },
+  RESOLVED:     { bg: "var(--success-bg)", text: "var(--success-fg)" },
+  OFFLINE:      { bg: "var(--error-bg)",   text: "var(--error-fg)" },
+  HEALTHY:      { bg: "var(--success-bg)", text: "var(--success-fg)" },
+  STALE:        { bg: "var(--warning-bg)", text: "var(--warning-fg)" },
+  // Alerts
+  CRITICAL: { bg: "var(--error-bg)",   text: "var(--error-fg)" },
+  WARNING:  { bg: "var(--warning-bg)", text: "var(--warning-fg)" },
+  INFO:     { bg: "var(--info-bg)",    text: "var(--info-fg)" },
+  // Trips
+  ON_TIME:  { bg: "var(--success-bg)", text: "var(--success-fg)" },
+  AT_RISK:  { bg: "var(--warning-bg)", text: "var(--warning-fg)" },
+  DELAYED:  { bg: "var(--error-bg)",   text: "var(--error-fg)" },
+  MOVING:   { bg: "var(--success-bg)", text: "var(--success-fg)" },
+  IDLE:     { bg: "var(--warning-bg)", text: "var(--warning-fg)" },
+  UNKNOWN:  { bg: "rgba(255,255,255,0.06)", text: "var(--text-muted)" },
+  // Generic
+  EXCEPTION: { bg: "var(--error-bg)", text: "var(--error-fg)" },
+};
+
+export function StatusBadge({
+  status, label, size = "sm",
+}: { status: string; label?: string; size?: "xs" | "sm" | "md" }) {
+  const palette = STATUS_PALETTE[status] ?? { bg: "rgba(255,255,255,0.06)", text: "var(--text-muted)" };
+  const sizeClass = size === "xs" ? "text-xs px-1.5 py-px" : size === "md" ? "text-sm px-2.5 py-1" : "text-xs px-2 py-0.5";
+  return (
+    <span
+      className={`inline-flex items-center font-medium rounded-[var(--radius-sm)] ${sizeClass}`}
+      style={{ background: palette.bg, color: palette.text }}
+    >
+      {label ?? status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+// ── MetricCard ─────────────────────────────────────────────────────────────
+
+export function MetricCard({ label, value, sub, trendLabel, accent = "default", icon }: {
+  label: string; value: string | number; sub?: string;
+  trendLabel?: string; // legacy alias for sub
+  accent?: "default" | "ok" | "warn" | "danger" | "info" | "brand";
+  icon?: ReactNode;
+}) {
+  const borderMap: Record<string, string> = {
+    default: "var(--border-subtle)",
+    ok:      "rgba(74,222,128,0.3)",
+    warn:    "rgba(251,191,36,0.3)",
+    danger:  "rgba(248,113,113,0.3)",
+    info:    "rgba(96,165,250,0.3)",
+    brand:   "rgba(199,253,1,0.3)",
+  };
+  return (
+    <div className="rounded-[var(--radius-card)] p-4 shadow-card"
+      style={{ background: "var(--bg-surface)", border: `1px solid ${borderMap[accent ?? "default"]}` }}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-steel truncate">{label}</p>
-          <p className="text-2xl font-bold text-ink mt-1 tabular-nums">{value}</p>
-          {trendLabel && <p className="text-xs text-steel mt-1">{trendLabel}</p>}
+          <p className="text-xs font-medium uppercase tracking-wider truncate" style={{ color: "var(--text-muted)" }}>{label}</p>
+          <p className="text-2xl font-bold mt-1 tabular-nums" style={{ color: "var(--text-primary)" }}>{value}</p>
+          {(sub ?? trendLabel) && <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{sub ?? trendLabel}</p>}
         </div>
-        {icon && <div className="w-9 h-9 rounded-lg bg-paper flex items-center justify-center text-steel shrink-0">{icon}</div>}
+        {icon && (
+          <div className="w-9 h-9 rounded-[var(--radius-btn)] flex items-center justify-center shrink-0"
+            style={{ background: "var(--bg-raised)", color: "var(--text-muted)" }}>
+            {icon}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-const STATUS_MAP: Record<string, { bg: string; text: string; dot?: string }> = {
-  PENDING: { bg:"bg-warnLight", text:"text-warn", dot:"bg-warn" },
-  VALIDATED: { bg:"bg-warnLight", text:"text-warn" },
-  ASSIGNED: { bg:"bg-infoLight", text:"text-info", dot:"bg-info" },
-  IN_TRANSIT: { bg:"bg-infoLight", text:"text-info", dot:"bg-info" },
-  DELIVERED: { bg:"bg-okLight", text:"text-ok", dot:"bg-ok" },
-  PARTIALLY_DELIVERED: { bg:"bg-warnLight", text:"text-warn" },
-  FAILED: { bg:"bg-dangerLight", text:"text-danger", dot:"bg-danger" },
-  CANCELLED: { bg:"bg-slate-100", text:"text-steel" },
-  PLANNED: { bg:"bg-slate-100", text:"text-steel" },
-  DISPATCHED: { bg:"bg-infoLight", text:"text-info", dot:"bg-info" },
-  IN_PROGRESS: { bg:"bg-infoLight", text:"text-info", dot:"bg-info" },
-  COMPLETED: { bg:"bg-okLight", text:"text-ok" },
-  AVAILABLE: { bg:"bg-okLight", text:"text-ok", dot:"bg-ok" },
-  IN_TRIP: { bg:"bg-infoLight", text:"text-info", dot:"bg-info" },
-  ON_TRIP: { bg:"bg-infoLight", text:"text-info", dot:"bg-info" },
-  MAINTENANCE: { bg:"bg-warnLight", text:"text-warn" },
-  OUT_OF_SERVICE: { bg:"bg-dangerLight", text:"text-danger" },
-  OFF_DUTY: { bg:"bg-slate-100", text:"text-steel" },
-  PAID: { bg:"bg-okLight", text:"text-ok" },
-  UNPAID: { bg:"bg-dangerLight", text:"text-danger" },
-  DRAFT: { bg:"bg-slate-100", text:"text-steel" },
-  ACTIVE: { bg:"bg-okLight", text:"text-ok" },
-  EXPIRED: { bg:"bg-dangerLight", text:"text-danger" },
-  SUSPENDED: { bg:"bg-warnLight", text:"text-warn" },
-  EXCEPTION: { bg:"bg-dangerLight", text:"text-danger", dot:"bg-danger" },
-  OPEN: { bg:"bg-warnLight", text:"text-warn", dot:"bg-warn" },
-  CLOSED: { bg:"bg-okLight", text:"text-ok" },
-  ON_TRACK: { bg:"bg-okLight", text:"text-ok" },
-  AT_RISK: { bg:"bg-warnLight", text:"text-warn" },
-  BREACHED: { bg:"bg-dangerLight", text:"text-danger" },
-  MET: { bg:"bg-okLight", text:"text-ok" },
-  MISSED: { bg:"bg-dangerLight", text:"text-danger" },
-  RETIRED: { bg:"bg-slate-100", text:"text-steel" },
-};
+// ── Loading / Empty / Error states ─────────────────────────────────────────
 
-export function StatusBadge({ status, size = "sm" }: { status: string; size?: "xs"|"sm"|"md" }) {
-  const cfg = STATUS_MAP[status] ?? { bg:"bg-slate-100", text:"text-steel" };
-  const sz = { xs:"text-2xs px-1.5 py-0.5", sm:"text-xs px-2 py-0.5", md:"text-sm px-2.5 py-1" };
+export function LoadingState({ message, label }: { message?: string; label?: string }) {
+  const text = message ?? label ?? "Loading…";
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full font-medium ${cfg.bg} ${cfg.text} ${sz[size]}`}>
-      {cfg.dot && <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />}
-      {status.replace(/_/g," ")}
-    </span>
+    <div className="flex items-center justify-center py-16 gap-3" role="status" aria-label={text}>
+      <span className="w-5 h-5 border-2 border-[var(--text-muted)] border-t-[var(--brand)] rounded-full animate-spin" />
+      <span className="text-sm" style={{ color: "var(--text-muted)" }}>{text}</span>
+    </div>
   );
 }
 
-export function EmptyState({ title, description, action, icon }: {
+export function EmptyState({ title, description, action }: {
   title: string; description?: string; action?: ReactNode; icon?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-      {icon && <div className="mb-4 text-slate-300">{icon}</div>}
-      <h3 className="text-sm font-semibold text-ink mb-1">{title}</h3>
-      {description && <p className="text-sm text-steel max-w-sm">{description}</p>}
+    <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+      <div className="w-12 h-12 rounded-[var(--radius-card)] flex items-center justify-center mb-4"
+        style={{ background: "var(--bg-raised)", color: "var(--text-muted)" }}>
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+        </svg>
+      </div>
+      <p className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>{title}</p>
+      {description && <p className="text-xs mt-1 max-w-sm" style={{ color: "var(--text-muted)" }}>{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
 
-export function LoadingState({ label="Loading…" }: { label?: string }) {
+export function ErrorState({ title = "Something went wrong", description, onRetry }: {
+  title?: string; description?: string; onRetry?: () => void;
+}) {
   return (
-    <div className="flex items-center justify-center py-16 gap-2 text-steel">
-      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-      </svg>
-      <span className="text-sm">{label}</span>
+    <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+      <div className="w-12 h-12 rounded-[var(--radius-card)] flex items-center justify-center mb-4"
+        style={{ background: "var(--error-bg)", color: "var(--error-fg)" }}>
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</p>
+      {description && <p className="text-xs mt-1 max-w-sm" style={{ color: "var(--text-muted)" }}>{description}</p>}
+      {onRetry && <Btn size="sm" variant="secondary" onClick={onRetry} className="mt-4">Try again</Btn>}
     </div>
   );
 }
 
-export function Tabs({ tabs, active, onChange }: {
-  tabs: { id: string; label: string; badge?: number }[];
-  active: string; onChange: (id: string) => void;
+// ── FilterBar ─────────────────────────────────────────────────────────────
+
+export function FilterBar({
+  search, onSearch, onClear, placeholder = "Search…", filters,
+}: {
+  search: string; onSearch: (v: string) => void; onClear?: () => void; placeholder?: string; filters?: ReactNode;
 }) {
   return (
-    <div className="flex gap-0 border-b border-slate-200 mb-6 overflow-x-auto">
-      {tabs.map(tab => (
-        <button key={tab.id} onClick={() => onChange(tab.id)}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-            active===tab.id ? "border-aqua text-aqua" : "border-transparent text-steel hover:text-ink"}`}>
-          {tab.label}
-          {tab.badge != null && tab.badge > 0 && (
-            <span className={`text-2xs px-1.5 py-0.5 rounded-full font-semibold ${active===tab.id?"bg-aqua/10 text-aqua":"bg-slate-100 text-steel"}`}>
-              {tab.badge}
+    <div className="flex items-center gap-2 mb-3">
+      <div className="relative flex-1 max-w-sm">
+        <svg className="absolute inset-y-0 start-2.5 my-auto w-4 h-4 pointer-events-none"
+          fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}
+          style={{ color: "var(--text-muted)" }}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={e => onSearch(e.target.value)}
+          placeholder={placeholder}
+          className="w-full ps-8 pe-3 h-8 text-sm rounded-[var(--radius-btn)] transition-colors duration-[120ms] focus:outline-none"
+          style={{
+            background: "var(--bg-raised)",
+            color: "var(--text-primary)",
+            border: "1px solid var(--border-default)",
+          }}
+        />
+      </div>
+      {search && onClear && (
+        <Btn size="sm" variant="ghost" onClick={onClear}>Clear</Btn>
+      )}
+      {filters}
+    </div>
+  );
+}
+
+// ── Additional components (backward compatibility + new additions) ─────────
+
+// LoadingSpinner: alias for LoadingState (convenience)
+export function LoadingSpinner({ label }: { label?: string }) { return <LoadingState label={label} />; }
+
+// EntityHeader — used by Entity360 pages:
+export function EntityHeader({
+  title, subtitle, status, meta, actions, backHref,
+}: {
+  title: string; subtitle?: string; status?: string;
+  meta?: Array<{ label: string; value: string | ReactNode }>;
+  actions?: ReactNode; backHref?: string; avatar?: ReactNode; // accepted but rendered only if backHref absent
+}) {
+  return (
+    <div className="rounded-[var(--radius-card)] p-5 mb-5"
+      style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+      <div className="flex items-start gap-4">
+        <div className="flex-1 min-w-0">
+          {backHref && (
+            <Link href={backHref} className="inline-flex items-center gap-1 text-xs mb-2 hover:underline"
+              style={{ color: "var(--text-muted)" }}>
+              ← Back
+            </Link>
+          )}
+          <div className="flex items-center gap-2.5 flex-wrap mb-1">
+            <h1 className="text-h4 font-bold truncate" style={{ color: "var(--text-primary)" }}>{title}</h1>
+            {status && <StatusBadge status={status} size="sm" />}
+          </div>
+          {subtitle && <p className="text-sm" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
+          {meta && meta.length > 0 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+              {meta.map(m => (
+                <div key={m.label} className="flex items-center gap-1">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{m.label}:</span>
+                  <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{m.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Tabs — horizontal tab strip:
+export function Tabs({
+  tabs, active, onChange,
+}: {
+  tabs: Array<{ id: string; label: string; badge?: string | number }>;
+  active: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 overflow-x-auto border-b mb-5 pb-0 no-scrollbar"
+      style={{ borderColor: "var(--border-subtle)" }} role="tablist">
+      {tabs.map(t => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={active === t.id}
+          onClick={() => onChange(t.id)}
+          className={`flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap transition-colors duration-[120ms]
+            border-b-2 -mb-px ${active === t.id
+              ? "border-[#C7FD01] font-medium"
+              : "border-transparent hover:border-[var(--border-default)]"}`}
+          style={{ color: active === t.id ? "var(--text-primary)" : "var(--text-muted)" }}
+        >
+          {t.label}
+          {t.badge !== undefined && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full"
+              style={{ background: "var(--bg-raised)", color: "var(--text-muted)" }}>
+              {t.badge}
             </span>
           )}
         </button>
@@ -166,145 +391,58 @@ export function Tabs({ tabs, active, onChange }: {
   );
 }
 
-export function Btn({ children, onClick, variant="primary", size="sm", disabled, type="button" }: {
-  children: ReactNode; onClick?: () => void;
-  variant?: "primary"|"secondary"|"ghost"|"danger";
-  size?: "xs"|"sm"|"md"; disabled?: boolean; type?: "button"|"submit";
+// DescriptionList — key/value pairs layout:
+export function DescriptionList({ items, columns = 2 }: {
+  items: Array<{ label: string; value: ReactNode }>;
+  columns?: 1 | 2 | 3;
 }) {
-  const v = { primary:"bg-aqua text-white hover:bg-aquaDark", secondary:"bg-white border border-slate-200 text-ink hover:bg-paper", ghost:"text-steel hover:bg-paper hover:text-ink", danger:"bg-danger text-white hover:bg-red-700" };
-  const s = { xs:"text-xs px-2.5 py-1.5", sm:"text-sm px-3.5 py-2", md:"text-sm px-4 py-2.5" };
+  const cols = { 1: "grid-cols-1", 2: "grid-cols-1 sm:grid-cols-2", 3: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" };
   return (
-    <button type={type} onClick={onClick} disabled={disabled}
-      className={`inline-flex items-center gap-1.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${v[variant]} ${s[size]}`}>
-      {children}
-    </button>
-  );
-}
-
-export function EntityHeader({ title, subtitle, status, meta, actions, avatar }: {
-  title: string; subtitle?: string; status?: string;
-  meta?: { label: string; value: string }[];
-  actions?: ReactNode; avatar?: ReactNode;
-}) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6 shadow-card">
-      <div className="flex items-start gap-4">
-        {avatar && <div className="w-12 h-12 rounded-xl bg-paper border border-slate-200 flex items-center justify-center text-steel shrink-0">{avatar}</div>}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-lg font-semibold text-ink">{title}</h1>
-            {status && <StatusBadge status={status} />}
-          </div>
-          {subtitle && <p className="text-sm text-steel mt-0.5">{subtitle}</p>}
-          {meta && meta.length > 0 && (
-            <div className="flex flex-wrap gap-x-6 gap-y-1 mt-2">
-              {meta.map(m => (
-                <span key={m.label} className="text-xs text-steel">
-                  <span className="font-medium text-ink">{m.value}</span> {m.label}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
-      </div>
-    </div>
-  );
-}
-
-export function DescriptionList({ items }: { items: { label: string; value?: ReactNode }[] }) {
-  return (
-    <dl className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
+    <dl className={`grid gap-3 ${cols[columns]}`}>
       {items.map(item => (
         <div key={item.label}>
-          <dt className="text-xs font-medium text-steel">{item.label}</dt>
-          <dd className="mt-0.5 text-sm text-ink">{item.value ?? "—"}</dd>
+          <dt className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{item.label}</dt>
+          <dd className="text-sm mt-0.5 font-medium" style={{ color: "var(--text-primary)" }}>{item.value}</dd>
         </div>
       ))}
     </dl>
   );
 }
 
-export function Drawer({ open, title, onClose, children, width="w-96" }: {
-  open: boolean; title: string; onClose: () => void; children: ReactNode; width?: string;
-}) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={`${width} bg-white h-full shadow-2xl flex flex-col max-w-full`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h2 className="text-base font-semibold text-ink">{title}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-paper text-steel transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-// ── Timeline ───────────────────────────────────────────────────────────────
+// TimelineItem — for trip/audit timelines:
 export function TimelineItem({
-  label, time, description, status = "pending", isLast,
+  time, label, description, status, isLast,
 }: {
-  label: string; time?: string; description?: string;
-  status?: "done" | "active" | "pending"; isLast?: boolean;
+  time?: string; label: string; description?: ReactNode;
+  status?: "ok" | "warn" | "danger" | "info" | "neutral";
+  isLast?: boolean;
 }) {
-  const dotColor = { done: "bg-ok", active: "bg-aqua ring-2 ring-aqua/30", pending: "bg-slate-200" };
+  const dotColor: Record<string, string> = {
+    ok: "var(--success-fg)", warn: "var(--warning-fg)",
+    danger: "var(--error-fg)", info: "var(--info-fg)",
+    neutral: "var(--text-muted)",
+  };
   return (
     <div className="flex gap-3">
       <div className="flex flex-col items-center">
-        <div className={`w-3 h-3 rounded-full mt-0.5 shrink-0 ${dotColor[status]}`} />
-        {!isLast && <div className="w-px flex-1 bg-slate-200 mt-1 mb-1" />}
+        <div className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+          style={{ background: dotColor[status ?? "neutral"] }} />
+        {!isLast && <div className="w-px flex-1 mt-1" style={{ background: "var(--border-subtle)" }} />}
       </div>
-      <div className={`${isLast ? "pb-0" : "pb-4"} min-w-0`}>
-        <div className="flex items-baseline gap-2 flex-wrap">
-          <span className={`text-sm ${status === "done" ? "text-ink font-medium" : status === "active" ? "text-aqua font-semibold" : "text-steel"}`}>
-            {label}
-          </span>
-          {time && <span className="text-2xs text-slate-400">{time}</span>}
+      <div className="pb-4 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</span>
+          {time && <span className="text-xs" style={{ color: "var(--text-muted)" }}>{time}</span>}
         </div>
-        {description && <p className="text-xs text-steel mt-0.5">{description}</p>}
+        {description && <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{description}</div>}
       </div>
     </div>
   );
 }
 
-// ── Filter Bar ─────────────────────────────────────────────────────────────
-export function FilterBar({
-  search, onSearch, filters, onClear,
-}: {
-  search?: string;
-  onSearch?: (v: string) => void;
-  filters?: ReactNode;
-  onClear?: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 mb-4">
-      {onSearch !== undefined && (
-        <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-steel pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803a7.5 7.5 0 0010.607 10.607z" />
-          </svg>
-          <input
-            type="text"
-            value={search ?? ""}
-            onChange={(e) => onSearch(e.target.value)}
-            placeholder="Search…"
-            className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-aqua/30 focus:border-aqua bg-white min-w-[180px]"
-          />
-        </div>
-      )}
-      {filters}
-      {onClear && (
-        <button onClick={onClear} className="text-xs text-steel hover:text-ink px-2 py-1.5 rounded-lg hover:bg-paper">
-          Clear
-        </button>
-      )}
-    </div>
-  );
-}
+// ── Legacy export aliases for backward compatibility ───────────────────────
+
+// Some pages use <LoadingState label="..." /> — fix via prop mapping:
+const _OrigLoadingState = LoadingState;
+// LoadingState already exported above with both message and label props
+

@@ -63,7 +63,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right login panel */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-[#0D1B2A]">
+      <div className="flex-1 flex items-center justify-center p-8 bg-[var(--bg-surface)]">
         <div className="w-full max-w-sm">
           <div className="lg:hidden flex items-center gap-2.5 mb-8">
             <div className="w-7 h-7 rounded-lg bg-aqua/20 flex items-center justify-center">
@@ -84,7 +84,7 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 required
-                className="w-full bg-sidebar border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-aqua/40 focus:border-aqua/50 transition-colors"
+                className="form-input"
                 placeholder="you@company.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -96,7 +96,7 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
-                className="w-full bg-sidebar border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-aqua/40 focus:border-aqua/50 transition-colors"
+                className="form-input"
                 placeholder="••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}

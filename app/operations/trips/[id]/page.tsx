@@ -134,14 +134,14 @@ const STAGE_ORDER = [
   "DISPATCHED", "ARRIVED_LOADING", "LOADING_COMPLETE", "ARRIVED_SITE", "UNLOADING_COMPLETE", "COMPLETED",
 ];
 
-function evtStatus(type: string, events: LifecycleEvent[]): "done" | "active" | "pending" {
-  if (type === "TRIP_PLANNED" || type === "ASSIGNED") return "done";
+function evtStatus(type: string, events: LifecycleEvent[]): "ok" | "info" | "neutral" {
+  if (type === "TRIP_PLANNED" || type === "ASSIGNED") return "ok";
   const reached = new Set(events.map((e) => e.eventType));
-  if (reached.has(type)) return "done";
+  if (reached.has(type)) return "ok";
   const idx = STAGE_ORDER.indexOf(type);
   const latestIdx = Math.max(-1, ...STAGE_ORDER.map((s, i) => (reached.has(s) ? i : -1)));
-  if (idx === latestIdx + 1) return "active";
-  return "pending";
+  if (idx === latestIdx + 1) return "info";
+  return "neutral";
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
@@ -443,7 +443,7 @@ export default function Trip360Page() {
                         evt.deliveredLiters ? `Delivered: ${evt.deliveredLiters.toLocaleString()} L` : null,
                         evt.notes ?? null,
                       ].filter(Boolean).join(" · ") || undefined}
-                      status="done"
+                      status="ok"
                       isLast={i === arr.filter((e) => e.eventType !== "GPS_PING").length - 1}
                     />
                   ))}
