@@ -127,7 +127,7 @@ export default function LiveFleetPage() {
               <thead>
                 <tr className="border-b border-slate-100 bg-paper">
                   {["Vehicle","State","GPS","Driver","Trip","Device","Last Ping","Actions"].map(h => (
-                    <th key={h} className="text-left text-xs font-semibold text-steel px-3 py-3">{h}</th>
+                    <th key={h} className="text-start text-xs font-semibold text-steel px-3 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -147,7 +147,7 @@ export default function LiveFleetPage() {
                       </td>
                       <td className="px-3 py-2.5">
                         <span className={`text-sm font-bold ${GPS_DOT[v.gpsStatus]}`}>●</span>
-                        <span className="text-xs text-steel ml-1">{v.gpsStatus}</span>
+                        <span className="text-xs text-steel ms-1">{v.gpsStatus}</span>
                       </td>
                       <td className="px-3 py-2.5 text-xs text-steel">{v.driverName ?? "—"}</td>
                       <td className="px-3 py-2.5">
@@ -175,7 +175,7 @@ export default function LiveFleetPage() {
             </table>
           </div>
         )}
-        <p className="text-xs text-steel/40 text-right mt-2">Auto-refreshes every 15s</p>
+        <p className="text-xs text-steel/40 text-end mt-2">Auto-refreshes every 15s</p>
       </PageContainer>
     </AdminShell>
   );

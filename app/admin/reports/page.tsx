@@ -90,7 +90,7 @@ export default function ReportsPage() {
             <div className="overflow-x-auto">
               <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
-                  <tr>{result.columns.map((c: any) => <th key={c.key} className="text-left px-4 py-2 whitespace-nowrap">{c.label}</th>)}</tr>
+                  <tr>{result.columns.map((c: any) => <th key={c.key} className="text-start px-4 py-2 whitespace-nowrap">{c.label}</th>)}</tr>
                 </thead>
                 <tbody>
                   {result.rows.map((row: any, i: number) => (

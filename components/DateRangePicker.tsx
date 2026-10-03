@@ -76,24 +76,24 @@ export default function DateRangePicker({ value, onChange, className = "" }: Pro
     <div className={`flex flex-wrap items-center gap-1.5 ${className}`}>
       {PRESETS.map(p => (
         <button key={p.id} onClick={() => selectPreset(p.id)}
-          className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-steel hover:bg-paper hover:text-ink transition-colors">
+          className="text-xs px-3 py-1.5 rounded-[var(--radius-btn)] border transition-colors duration-[120ms]" style={{ background: "var(--bg-raised)", color: "var(--text-muted)", borderColor: "var(--border-default)" }} onMouseEnter={e=>{(e.target as HTMLElement).style.color="var(--text-primary)"}} onMouseLeave={e=>{(e.target as HTMLElement).style.color="var(--text-muted)"}}>
           {p.label}
         </button>
       ))}
       {showCustom && (
         <div className="flex items-center gap-1.5">
           <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-ink" />
+            className="form-input text-xs py-1.5" style={{ width: "auto" }} />
           <span className="text-xs text-steel">→</span>
           <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-ink" />
+            className="form-input text-xs py-1.5" style={{ width: "auto" }} />
           <button onClick={applyCustom}
-            className="text-xs px-3 py-1.5 bg-aqua text-white rounded-lg font-medium">
+            className="btn-primary btn-sm text-xs">
             Apply
           </button>
         </div>
       )}
-      <span className="text-2xs text-steel ml-1">
+      <span className="text-2xs text-steel ms-1">
         {value.from} → {value.to}
       </span>
     </div>

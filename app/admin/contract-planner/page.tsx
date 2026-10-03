@@ -182,15 +182,15 @@ function ContractPlannerPageInner() {
               <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>
-                    <th className="text-left px-4 py-2">Contract</th>
-                    <th className="text-left px-4 py-2">Type</th>
-                    <th className="text-left px-4 py-2">Customer</th>
-                    <th className="text-left px-4 py-2">Site Scope</th>
-                    <th className="text-left px-4 py-2">Usage</th>
-                    <th className="text-left px-4 py-2">Pending Demand</th>
-                    <th className="text-left px-4 py-2">Operational Path</th>
-                    <th className="text-left px-4 py-2">Readiness</th>
-                    <th className="text-left px-4 py-2">Action</th>
+                    <th className="text-start px-4 py-2">Contract</th>
+                    <th className="text-start px-4 py-2">Type</th>
+                    <th className="text-start px-4 py-2">Customer</th>
+                    <th className="text-start px-4 py-2">Site Scope</th>
+                    <th className="text-start px-4 py-2">Usage</th>
+                    <th className="text-start px-4 py-2">Pending Demand</th>
+                    <th className="text-start px-4 py-2">Operational Path</th>
+                    <th className="text-start px-4 py-2">Readiness</th>
+                    <th className="text-start px-4 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>

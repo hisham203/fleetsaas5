@@ -312,9 +312,10 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
       </div>
       <div className="card card-body">
         <h3 className="font-medium mb-3">Invoices</h3>
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Invoice #</th>
               <th className="pb-2">Type</th>
               <th className="pb-2">Customer</th>
@@ -369,7 +370,7 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
                         <span className="text-steel text-xs">—</span>
                       )}
                     </td>
-                    <td className="py-2 text-right">
+                    <td className="py-2 text-end">
                       <button onClick={() => setExpandedId(expandedId === inv.id ? null : inv.id)} className="text-steel text-xs font-medium">
                         {expandedId === inv.id ? "Close" : "Credit note"}
                       </button>
@@ -414,6 +415,7 @@ function BillingTab({ invoices, onChange }: { invoices: any[]; onChange: () => v
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -448,9 +450,9 @@ function LiveOpsKPIs() {
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
         {[
           { label: "Active Trips",    value: kpi.activeTrips, cls: "text-aqua" },
-          { label: "Available",       value: kpi.available,   cls: "text-emerald-600" },
+          { label: "Available",       value: kpi.available,   cls: "text-[var(--success-fg)]" },
           { label: "In Transit",      value: kpi.inTransit,   cls: "text-amber-600" },
-          { label: "GPS Live",        value: kpi.gpsLive,     cls: "text-emerald-600" },
+          { label: "GPS Live",        value: kpi.gpsLive,     cls: "text-[var(--success-fg)]" },
           { label: "GPS Stale",       value: kpi.gpsStale,    cls: "text-amber-500" },
           { label: "GPS Offline",     value: kpi.gpsOffline,  cls: "text-slate-400" },
         ].map(({ label, value, cls }) => (
@@ -545,6 +547,7 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
           <h3 className="section-title">Team & Users</h3>
           <span className="text-xs text-steel">{tenant.users.length} users</span>
         </div>
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
             <tr>
@@ -563,6 +566,7 @@ function Overview({ tenant, customers, vehicles, drivers }: any) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -660,9 +664,10 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Vehicles</h3>
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Plate</th>
               <th className="pb-2">Type</th>
               <th className="pb-2">Capacity</th>
@@ -699,7 +704,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => startEditCapacity(v)} className="text-left hover:text-aquaDark">
+                    <button onClick={() => startEditCapacity(v)} className="text-start hover:text-aquaDark">
                       {v.capacityLiters ? `${v.capacityLiters.toLocaleString()} L` : "Set tanker capacity…"}
                     </button>
                   )}
@@ -727,6 +732,7 @@ function FleetTab({ tenant, vehicles, warehouses, onChange }: any) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
       <div className="bg-white rounded-xl border border-slate-200 p-4 h-fit">
         <h3 className="font-medium mb-3">Add vehicle</h3>
@@ -925,9 +931,10 @@ function DriversTab({ tenant, drivers, onChange }: any) {
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Drivers</h3>
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Name</th>
               <th className="pb-2">Driver Code</th>
               <th className="pb-2">License</th>
@@ -949,6 +956,7 @@ function DriversTab({ tenant, drivers, onChange }: any) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
       <div className="bg-white rounded-xl border border-slate-200 p-4 h-fit">
         <h3 className="font-medium mb-3">Add driver</h3>
@@ -1050,14 +1058,15 @@ function CustomersTab({ tenant, customers, onChange }: any) {
           could do, Customers & Sites already does. */}
       <div className="bg-warn/10 text-warn rounded-lg px-4 py-2 text-sm flex items-center justify-between">
         <span>This screen is deprecated. Use Customers &amp; Sites for customer management — this legacy view remains only for editing a customer&apos;s contract bottle price.</span>
-        <a href="/admin/customers" className="underline text-xs font-medium whitespace-nowrap ml-3">Go to Customers &amp; Sites</a>
+        <a href="/admin/customers" className="underline text-xs font-medium whitespace-nowrap ms-3">Go to Customers &amp; Sites</a>
       </div>
       <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Customers</h3>
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Name</th>
               <th className="pb-2">Type</th>
               <th className="pb-2">Address</th>
@@ -1104,6 +1113,7 @@ function CustomersTab({ tenant, customers, onChange }: any) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
       <div className="bg-white rounded-xl border border-slate-200 p-4 h-fit">
         <h3 className="font-medium mb-3">Add customer</h3>
@@ -1321,9 +1331,10 @@ function FuelSubTab({ tenant, vehicle, records, onChange }: any) {
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-medium mb-3">Fuel log</h3>
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Liters</th>
               <th className="pb-2">Cost</th>
               <th className="pb-2">Odometer</th>
@@ -1342,6 +1353,7 @@ function FuelSubTab({ tenant, vehicle, records, onChange }: any) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
       <div className="bg-white rounded-xl border border-slate-200 p-4 h-fit">
         <h3 className="font-medium mb-3">Log a fill-up</h3>
@@ -1906,17 +1918,18 @@ function ReportsTab({ tenant }: any) {
         {result && (
           <div className="bg-white rounded-xl border border-slate-200 p-4 overflow-auto">
             <p className="text-steel text-xs mb-2">{result.totalMatched} row(s) matched{result.rows.length < result.totalMatched ? ` (showing ${result.rows.length})` : ""}</p>
+            <div className="overflow-x-auto -mx-1">
             <table className="data-table">
               <thead>
-                <tr className="text-left text-steel border-b border-slate-100">
-                  {result.columns.map((c) => <th key={c.key} className="pb-2 pr-4">{c.label}</th>)}
+                <tr className="text-start text-steel border-b border-slate-100">
+                  {result.columns.map((c) => <th key={c.key} className="pb-2 pe-4">{c.label}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {result.rows.map((row, i) => (
                   <tr key={i} className="border-b border-slate-50">
                     {result.columns.map((c) => (
-                      <td key={c.key} className="py-2 pr-4">{formatCellValue(row[c.key])}</td>
+                      <td key={c.key} className="py-2 pe-4">{formatCellValue(row[c.key])}</td>
                     ))}
                   </tr>
                 ))}
@@ -1925,6 +1938,7 @@ function ReportsTab({ tenant }: any) {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
@@ -2058,9 +2072,10 @@ function ScorecardsTab() {
             </button>
           </div>
         )}
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Rank</th>
               <th className="pb-2">Driver</th>
               <th className="pb-2">Score</th>
@@ -2089,6 +2104,7 @@ function ScorecardsTab() {
             {driverScores.length === 0 && <tr><td colSpan={9} className="py-4 text-center text-steel">No drivers yet.</td></tr>}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="card card-body">
@@ -2096,9 +2112,10 @@ function ScorecardsTab() {
         <p className="text-steel text-xs mb-3">
           Ranked by average cost per completed trip (fuel + maintenance), lowest first — vehicles with no completed trips yet sort last.
         </p>
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Rank</th>
               <th className="pb-2">Vehicle</th>
               <th className="pb-2">Trips</th>
@@ -2125,6 +2142,7 @@ function ScorecardsTab() {
             {vehicleScores.length === 0 && <tr><td colSpan={8} className="py-4 text-center text-steel">No vehicles yet.</td></tr>}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -2299,9 +2317,10 @@ function ErpTab() {
           </p>
         )}
 
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Invoice #</th>
               <th className="pb-2">Customer</th>
               <th className="pb-2">Total</th>
@@ -2324,7 +2343,7 @@ function ErpTab() {
                     <span className="text-steel text-xs">Not synced</span>
                   )}
                 </td>
-                <td className="py-2 text-right">
+                <td className="py-2 text-end">
                   {!inv.erpExternalId && connection && (
                     <button
                       disabled={syncingId === inv.id}
@@ -2342,6 +2361,7 @@ function ErpTab() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -2562,9 +2582,10 @@ function AutomationTab() {
       <div className="grid md:grid-cols-2 gap-6">
         <div className="card card-body">
           <h3 className="font-medium mb-3">Automation logs</h3>
+          <div className="overflow-x-auto -mx-1">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-steel border-b border-slate-100">
+              <tr className="text-start text-steel border-b border-slate-100">
                 <th className="pb-2">Event</th>
                 <th className="pb-2">Status</th>
                 <th className="pb-2">Action</th>
@@ -2585,6 +2606,7 @@ function AutomationTab() {
               {logs.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-steel">No automation activity yet.</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
 
         <div className="card card-body">
@@ -2704,9 +2726,10 @@ function FieldOpsTab({ drivers, vehicles }: any) {
         <div className="grid md:grid-cols-3 gap-6">
           <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
             <h3 className="font-medium mb-3">Assigned tasks</h3>
+            <div className="overflow-x-auto -mx-1">
             <table className="data-table">
               <thead>
-                <tr className="text-left text-steel border-b border-slate-100">
+                <tr className="text-start text-steel border-b border-slate-100">
                   <th className="pb-2">Driver</th>
                   <th className="pb-2">Type</th>
                   <th className="pb-2">Title</th>
@@ -2721,7 +2744,7 @@ function FieldOpsTab({ drivers, vehicles }: any) {
                     <td className="py-2"><StatusBadge status={t.type} /></td>
                     <td className="py-2">{t.title}</td>
                     <td className="py-2"><StatusBadge status={t.status} /></td>
-                    <td className="py-2 text-right">
+                    <td className="py-2 text-end">
                       {(t.status === "ASSIGNED" || t.status === "IN_PROGRESS") && (
                         <button onClick={() => cancelTask(t.id)} className="text-danger text-xs font-medium">Cancel</button>
                       )}
@@ -2731,6 +2754,7 @@ function FieldOpsTab({ drivers, vehicles }: any) {
                 {tasks.length === 0 && <tr><td colSpan={5} className="py-4 text-center text-steel">No tasks assigned yet.</td></tr>}
               </tbody>
             </table>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 h-fit">
@@ -2776,7 +2800,7 @@ function FieldOpsTab({ drivers, vehicles }: any) {
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-sm font-medium">{e.driver?.user?.name}</span>
-                      <span className="text-steel text-xs ml-2">{e.vehicle?.plateNumber}</span>
+                      <span className="text-steel text-xs ms-2">{e.vehicle?.plateNumber}</span>
                     </div>
                     <span className="text-sm font-medium">SAR {e.amount.toFixed(2)}</span>
                   </div>
@@ -2802,9 +2826,10 @@ function FieldOpsTab({ drivers, vehicles }: any) {
 
           <div className="card card-body">
             <h3 className="font-medium mb-3">Reviewed</h3>
+            <div className="overflow-x-auto -mx-1">
             <table className="data-table">
               <thead>
-                <tr className="text-left text-steel border-b border-slate-100">
+                <tr className="text-start text-steel border-b border-slate-100">
                   <th className="pb-2">Driver</th>
                   <th className="pb-2">Category</th>
                   <th className="pb-2">Amount</th>
@@ -2823,6 +2848,7 @@ function FieldOpsTab({ drivers, vehicles }: any) {
                 {reviewedExpenses.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-steel">No reviewed expenses yet.</td></tr>}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
@@ -3002,9 +3028,10 @@ function ExecutiveTab() {
           <div className="grid md:grid-cols-2 gap-6">
             <div className="card card-body">
               <h3 className="font-medium mb-3">Top drivers</h3>
+              <div className="overflow-x-auto -mx-1">
               <table className="data-table">
                 <thead>
-                  <tr className="text-left text-steel border-b border-slate-100">
+                  <tr className="text-start text-steel border-b border-slate-100">
                     <th className="pb-2">Driver</th>
                     <th className="pb-2">Score</th>
                     <th className="pb-2">Trips</th>
@@ -3025,13 +3052,15 @@ function ExecutiveTab() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div className="card card-body">
               <h3 className="font-medium mb-3">Vehicle ranking (cost per trip, lowest first)</h3>
+              <div className="overflow-x-auto -mx-1">
               <table className="data-table">
                 <thead>
-                  <tr className="text-left text-steel border-b border-slate-100">
+                  <tr className="text-start text-steel border-b border-slate-100">
                     <th className="pb-2">Vehicle</th>
                     <th className="pb-2">Avg cost/trip</th>
                     <th className="pb-2">Trips</th>
@@ -3050,6 +3079,7 @@ function ExecutiveTab() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         </>

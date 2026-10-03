@@ -93,6 +93,7 @@ export default function TelemetryEventsPage() {
           <EmptyState title="No telemetry events" description={statusFilter === "OPEN" ? "No open alerts — all clear." : "No events match the current filter."} />
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+            <div className="overflow-x-auto -mx-1">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-paper">
@@ -100,7 +101,7 @@ export default function TelemetryEventsPage() {
                     checked={selected.size === filtered.length && filtered.length > 0}
                     onChange={e => setSelected(e.target.checked ? new Set(filtered.map(ev => ev.id)) : new Set())} /></th>
                   {["Event","Severity","Status","Vehicle","Source","Time"].map(h => (
-                    <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                    <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -121,6 +122,7 @@ export default function TelemetryEventsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </PageContainer>

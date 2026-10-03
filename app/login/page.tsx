@@ -35,7 +35,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-sidebar flex">
       {/* Left branding panel */}
-      <div className="hidden lg:flex flex-col justify-between w-96 shrink-0 p-12 border-r border-white/5">
+      <div className="hidden lg:flex flex-col justify-between w-96 shrink-0 p-12 border-e border-white/5">
         <div>
           <div className="flex items-center gap-3 mb-12">
             <div className="w-8 h-8 rounded-xl bg-aqua/20 flex items-center justify-center">
@@ -63,7 +63,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right login panel */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-[#0D1B2A]">
+      <div className="flex-1 flex items-center justify-center p-8 bg-[var(--bg-surface)]">
         <div className="w-full max-w-sm">
           <div className="lg:hidden flex items-center gap-2.5 mb-8">
             <div className="w-7 h-7 rounded-lg bg-aqua/20 flex items-center justify-center">
@@ -84,7 +84,7 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 required
-                className="w-full bg-sidebar border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-aqua/40 focus:border-aqua/50 transition-colors"
+                className="form-input"
                 placeholder="you@company.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -96,7 +96,7 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
-                className="w-full bg-sidebar border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-aqua/40 focus:border-aqua/50 transition-colors"
+                className="form-input"
                 placeholder="••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
@@ -104,7 +104,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-sm text-red-400">
+              <div className="flex items-center gap-2 rounded-md px-3 py-2 text-sm" style={{ background: "var(--error-bg)", color: "var(--error-fg)", border: "1px solid var(--error-fg)/20" }}>
                 <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {error}
               </div>

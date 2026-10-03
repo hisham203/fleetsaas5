@@ -100,7 +100,7 @@ export default function TripReplayPage() {
                     {data.trip.vehicle?.plateNumber ?? "—"} · {data.trip.driver?.name ?? "No driver"}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="text-end">
                   <span className={`text-xs font-medium px-2 py-0.5 rounded ${
                     data.trip.status === "COMPLETED" ? "bg-okLight text-ok" : "bg-infoLight text-info"
                   }`}>{data.trip.status}</span>
@@ -139,7 +139,7 @@ export default function TripReplayPage() {
                 </button>
                 <button onClick={() => setCursor(c => Math.min((data?.pointCount ?? 1) - 1, c + 1))} className="text-xs text-steel hover:text-ink" title="Step forward">⏩</button>
                 <span className="text-xs text-steel">Point {cursor + 1} / {data?.pointCount}</span>
-                <span className="text-xs text-steel ml-auto">Speed:</span>
+                <span className="text-xs text-steel ms-auto">Speed:</span>
                 {([1,2,4] as const).map(s => (
                   <button key={s} onClick={() => setSpeed(s)}
                     className={`text-xs px-2 py-0.5 rounded ${speed === s ? "bg-aqua text-white" : "bg-white border border-slate-200 text-steel"}`}>
@@ -152,7 +152,7 @@ export default function TripReplayPage() {
                     <thead className="sticky top-0 bg-paper border-b border-slate-100">
                       <tr>
                         {["#", "Time", "Lat", "Lng", "Speed (m/s)", "Heading", "Source"].map(h => (
-                          <th key={h} className="text-left font-semibold text-steel px-4 py-2">{h}</th>
+                          <th key={h} className="text-start font-semibold text-steel px-4 py-2">{h}</th>
                         ))}
                       </tr>
                     </thead>

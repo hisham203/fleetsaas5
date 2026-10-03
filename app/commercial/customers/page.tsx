@@ -57,7 +57,7 @@ export default function CustomersPage() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-paper">
                     {["Customer", "Phone", "Email", "Credit Limit", ""].map(h => (
-                      <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                      <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                     ))}
                   </tr>
                 </thead>

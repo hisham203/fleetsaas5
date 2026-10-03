@@ -150,17 +150,17 @@ function ExpensesPageInner() {
               <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>
-                    <th className="text-left px-4 py-2">Ref</th>
-                    <th className="text-left px-4 py-2">Submitted</th>
-                    <th className="text-left px-4 py-2">Driver</th>
-                    <th className="text-left px-4 py-2">Vehicle</th>
-                    <th className="text-left px-4 py-2">Trip</th>
-                    <th className="text-left px-4 py-2">Category</th>
-                    <th className="text-left px-4 py-2">Amount</th>
-                    <th className="text-left px-4 py-2">Notes</th>
-                    <th className="text-left px-4 py-2">Status</th>
-                    <th className="text-left px-4 py-2">Reviewed by</th>
-                    <th className="text-left px-4 py-2">Action</th>
+                    <th className="text-start px-4 py-2">Ref</th>
+                    <th className="text-start px-4 py-2">Submitted</th>
+                    <th className="text-start px-4 py-2">Driver</th>
+                    <th className="text-start px-4 py-2">Vehicle</th>
+                    <th className="text-start px-4 py-2">Trip</th>
+                    <th className="text-start px-4 py-2">Category</th>
+                    <th className="text-start px-4 py-2">Amount</th>
+                    <th className="text-start px-4 py-2">Notes</th>
+                    <th className="text-start px-4 py-2">Status</th>
+                    <th className="text-start px-4 py-2">Reviewed by</th>
+                    <th className="text-start px-4 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -134,14 +134,14 @@ const STAGE_ORDER = [
   "DISPATCHED", "ARRIVED_LOADING", "LOADING_COMPLETE", "ARRIVED_SITE", "UNLOADING_COMPLETE", "COMPLETED",
 ];
 
-function evtStatus(type: string, events: LifecycleEvent[]): "done" | "active" | "pending" {
-  if (type === "TRIP_PLANNED" || type === "ASSIGNED") return "done";
+function evtStatus(type: string, events: LifecycleEvent[]): "ok" | "info" | "neutral" {
+  if (type === "TRIP_PLANNED" || type === "ASSIGNED") return "ok";
   const reached = new Set(events.map((e) => e.eventType));
-  if (reached.has(type)) return "done";
+  if (reached.has(type)) return "ok";
   const idx = STAGE_ORDER.indexOf(type);
   const latestIdx = Math.max(-1, ...STAGE_ORDER.map((s, i) => (reached.has(s) ? i : -1)));
-  if (idx === latestIdx + 1) return "active";
-  return "pending";
+  if (idx === latestIdx + 1) return "info";
+  return "neutral";
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
@@ -294,7 +294,7 @@ export default function Trip360Page() {
         {error && (
           <div className="mb-4 px-4 py-3 bg-dangerLight rounded-lg text-sm text-danger flex items-center gap-2">
             {error}
-            <button onClick={() => setError(null)} className="ml-auto text-danger/60 hover:text-danger">✕</button>
+            <button onClick={() => setError(null)} className="ms-auto text-danger/60 hover:text-danger">✕</button>
           </div>
         )}
 
@@ -343,7 +343,7 @@ export default function Trip360Page() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
             </svg>
             <span className="text-sm text-warn">This trip is unassigned — no driver or vehicle allocated.</span>
-            <a href="/dispatch/assign" className="ml-auto text-sm font-medium text-warn underline whitespace-nowrap">
+            <a href="/dispatch/assign" className="ms-auto text-sm font-medium text-warn underline whitespace-nowrap">
               Open Assignment Workspace →
             </a>
           </div>
@@ -443,7 +443,7 @@ export default function Trip360Page() {
                         evt.deliveredLiters ? `Delivered: ${evt.deliveredLiters.toLocaleString()} L` : null,
                         evt.notes ?? null,
                       ].filter(Boolean).join(" · ") || undefined}
-                      status="done"
+                      status="ok"
                       isLast={i === arr.filter((e) => e.eventType !== "GPS_PING").length - 1}
                     />
                   ))}
@@ -505,7 +505,7 @@ export default function Trip360Page() {
                           </p>
                         )}
                       </div>
-                      <div className="text-right text-xs text-steel shrink-0">
+                      <div className="text-end text-xs text-steel shrink-0">
                         {stop.arrivedAt && <p>Arrived {fmtTime(stop.arrivedAt)}</p>}
                         {stop.completedAt && <p>Done {fmtTime(stop.completedAt)}</p>}
                       </div>
@@ -615,7 +615,7 @@ export default function Trip360Page() {
                   {etaData.lastKnownArrivalAt && (
                     <p className="text-xs text-steel mt-1">
                       Last known ETA: {new Date(etaData.lastKnownArrivalAt).toLocaleTimeString("en-SA")}
-                      <span className="text-steel/60 ml-1">(stale)</span>
+                      <span className="text-steel/60 ms-1">(stale)</span>
                     </p>
                   )}
                 </div>
@@ -713,7 +713,7 @@ export default function Trip360Page() {
                     <thead className="sticky top-0 bg-paper border-b border-slate-100">
                       <tr>
                         {["#","Time","Lat","Lng","Speed (m/s)","Heading","Source"].map(h => (
-                          <th key={h} className="text-left font-semibold text-steel px-4 py-2">{h}</th>
+                          <th key={h} className="text-start font-semibold text-steel px-4 py-2">{h}</th>
                         ))}
                       </tr>
                     </thead>

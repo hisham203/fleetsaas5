@@ -154,7 +154,7 @@ function CustomerList({ customers, contractsByCustomer, selectedId, onSelect }: 
       ) : (
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Name</th>
               <th className="pb-2">Type</th>
               <th className="pb-2">Phone / Email</th>
@@ -631,8 +631,8 @@ function CustomerSitesPanel({ customer, contracts, distanceBands, isAdmin }: { c
                   <span className="font-medium">{s.label}</span>
                   {/* Milestone AG.1 — internal site code display */}
                   {s.siteCode
-                    ? <span className="text-steel text-[11px] font-mono ml-1">· {s.siteCode}</span>
-                    : <span className="text-steel text-[11px] italic ml-1">· Legacy</span>}
+                    ? <span className="text-steel text-[11px] font-mono ms-1">· {s.siteCode}</span>
+                    : <span className="text-steel text-[11px] italic ms-1">· Legacy</span>}
                   <div className="flex items-center gap-2">
                     <SiteReadinessBadges site={s} />
                     {editingSiteId !== s.id && (

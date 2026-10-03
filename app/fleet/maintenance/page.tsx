@@ -180,7 +180,7 @@ export default function FleetMaintenanceWorkspacePage() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-paper">
                     {["Vehicle", "Status", "Type", "Description", "Opened", "Closed", "Odometer", "Cost (SAR)"].map((h) => (
-                      <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3 whitespace-nowrap">{h}</th>
+                      <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -192,7 +192,7 @@ export default function FleetMaintenanceWorkspacePage() {
                         {r.vehicle ? (
                           <button
                             onClick={() => router.push(`/fleet/vehicles/${r.vehicleId}`)}
-                            className="text-left"
+                            className="text-start"
                           >
                             <div className="text-sm font-semibold text-aqua hover:underline">
                               {r.vehicle.plateNumber}

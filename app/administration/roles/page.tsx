@@ -94,11 +94,12 @@ function RolesTab({
           <p className="text-xs text-steel mt-0.5">{note}</p>
         </div>
         {filtered.length === 0 ? <EmptyState title="No roles match filter" /> : (
+          <div className="overflow-x-auto -mx-1">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
                 {["Role", "Internal Name", "Permissions", "Users", "Status", ""].map(h => (
-                  <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                  <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -145,6 +146,7 @@ function RolesTab({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     );
@@ -254,7 +256,7 @@ function PermissionMatrixTab({ roles, permsGrouped }: { roles: Role[]; permsGrou
             <button
               key={r.id}
               onClick={() => selectRole(r)}
-              className={`w-full text-left px-4 py-3 text-sm transition-colors ${
+              className={`w-full text-start px-4 py-3 text-sm transition-colors ${
                 selectedRole?.id === r.id ? "bg-aqua/10 text-aqua font-medium" : "hover:bg-paper text-ink"
               }`}
             >
@@ -343,7 +345,7 @@ function AuditTab() {
           <thead>
             <tr className="border-b border-slate-100 bg-paper">
               {["Action", "Target", "Label", "Actor", "Time"].map(h => (
-                <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
               ))}
             </tr>
           </thead>

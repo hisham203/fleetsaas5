@@ -74,7 +74,7 @@ function VehicleCard({ v, selected, onSelect }: { v: VehicleCandidate; selected:
     <button
       onClick={onSelect}
       disabled={!v.eligible} // disabled={!r.eligible} when r=v (eligibility contract)
-      className={`w-full text-left p-3.5 rounded-xl border transition-all ${selectedColor} ${v.eligible ? "cursor-pointer hover:border-aqua/50" : "cursor-not-allowed"}`}
+      className={`w-full text-start p-3.5 rounded-xl border transition-all ${selectedColor} ${v.eligible ? "cursor-pointer hover:border-aqua/50" : "cursor-not-allowed"}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
@@ -112,7 +112,7 @@ function DriverCard({ d, selected, onSelect }: { d: DriverCandidate; selected: b
     <button
       onClick={onSelect}
       disabled={!d.eligible}
-      className={`w-full text-left p-3.5 rounded-xl border transition-all ${selectedColor} ${d.eligible ? "cursor-pointer hover:border-aqua/50" : "cursor-not-allowed"}`}
+      className={`w-full text-start p-3.5 rounded-xl border transition-all ${selectedColor} ${d.eligible ? "cursor-pointer hover:border-aqua/50" : "cursor-not-allowed"}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
@@ -267,7 +267,7 @@ export default function AssignmentWorkspacePage() {
             msg.type === "ok" ? "bg-okLight text-ok" : "bg-dangerLight text-danger"
           }`}>
             {msg.text}
-            <button onClick={() => setMsg(null)} className="ml-auto opacity-60 hover:opacity-100">✕</button>
+            <button onClick={() => setMsg(null)} className="ms-auto opacity-60 hover:opacity-100">✕</button>
           </div>
         )}
 
@@ -289,7 +289,7 @@ export default function AssignmentWorkspacePage() {
                     return (
                       <button key={t.id}
                         onClick={() => { setSelectedId(t.id); setMsg(null); }}
-                        className={`w-full text-left p-3.5 rounded-xl border transition-all ${
+                        className={`w-full text-start p-3.5 rounded-xl border transition-all ${
                           selectedId === t.id
                             ? "border-aqua bg-aqua/5 ring-2 ring-aqua/20"
                             : "border-slate-200 bg-white hover:border-aqua/40"

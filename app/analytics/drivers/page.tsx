@@ -50,7 +50,7 @@ export default function DriverAnalyticsPage() {
               <table className="w-full text-sm">
                 <thead><tr className="bg-paper border-b border-slate-100">
                   {["Driver","Assigned","Completed","Failed","Completion","On-Time (SLA)","Avg Duration","Expenses"].map(h =>
-                    <th key={h} className="text-left text-xs font-semibold text-steel px-3 py-2">{h}</th>)}
+                    <th key={h} className="text-start text-xs font-semibold text-steel px-3 py-2">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {sorted.map(d => (

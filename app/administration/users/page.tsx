@@ -129,7 +129,7 @@ function UserDetailPanel({
                 <button
                   onClick={() => onRevoke(user.id, ur.roleId)}
                   disabled={busy}
-                  className="text-danger font-bold text-[11px] leading-none ml-0.5 hover:text-dangerDark disabled:opacity-40"
+                  className="text-danger font-bold text-[11px] leading-none ms-0.5 hover:text-dangerDark disabled:opacity-40"
                   title="Revoke role"
                 >×</button>
               </span>
@@ -273,11 +273,12 @@ export default function UsersPage() {
               {filtered.length === 0 ? (
                 <EmptyState title="No users found" description="Try adjusting your search." />
               ) : (
+                <div className="overflow-x-auto -mx-1">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-paper">
                       {["Name", "Email", "System Role", "Module Roles", "Joined", ""].map(h => (
-                        <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                        <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -305,6 +306,7 @@ export default function UsersPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
 

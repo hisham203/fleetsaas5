@@ -273,9 +273,9 @@ export default function DriverPage() {
         {/* GPS Status bar — shows real device GPS state */}
         {myTrip && (
           <div className={`rounded-lg px-3 py-2 text-xs flex items-center justify-between mb-3 ${
-            gpsPermission === "live" ? "bg-emerald-50 text-emerald-700" :
-            gpsPermission === "offline" ? "bg-amber-50 text-amber-700" :
-            gpsPermission === "error" ? "bg-red-50 text-red-700" :
+            gpsPermission === "live" ? "bg-[var(--success-bg)] text-[var(--success-fg)]" :
+            gpsPermission === "offline" ? "bg-[var(--warning-bg)] text-[var(--warning-fg)]" :
+            gpsPermission === "error" ? "bg-[var(--error-bg)] text-[var(--error-fg)]" :
             "bg-slate-100 text-slate-500"
           }`}>
             <span>
@@ -291,7 +291,7 @@ export default function DriverPage() {
 
         {/* Geofence suggestion banner */}
         {geofenceSuggestion && (
-          <div className="rounded-lg px-4 py-3 text-sm bg-blue-50 border border-blue-200 text-blue-800 mb-3 flex items-start justify-between gap-2">
+          <div className="rounded-lg px-4 py-3 text-sm bg-[var(--info-bg)] border border-[var(--info-fg)]/30 text-blue-800 mb-3 flex items-start justify-between gap-2">
             <span>📍 {geofenceSuggestion}</span>
             <button onClick={() => setGeofenceSuggestion(null)} className="text-blue-500 text-xs flex-shrink-0">✕</button>
           </div>

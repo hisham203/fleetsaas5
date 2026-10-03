@@ -83,10 +83,11 @@ export default function GeofencesPage() {
           <EmptyState title="No geofences defined" description="Create named geographic zones for arrival detection and monitoring." />
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+            <div className="overflow-x-auto -mx-1">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-100 bg-paper">
                 {["Name","Category","Centre","Radius","Status","Created"].map(h => (
-                  <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                  <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                 ))}
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
@@ -102,6 +103,7 @@ export default function GeofencesPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </PageContainer>

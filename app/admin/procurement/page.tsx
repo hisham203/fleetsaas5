@@ -100,7 +100,7 @@ function SuppliersTab({ suppliers, onChange }: any) {
       )}
       <div className="card overflow-hidden">
         <table className="data-table">
-          <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Contact</th><th className="text-left px-4 py-2">Status</th></tr></thead>
+          <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Code</th><th className="text-start px-4 py-2">Name</th><th className="text-start px-4 py-2">Contact</th><th className="text-start px-4 py-2">Status</th></tr></thead>
           <tbody>{suppliers.map((s: any) => <tr key={s.id} className="border-t border-slate-50"><td className="px-4 py-2 font-mono text-xs">{s.supplierCode}</td><td className="px-4 py-2 font-medium">{s.name}</td><td className="px-4 py-2 text-steel text-xs">{s.contactName ?? "—"} {s.phone ? `· ${s.phone}` : ""}</td><td className="px-4 py-2"><StatusBadge status={s.status} /></td></tr>)}</tbody>
         </table>
         {!suppliers.length && <p className="p-6 text-steel text-sm text-center">No suppliers yet.</p>}
@@ -170,7 +170,7 @@ function PRTab({ prs, items, warehouses, pos, onChange, isAdmin }: any) {
       )}
       <div className="card overflow-hidden">
         <table className="data-table">
-          <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">PR #</th><th className="text-left px-4 py-2">Priority</th><th className="text-left px-4 py-2">Lines</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
+          <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">PR #</th><th className="text-start px-4 py-2">Priority</th><th className="text-start px-4 py-2">Lines</th><th className="text-start px-4 py-2">Status</th><th className="text-start px-4 py-2">Actions</th></tr></thead>
           <tbody>
             {prs.map((pr: any) => (
               <tr key={pr.id} className="border-t border-slate-50">
@@ -258,7 +258,7 @@ function POTab({ pos, suppliers, approvedPRs, items, grs, onChange, isAdmin }: a
       )}
       <div className="card overflow-hidden">
         <table className="data-table">
-          <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">PO #</th><th className="text-left px-4 py-2">Total</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">GRNs</th></tr></thead>
+          <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">PO #</th><th className="text-start px-4 py-2">Total</th><th className="text-start px-4 py-2">Status</th><th className="text-start px-4 py-2">GRNs</th></tr></thead>
           <tbody>
             {pos.map((po: any) => (
               <tr key={po.id} className="border-t border-slate-50">
@@ -342,7 +342,7 @@ function GRTab({ grs, pos, warehouses, items, onChange }: any) {
       )}
       <div className="card overflow-hidden">
         <table className="data-table">
-          <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">GRN #</th><th className="text-left px-4 py-2">PO</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Received</th></tr></thead>
+          <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">GRN #</th><th className="text-start px-4 py-2">PO</th><th className="text-start px-4 py-2">Status</th><th className="text-start px-4 py-2">Received</th></tr></thead>
           <tbody>
             {grs.map((g: any) => {
               const po = pos.find((p: any) => p.id === g.purchaseOrderId);
@@ -360,9 +360,9 @@ function GRTab({ grs, pos, warehouses, items, onChange }: any) {
 function RejectButton({ prId, onReject }: { prId: string; onReject: (reason: string) => void }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  if (!open) return <button onClick={() => setOpen(true)} className="text-danger hover:underline font-medium ml-2">Reject</button>;
+  if (!open) return <button onClick={() => setOpen(true)} className="text-danger hover:underline font-medium ms-2">Reject</button>;
   return (
-    <span className="inline-flex items-center gap-1 ml-2">
+    <span className="inline-flex items-center gap-1 ms-2">
       <input className="border rounded px-1.5 py-0.5 text-xs" placeholder="Rejection reason" value={reason} onChange={e => setReason(e.target.value)} autoFocus />
       <button disabled={!reason.trim()} onClick={() => { onReject(reason); setOpen(false); setReason(""); }} className="text-danger text-xs font-medium disabled:opacity-40">Confirm</button>
       <button onClick={() => setOpen(false)} className="text-steel text-xs">Cancel</button>

@@ -31,9 +31,17 @@ type OpEvent = {
 const DEFAULT_CENTER = { lat: 24.7136, lng: 46.6753 };
 const DEFAULT_ZOOM = 11;
 
+// STATUS_COLORS used for Google Maps circle markers (physical hex required by Maps API)
+// and for sidebar status dots. Keep hex for map usage.
 const STATUS_COLORS: Record<string, string> = {
   AVAILABLE: "#10b981", ASSIGNED: "#60a5fa", EN_ROUTE_LOADING: "#f59e0b",
   EN_ROUTE_CUSTOMER: "#0ea5e9", COMPLETED: "#94a3b8", EXCEPTION: "#ef4444", OFFLINE: "#cbd5e1",
+};
+// Semantic sidebar dots (use CSS variables, not primitive hex):
+const STATUS_DOT_VAR: Record<string, string> = {
+  AVAILABLE: "var(--success-fg)", ASSIGNED: "var(--info-fg)",
+  EN_ROUTE_LOADING: "var(--warning-fg)", EN_ROUTE_CUSTOMER: "var(--info-fg)",
+  COMPLETED: "var(--text-muted)", EXCEPTION: "var(--error-fg)", OFFLINE: "var(--border-default)",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -43,15 +51,15 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const GPS_BADGE: Record<GpsStatus, { cls: string; label: string }> = {
-  LIVE:    { cls: "bg-emerald-100 text-emerald-700", label: "LIVE" },
-  STALE:   { cls: "bg-amber-100 text-amber-700",    label: "STALE" },
+  LIVE:    { cls: "bg-[var(--success-bg)] text-[var(--success-fg)]", label: "LIVE" },
+  STALE:   { cls: "bg-[var(--warning-bg)] text-[var(--warning-fg)]",    label: "STALE" },
   OFFLINE: { cls: "bg-slate-100 text-slate-500",    label: "OFFLINE" },
 };
 
 const SEV_BADGE: Record<string, string> = {
-  INFO: "bg-blue-50 text-blue-700 border-blue-200",
-  WARNING: "bg-amber-50 text-amber-800 border-amber-200",
-  CRITICAL: "bg-red-50 text-red-700 border-red-200",
+  INFO: "bg-[var(--info-bg)] text-[var(--info-fg)] border-[var(--info-fg)]/30",
+  WARNING: "bg-[var(--warning-bg)] text-[var(--warning-fg)] border-[var(--warning-fg)]/30",
+  CRITICAL: "bg-[var(--error-bg)] text-[var(--error-fg)] border-[var(--error-fg)]/30",
 };
 
 const EVT_ICON: Record<string, string> = {
@@ -626,15 +634,15 @@ Check:
         <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-lg font-semibold text-ink">🗼 Control Tower</span>
-            <span className="text-2xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">LIVE · 15s</span>
+            <span className="text-2xs px-2 py-0.5 rounded-full bg-[var(--success-bg)] text-[var(--success-fg)] font-medium">LIVE · 15s</span>
           </div>
           <div className="flex items-center gap-3">
           <span className="text-xs text-steel">{fetchedAt ? `Updated: ${new Date(fetchedAt).toLocaleTimeString()}` : "Loading…"}</span>
           {/* GPS Demo Mode badge */}
           {demoStatus !== "idle" && (
             <span className={`text-2xs px-2 py-0.5 rounded-full font-semibold ${
-              demoStatus === "running"   ? "bg-amber-100 text-amber-700 border border-amber-300" :
-              demoStatus === "completed" ? "bg-emerald-100 text-emerald-700 border border-emerald-300" :
+              demoStatus === "running"   ? "bg-[var(--warning-bg)] text-[var(--warning-fg)] border border-amber-300" :
+              demoStatus === "completed" ? "bg-[var(--success-bg)] text-[var(--success-fg)] border border-emerald-300" :
               "bg-slate-100 text-slate-500"
             }`}>
               🎮 {demoStatus === "running" ? "DEMO GPS LIVE" : demoStatus === "completed" ? "DEMO COMPLETE ✓" : "DEMO PAUSED"}
@@ -647,9 +655,9 @@ Check:
         <div className="bg-slate-50 border-b border-slate-200 px-6 py-2 flex gap-5 overflow-x-auto flex-shrink-0">
           {[
             { l: "Active Trips", v: kpi.activeTrips, c: "text-aqua" },
-            { l: "Available", v: kpi.available, c: "text-emerald-600" },
+            { l: "Available", v: kpi.available, c: "text-[var(--success-fg)]" },
             { l: "In Transit", v: kpi.inTransit, c: "text-amber-600" },
-            { l: "GPS Live", v: kpi.gpsLive, c: "text-emerald-600" },
+            { l: "GPS Live", v: kpi.gpsLive, c: "text-[var(--success-fg)]" },
             { l: "GPS Stale", v: kpi.gpsStale, c: "text-amber-500" },
             { l: "GPS Offline", v: kpi.gpsOffline, c: "text-slate-400" },
           ].map(({ l, v, c }) => (
@@ -683,7 +691,7 @@ Check:
         {activeTab === "map" && (
           <div className="flex flex-1 overflow-hidden min-h-0">
             {/* Vehicle list */}
-            <div className="w-72 border-r border-slate-200 overflow-y-auto bg-white flex-shrink-0">
+            <div className="w-72 border-e border-slate-200 overflow-y-auto bg-white flex-shrink-0">
               {loading && <p className="p-4 text-sm text-steel">Loading fleet…</p>}
               {positions.map(v => {
                 const ms = deriveMapStatus(v);
@@ -691,19 +699,19 @@ Check:
                 const isSelected = selected?.vehicleId === v.vehicleId;
                 return (
                   <button key={v.vehicleId} onClick={() => setSelected(isSelected ? null : v)}
-                    className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? "bg-aqua/5 border-l-2 border-l-aqua" : ""}`}>
+                    className={`w-full text-start px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors ${isSelected ? "bg-aqua/5 border-s-2 border-s-aqua" : ""}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: STATUS_COLORS[ms] ?? "#cbd5e1" }} />
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: STATUS_DOT_VAR[ms] ?? "var(--border-default)" }} />
                         <span className="text-sm font-medium text-ink">{v.plateNumber}</span>
                       </div>
                       <span className={`text-2xs px-1.5 py-0.5 rounded font-medium ${gpsBadge.cls}`}>{gpsBadge.label}</span>
                     </div>
-                    <p className="text-2xs text-steel mt-1 ml-4">{STATUS_LABEL[ms] ?? ms}</p>
-                    {v.capacityLiters && <p className="text-2xs text-steel ml-4">{v.capacityLiters.toLocaleString()} L</p>}
-                    {v.driverName && <p className="text-2xs text-ink ml-4 truncate">👤 {v.driverName}</p>}
-                    {v.customerName && <p className="text-2xs text-aqua ml-4 truncate">🏢 {v.customerName}</p>}
-                    {v.lastPingAt && <p className="text-2xs text-steel ml-4">📡 {elapsed(v.lastPingAt)}</p>}
+                    <p className="text-2xs text-steel mt-1 ms-4">{STATUS_LABEL[ms] ?? ms}</p>
+                    {v.capacityLiters && <p className="text-2xs text-steel ms-4">{v.capacityLiters.toLocaleString()} L</p>}
+                    {v.driverName && <p className="text-2xs text-ink ms-4 truncate">{v.driverName}</p>}
+                    {v.customerName && <p className="text-2xs text-aqua ms-4 truncate">{v.customerName}</p>}
+                    {v.lastPingAt && <p className="text-2xs text-steel ms-4">📡 {elapsed(v.lastPingAt)}</p>}
                   </button>
                 );
               })}
@@ -759,7 +767,7 @@ Check:
                         <span>{EVT_ICON[ev.eventType] ?? "🔔"}</span>
                         <p className="text-xs font-medium">{ev.message}</p>
                       </div>
-                      {!ev.read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1" />}
+                      {!ev.read && <span className="w-2 h-2 rounded-full bg-[var(--info-fg)] flex-shrink-0 mt-1" />}
                     </div>
                     <p className="text-2xs mt-1 opacity-70">{elapsed(ev.createdAt)}</p>
                   </div>
@@ -773,11 +781,11 @@ Check:
         {activeTab === "demo" && demoEnabled && (
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-md">
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-                <p className="text-xs font-semibold text-amber-800 mb-1">🎮 GPS DEMO MODE</p>
-                <p className="text-2xs text-amber-700">Controlled simulation using the same GPS pipeline as real devices. Coordinates are progressive from Loading Point → Customer Site. Geofence detection and GPS history work normally. Lifecycle, billing, and contracts are NOT affected.</p>
+              <div className="bg-[var(--warning-bg)] border border-[var(--warning-fg)]/30 rounded-xl p-4 mb-4">
+                <p className="text-xs font-semibold text-[var(--warning-fg)] mb-1">🎮 GPS DEMO MODE</p>
+                <p className="text-2xs text-[var(--warning-fg)]">Controlled simulation using the same GPS pipeline as real devices. Coordinates are progressive from Loading Point → Customer Site. Geofence detection and GPS history work normally. Lifecycle, billing, and contracts are NOT affected.</p>
               </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-2xs text-blue-800">
+              <div className="bg-[var(--info-bg)] border border-[var(--info-fg)]/30 rounded-lg p-3 text-2xs text-blue-800">
                 <p className="font-medium mb-1">ℹ️ Geofence demo notes</p>
                 <p>Loading arrival fires automatically when demo starts (vehicle begins at Loading Point).</p>
                 <p className="mt-1">Customer arrival requires <strong>loading to be confirmed</strong> in the driver lifecycle panel first — demo does not auto-advance lifecycle stages.</p>
@@ -797,7 +805,7 @@ Check:
                 {demoRoute && (
                   <div className="space-y-1 text-2xs text-steel">
                     <p>📍 From: {demoRoute.loadingPoint.name} ({demoRoute.loadingPoint.lat?.toFixed(4)}, {demoRoute.loadingPoint.lng?.toFixed(4)})</p>
-                    <p>🏢 To: {demoRoute.customerSite.label} ({demoRoute.customerSite.lat?.toFixed(4)}, {demoRoute.customerSite.lng?.toFixed(4)})</p>
+                    <p>To: {demoRoute.customerSite.label} ({demoRoute.customerSite.lat?.toFixed(4)}, {demoRoute.customerSite.lng?.toFixed(4)})</p>
                     <p>Progress: {Math.round(demoProgress * 100)}%</p>
                   </div>
                 )}
@@ -806,7 +814,7 @@ Check:
                     <div className="flex gap-1.5 flex-wrap">
                       {([1, 2, 5, 10] as const).map(spd => (
                         <button key={spd} onClick={() => startDemo(spd)} disabled={!demoTripId}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500 text-white disabled:opacity-40 hover:bg-emerald-600">
+                          className="btn-sm btn-primary text-xs">
                           ▶ {spd}× {spd === 1 ? "(~90s)" : spd === 2 ? "(~45s)" : spd === 5 ? "(~18s)" : "(~9s)"}
                         </button>
                       ))}
@@ -814,19 +822,19 @@ Check:
                   )}
                   {demoStatus === "running" && (
                     <button onClick={pauseDemo}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 text-white hover:bg-amber-600">
+                      className="btn-sm btn-secondary text-xs">
                       ⏸ Pause
                     </button>
                   )}
                   {demoStatus === "paused" && (
                     <button onClick={resumeDemo}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600">
+                      className="btn-sm btn-secondary text-xs">
                       ▶ Resume
                     </button>
                   )}
                   {demoStatus !== "idle" && (
                     <button onClick={stopDemo}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600">
+                      className="btn-sm btn-danger text-xs">
                       ⏹ Stop
                     </button>
                   )}
@@ -875,7 +883,7 @@ function TripHistoryCard({ vehicle: v }: { vehicle: VehiclePosition }) {
       <button onClick={() => setOpen(!open)} className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50">
         <div>
           <span className="text-sm font-medium text-ink">{v.tripNumber ?? v.tripId}</span>
-          <span className="text-xs text-steel ml-3">{v.plateNumber} · {v.driverName}</span>
+          <span className="text-xs text-steel ms-3">{v.plateNumber} · {v.driverName}</span>
         </div>
         <span className="text-steel text-xs">{open ? "▲" : "▼"}</span>
       </button>

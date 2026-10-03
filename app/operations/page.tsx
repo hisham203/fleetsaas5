@@ -80,7 +80,7 @@ function TripRow({ trip, onOpen }: { trip: Trip; onOpen: (t: Trip) => void }) {
       <td className="px-4 py-3">
         <StatusBadge status={trip.status} size="sm" />
         {isUnassigned && trip.status === "PLANNED" && (
-          <span className="ml-1.5 text-2xs text-warn font-medium">Unassigned</span>
+          <span className="ms-1.5 text-2xs text-warn font-medium">Unassigned</span>
         )}
       </td>
       <td className="px-4 py-3 text-sm text-ink">{customer(trip)}</td>
@@ -242,30 +242,30 @@ export default function OperationsWorkspacePage() {
 
         {/* Operational KPIs — click-to-filter */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 mb-6">
-          <button onClick={() => setTab("unassigned")} className="text-left">
+          <button onClick={() => setTab("unassigned")} className="text-start">
             <MetricCard label="Unassigned" value={unassigned.length}
               accent={unassigned.length > 0 ? "warn" : "default"}
               trendLabel="Awaiting resources" />
           </button>
-          <button onClick={() => setTab("ready")} className="text-left">
+          <button onClick={() => setTab("ready")} className="text-start">
             <MetricCard label="Ready" value={readyToDispatch.length}
               accent={readyToDispatch.length > 0 ? "info" : "default"}
               trendLabel="Assigned, not dispatched" />
           </button>
-          <button onClick={() => setTab("active")} className="text-left">
+          <button onClick={() => setTab("active")} className="text-start">
             <MetricCard label="Active" value={active.length}
               accent={active.length > 0 ? "info" : "default"}
               trendLabel="In progress" />
           </button>
           <MetricCard label="SLA Risk" value={atRisk.length}
             accent={atRisk.length > 0 ? "danger" : "default"} trendLabel="At risk or breached" />
-          <button onClick={() => setTab("all")} className="text-left">
+          <button onClick={() => setTab("all")} className="text-start">
             <MetricCard label="Exceptions" value={openExceptions.length}
               accent={openExceptions.length > 0 ? "danger" : "default"} trendLabel="Open" />
           </button>
           <MetricCard label="Avail. Drivers" value={availDrivers.length} accent="ok" />
           <MetricCard label="Avail. Vehicles" value={availVehicles.length} accent="ok" />
-          <button onClick={() => setTab("completed")} className="text-left">
+          <button onClick={() => setTab("completed")} className="text-start">
             <MetricCard label="Completed" value={completed.length} accent="default" />
           </button>
         </div>
@@ -291,7 +291,7 @@ export default function OperationsWorkspacePage() {
                     <thead>
                       <tr className="border-b border-slate-100 bg-paper">
                         {["Trip", "Status", "Customer", "Vehicle", "Driver", "Loading Point", "Dispatched", ""].map(h => (
-                          <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3 whitespace-nowrap">{h}</th>
+                          <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3 whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -328,7 +328,7 @@ export default function OperationsWorkspacePage() {
                     <thead>
                       <tr className="border-b border-slate-50 bg-paper">
                         {["Order", "Customer", "SLA"].map(h => (
-                          <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-2">{h}</th>
+                          <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-2">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -373,7 +373,7 @@ export default function OperationsWorkspacePage() {
                           <span className="text-2xs text-danger font-medium">Escalated</span>
                         )}
                       </div>
-                      <div className="ml-auto text-2xs text-slate-400 shrink-0">
+                      <div className="ms-auto text-2xs text-slate-400 shrink-0">
                         {elapsed(exc.createdAt)}
                       </div>
                     </div>

@@ -89,16 +89,16 @@ export default function FleetOverviewPage() {
             <div className="mb-2">
               <p className="text-xs font-semibold text-steel uppercase tracking-wider mb-2">Vehicles</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                <button onClick={() => router.push("/fleet/vehicles")} className="text-left">
+                <button onClick={() => router.push("/fleet/vehicles")} className="text-start">
                   <MetricCard label="Total Vehicles" value={vehicles.length} />
                 </button>
-                <button onClick={() => router.push("/fleet/vehicles?status=AVAILABLE")} className="text-left">
+                <button onClick={() => router.push("/fleet/vehicles?status=AVAILABLE")} className="text-start">
                   <MetricCard label="Available" value={vAvail.length} accent="ok" />
                 </button>
-                <button onClick={() => router.push("/fleet/vehicles?status=IN_TRIP")} className="text-left">
+                <button onClick={() => router.push("/fleet/vehicles?status=IN_TRIP")} className="text-start">
                   <MetricCard label="In Trip" value={vInTrip.length} accent="info" />
                 </button>
-                <button onClick={() => router.push("/fleet/vehicles?status=MAINTENANCE")} className="text-left">
+                <button onClick={() => router.push("/fleet/vehicles?status=MAINTENANCE")} className="text-start">
                   <MetricCard label="Maintenance" value={vMaint.length} accent={vMaint.length > 0 ? "warn" : "default"} />
                 </button>
               </div>
@@ -108,16 +108,16 @@ export default function FleetOverviewPage() {
             <div className="mb-6">
               <p className="text-xs font-semibold text-steel uppercase tracking-wider mb-2">Drivers</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <button onClick={() => router.push("/fleet/drivers")} className="text-left">
+                <button onClick={() => router.push("/fleet/drivers")} className="text-start">
                   <MetricCard label="Total Drivers" value={drivers.length} />
                 </button>
-                <button onClick={() => router.push("/fleet/drivers?status=AVAILABLE")} className="text-left">
+                <button onClick={() => router.push("/fleet/drivers?status=AVAILABLE")} className="text-start">
                   <MetricCard label="Available" value={dAvail.length} accent="ok" />
                 </button>
-                <button onClick={() => router.push("/fleet/drivers?status=ON_TRIP")} className="text-left">
+                <button onClick={() => router.push("/fleet/drivers?status=ON_TRIP")} className="text-start">
                   <MetricCard label="On Trip" value={dOnTrip.length} accent="info" />
                 </button>
-                <button onClick={() => router.push("/fleet/compliance")} className="text-left">
+                <button onClick={() => router.push("/fleet/compliance")} className="text-start">
                   <MetricCard label="Compliance Issues" value={vComplianceIssues.length + dComplianceIssues.length}
                     accent={(vComplianceIssues.length + dComplianceIssues.length) > 0 ? "danger" : "default"} />
                 </button>

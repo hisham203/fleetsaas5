@@ -80,7 +80,7 @@ export default function InventoryPage() {
                   <p className="p-6 text-steel text-sm text-center">No stock balances yet. Balances are created once receiving is implemented in a future milestone.</p>
                 ) : (
                   <table className="data-table">
-                    <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Warehouse</th><th className="text-left px-4 py-2">Item</th><th className="text-left px-4 py-2">On Hand</th><th className="text-left px-4 py-2">Available</th></tr></thead>
+                    <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Warehouse</th><th className="text-start px-4 py-2">Item</th><th className="text-start px-4 py-2">On Hand</th><th className="text-start px-4 py-2">Available</th></tr></thead>
                     <tbody>
                       {balances.map((b: any) => (
                         <tr key={b.id} className="border-t border-slate-100">
@@ -104,7 +104,7 @@ export default function InventoryPage() {
                   <p className="p-6 text-steel text-sm text-center">No stock movements yet.</p>
                 ) : (
                   <table className="data-table">
-                    <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">Item</th><th className="text-left px-4 py-2">Qty</th><th className="text-left px-4 py-2">Date</th></tr></thead>
+                    <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Type</th><th className="text-start px-4 py-2">Item</th><th className="text-start px-4 py-2">Qty</th><th className="text-start px-4 py-2">Date</th></tr></thead>
                     <tbody>
                       {movements.map((m: any) => (
                         <tr key={m.id} className="border-t border-slate-100">
@@ -126,7 +126,7 @@ export default function InventoryPage() {
                   <p className="p-6 text-steel text-sm text-center">No low-stock items — this reflects real balances against each item&apos;s own reorder point, not an invented KPI.</p>
                 ) : (
                   <table className="data-table">
-                    <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Item</th><th className="text-left px-4 py-2">Reorder Point</th></tr></thead>
+                    <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Item</th><th className="text-start px-4 py-2">Reorder Point</th></tr></thead>
                     <tbody>
                       {lowStockItems.map((it: any) => (
                         <tr key={it.id} className="border-t border-slate-100"><td className="px-4 py-2">{it.name}</td><td className="px-4 py-2">{it.reorderPoint}</td></tr>
@@ -168,7 +168,7 @@ function WarehousesTab({ warehouses, onChange }: any) {
           <p className="p-6 text-steel text-sm text-center">No maintenance warehouses yet.</p>
         ) : (
           <table className="data-table">
-            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">Workshop</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
+            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Code</th><th className="text-start px-4 py-2">Name</th><th className="text-start px-4 py-2">Type</th><th className="text-start px-4 py-2">Workshop</th><th className="text-start px-4 py-2">Status</th><th className="text-start px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {warehouses.map((w: any) => (
                 <>
