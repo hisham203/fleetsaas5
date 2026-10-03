@@ -106,7 +106,7 @@ export default function AlertsWorkspacePage() {
               </button>
             ))}
           </div>
-          <div className="flex gap-1 ml-2">
+          <div className="flex gap-1 ms-2">
             {["ALL","CRITICAL","WARNING","INFO"].map(f => (
               <button key={f} onClick={() => setSeverityFilter(f)}
                 className={`text-xs px-3 py-1.5 rounded-lg font-medium ${severityFilter === f ? "bg-aqua text-white" : "bg-white border border-slate-200 text-steel hover:text-ink"}`}>
@@ -133,7 +133,7 @@ export default function AlertsWorkspacePage() {
                       onChange={e => setSelected(e.target.checked ? new Set(filtered.filter(a => a.status === "OPEN").map(a => a.id)) : new Set())} />
                   </th>
                   {["Event","Severity","Status","Vehicle/Trip","Time","Actions"].map(h => (
-                    <th key={h} className="text-left text-xs font-semibold text-steel px-3 py-3">{h}</th>
+                    <th key={h} className="text-start text-xs font-semibold text-steel px-3 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>

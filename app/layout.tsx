@@ -7,14 +7,15 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
 };
 
-// Theme script: sets data-theme BEFORE first paint to avoid flash.
-// Dark is the default; respects localStorage preference.
+// Theme + dir initialization: runs before first paint via inline script.
+// Dark is the platform default; respects localStorage preference.
 const THEME_SCRIPT = `
 (function(){
   try {
-    var stored = localStorage.getItem('smarty1-theme');
-    var theme = stored === 'light' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
+    var theme = localStorage.getItem('smarty1-theme');
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+    var dir = localStorage.getItem('smarty1-dir');
+    if (dir === 'rtl') document.documentElement.setAttribute('dir', 'rtl');
   } catch(e) {
     document.documentElement.setAttribute('data-theme', 'dark');
   }
@@ -23,9 +24,8 @@ const THEME_SCRIPT = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
+    <html lang="en" dir="ltr" data-theme="dark" suppressHydrationWarning>
       <head>
-        {/* Theme initialization — must run before render to prevent flash */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="font-sans antialiased bg-[var(--bg-canvas)] text-[var(--text-primary)]">

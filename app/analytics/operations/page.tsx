@@ -9,7 +9,7 @@ function Row({ label, value, sub, ok }: { label: string; value: string; sub?: st
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
       <span className="text-sm text-ink">{label}</span>
-      <div className="text-right">
+      <div className="text-end">
         <span className={`text-sm font-semibold ${ok === false ? "text-danger" : ok === true ? "text-ok" : "text-ink"}`}>{value}</span>
         {sub && <p className="text-2xs text-steel">{sub}</p>}
       </div>

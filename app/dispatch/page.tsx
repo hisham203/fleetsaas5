@@ -637,7 +637,7 @@ function NewOrderPanel({ onCancel, onCreated }: { onCancel: () => void; onCreate
                 ["B2C_DIRECT", "B2C Direct Order", "Individual customer · no contract, standard direct-order billing"],
               ] as const).map(([k, title, desc]) => (
                 <button key={k} type="button" onClick={() => chooseKind(k)}
-                  className={`text-left rounded-lg border p-3 transition ${kind === k ? "border-aqua bg-aquaLight/40" : "border-slate-200 hover:border-slate-300"}`}>
+                  className={`text-start rounded-lg border p-3 transition ${kind === k ? "border-aqua bg-aquaLight/40" : "border-slate-200 hover:border-slate-300"}`}>
                   <div className="text-sm font-semibold text-ink">{title}</div>
                   <div className="text-2xs text-steel mt-0.5">{desc}</div>
                 </button>
@@ -822,7 +822,7 @@ function TripDetailDrawer({ trip, onClose }: { trip: OperationalTripDto; onClose
             {buildTripTimeline(trip, order, firstStop, ctRow).map((ev, i) => (
               <li key={i} className="flex items-start justify-between gap-3 border-b border-slate-50 pb-2">
                 <span>{ev.label}</span>
-                <span className="text-right text-steel text-xs shrink-0">{ev.at ? new Date(ev.at).toLocaleString() : "(timestamp not available)"}</span>
+                <span className="text-end text-steel text-xs shrink-0">{ev.at ? new Date(ev.at).toLocaleString() : "(timestamp not available)"}</span>
               </li>
             ))}
           </ol>
@@ -856,7 +856,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   return (
     <div className="flex items-start justify-between gap-3 border-b border-slate-50 pb-2">
       <span className="text-steel">{label}</span>
-      <span className="text-right font-medium">{value}</span>
+      <span className="text-end font-medium">{value}</span>
     </div>
   );
 }

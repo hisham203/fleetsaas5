@@ -169,7 +169,7 @@ export default function FleetIntelligencePage() {
                   <table className="w-full text-xs">
                     <thead><tr className="border-b border-slate-100">
                       {["Event","Geofence","Vehicle","Time"].map(h => (
-                        <th key={h} className="text-left font-semibold text-steel px-2 py-1.5">{h}</th>
+                        <th key={h} className="text-start font-semibold text-steel px-2 py-1.5">{h}</th>
                       ))}
                     </tr></thead>
                     <tbody className="divide-y divide-slate-100">
@@ -196,7 +196,7 @@ export default function FleetIntelligencePage() {
               <Link href="/telematics/geofences" className="text-xs bg-paper border border-slate-200 rounded-lg px-3 py-2 hover:bg-white text-ink text-center">🔵 Geofences</Link>
             </div>
 
-            <p className="text-xs text-steel/50 text-right">
+            <p className="text-xs text-steel/50 text-end">
               Auto-refreshes every 30s · Last: {new Date(data.fetchedAt).toLocaleTimeString("en-SA")}
             </p>
           </div>

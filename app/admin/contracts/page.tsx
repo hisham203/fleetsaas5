@@ -186,9 +186,10 @@ function ContractList({ contracts, selectedId, onSelect }: { contracts: any[]; s
       {contracts.length === 0 ? (
         <p className="text-steel text-sm">No contracts yet — use &quot;+ New contract&quot; to create the first one.</p>
       ) : (
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Contract #</th>
               <th className="pb-2">Customer</th>
               <th className="pb-2">Type</th>
@@ -214,6 +215,7 @@ function ContractList({ contracts, selectedId, onSelect }: { contracts: any[]; s
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -514,13 +516,14 @@ function ContractDetail({ contractId, distanceBands, onChange }: { contractId: s
                 </p>
               </div>
             ) : (
+              <div className="overflow-x-auto -mx-1">
               <table className="w-full text-xs">
                 <thead className="text-steel">
                   <tr>
-                    <th className="text-left py-1">Order</th>
-                    <th className="text-left py-1">Status</th>
-                    <th className="text-left py-1">Billing</th>
-                    <th className="text-left py-1">Action</th>
+                    <th className="text-start py-1">Order</th>
+                    <th className="text-start py-1">Status</th>
+                    <th className="text-start py-1">Billing</th>
+                    <th className="text-start py-1">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -536,6 +539,7 @@ function ContractDetail({ contractId, distanceBands, onChange }: { contractId: s
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         );
@@ -812,9 +816,10 @@ function PricingRulesManager({ contractId, isTripCount, pricingRules, distanceBa
   return (
     <div className="mt-2">
       {pricingRules.length > 0 && (
+        <div className="overflow-x-auto -mx-1">
         <table className="w-full text-xs mt-2">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-1">Rate</th>
               <th className="pb-1">Capacity</th>
               <th className="pb-1">City/Zone/Band</th>
@@ -841,7 +846,7 @@ function PricingRulesManager({ contractId, isTripCount, pricingRules, distanceBa
                     {" – "}
                     {r.effectiveEndDate ? new Date(r.effectiveEndDate).toLocaleDateString() : "open"}
                   </td>
-                  <td className="py-1 text-right">
+                  <td className="py-1 text-end">
                     {!retired && (
                       <button disabled={busy} onClick={() => retireRule(r.id)} className="text-danger font-medium disabled:opacity-40">
                         Retire
@@ -853,6 +858,7 @@ function PricingRulesManager({ contractId, isTripCount, pricingRules, distanceBa
             })}
           </tbody>
         </table>
+        </div>
       )}
 
       {error && <p className="text-danger text-xs mt-2">{error}</p>}
@@ -1194,9 +1200,10 @@ function DistanceBandsSummary({ bands, onChange }: { bands: any[]; onChange: () 
       {bands.length === 0 ? (
         <p className="text-steel text-sm">No distance bands defined yet for this tenant — pricing rules that reference a distanceBandCode won&apos;t match until at least one exists.</p>
       ) : (
+        <div className="overflow-x-auto -mx-1">
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Code</th>
               <th className="pb-2">Label</th>
               <th className="pb-2">Range</th>
@@ -1211,7 +1218,7 @@ function DistanceBandsSummary({ bands, onChange }: { bands: any[]; onChange: () 
                 <td className="py-2">{b.label}</td>
                 <td className="py-2 text-xs">{b.fromKm}–{b.toKm ?? "∞"} km</td>
                 <td className="py-2"><span className="text-ok text-xs">Active</span></td>
-                <td className="py-2 text-right">
+                <td className="py-2 text-end">
                   <button disabled={busy} onClick={() => retireBand(b.id)} className="text-danger text-xs font-medium disabled:opacity-40">
                     Retire
                   </button>
@@ -1229,6 +1236,7 @@ function DistanceBandsSummary({ bands, onChange }: { bands: any[]; onChange: () 
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {error && <p className="text-danger text-xs mt-3">{error}</p>}

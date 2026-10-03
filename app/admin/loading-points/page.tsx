@@ -117,12 +117,12 @@ export default function LoadingPointsPage() {
               <table className="data-table">
                 <thead className="bg-paper text-steel text-xs uppercase">
                   <tr>
-                    <th className="text-left px-4 py-2">Loading Point</th>
-                    <th className="text-left px-4 py-2">Address</th>
-                    <th className="text-left px-4 py-2">GPS</th>
-                    <th className="text-left px-4 py-2">Default</th>
-                    <th className="text-left px-4 py-2">Active Trips</th>
-                    <th className="text-left px-4 py-2">Actions</th>
+                    <th className="text-start px-4 py-2">Loading Point</th>
+                    <th className="text-start px-4 py-2">Address</th>
+                    <th className="text-start px-4 py-2">GPS</th>
+                    <th className="text-start px-4 py-2">Default</th>
+                    <th className="text-start px-4 py-2">Active Trips</th>
+                    <th className="text-start px-4 py-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>

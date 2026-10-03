@@ -188,10 +188,10 @@ export default function Vehicle360Page() {
                   <p className="text-xs font-semibold text-info mb-2">Currently Active</p>
                   {ops.activeTrips.slice(0, 2).map((t: any) => (
                     <button key={t.id} onClick={() => router.push(`/operations/trips/${t.id}`)}
-                      className="w-full text-left flex items-center gap-2 py-1.5">
+                      className="w-full text-start flex items-center gap-2 py-1.5">
                       <StatusBadge status={t.status} size="xs" />
                       <span className="text-sm font-medium text-ink">{t.tripNumber}</span>
-                      <span className="text-xs text-steel ml-auto">View →</span>
+                      <span className="text-xs text-steel ms-auto">View →</span>
                     </button>
                   ))}
                 </div>
@@ -247,7 +247,7 @@ export default function Vehicle360Page() {
                   <thead>
                     <tr className="border-b border-slate-100 bg-paper">
                       {["Trip", "Status", "Customer", "Driver", "Date"].map(h => (
-                        <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                        <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -277,7 +277,7 @@ export default function Vehicle360Page() {
                   <thead>
                     <tr className="border-b border-slate-100 bg-paper">
                       {["Type", "Description", "Status", "Odometer", "Cost", "Opened"].map(h => (
-                        <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                        <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -314,7 +314,7 @@ export default function Vehicle360Page() {
                     <thead>
                       <tr className="border-b border-slate-100 bg-paper">
                         {["Date", "Liters", "Cost (SAR)", "Odometer", "Trip"].map(h => (
-                          <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                          <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -350,7 +350,7 @@ export default function Vehicle360Page() {
                   <thead>
                     <tr className="border-b border-slate-100 bg-paper">
                       {["Position", "Serial", "Status", "Install Odometer", "Cost (SAR)", "Installed"].map(h => (
-                        <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                        <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                       ))}
                     </tr>
                   </thead>

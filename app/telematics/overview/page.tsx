@@ -97,7 +97,7 @@ export default function TelematicsOverviewPage() {
             </div>
 
             {data.fetchedAt && (
-              <p className="text-xs text-steel/60 text-right">
+              <p className="text-xs text-steel/60 text-end">
                 Last updated: {new Date(data.fetchedAt).toLocaleTimeString("en-SA")}
               </p>
             )}

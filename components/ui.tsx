@@ -135,7 +135,7 @@ export function SearchInput({ value, onChange, placeholder = "Search…" }: { va
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="form-input pl-7 pr-3 py-1.5 text-xs w-48"
+        className="form-input ps-7 pe-3 py-1.5 text-xs w-48"
       />
     </div>
   );
@@ -159,7 +159,7 @@ export function Tabs<T extends string>({
         >
           {t.label}
           {t.count !== undefined && (
-            <span className={`ml-1.5 text-2xs font-semibold px-1.5 py-0.5 rounded-full ${active === t.key ? "bg-aquaLight text-aquaDark" : "bg-slate-100 text-steel"}`}>
+            <span className={`ms-1.5 text-2xs font-semibold px-1.5 py-0.5 rounded-full ${active === t.key ? "bg-aquaLight text-aquaDark" : "bg-slate-100 text-steel"}`}>
               {t.count}
             </span>
           )}

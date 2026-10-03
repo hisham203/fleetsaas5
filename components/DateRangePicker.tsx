@@ -93,7 +93,7 @@ export default function DateRangePicker({ value, onChange, className = "" }: Pro
           </button>
         </div>
       )}
-      <span className="text-2xs text-steel ml-1">
+      <span className="text-2xs text-steel ms-1">
         {value.from} → {value.to}
       </span>
     </div>

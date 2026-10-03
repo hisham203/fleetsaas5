@@ -90,7 +90,7 @@ function GroupsTab({ groups, onChange }: any) {
           <p className="p-6 text-steel text-sm text-center">No item groups yet.</p>
         ) : (
           <table className="data-table">
-            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
+            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Code</th><th className="text-start px-4 py-2">Name</th><th className="text-start px-4 py-2">Status</th><th className="text-start px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {groups.map((g: any) => (
                 <>
@@ -168,7 +168,7 @@ function CategoriesTab({ categories, groups, onChange }: any) {
           <p className="p-6 text-steel text-sm text-center">No item categories yet.</p>
         ) : (
           <table className="data-table">
-            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Group</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
+            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Code</th><th className="text-start px-4 py-2">Name</th><th className="text-start px-4 py-2">Group</th><th className="text-start px-4 py-2">Status</th><th className="text-start px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {categories.map((c: any) => (
                 <>
@@ -253,7 +253,7 @@ function SubcategoriesTab({ subcategories, categories, onChange }: any) {
           <p className="p-6 text-steel text-sm text-center">No item sub-categories yet.</p>
         ) : (
           <table className="data-table">
-            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Category</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
+            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Code</th><th className="text-start px-4 py-2">Name</th><th className="text-start px-4 py-2">Category</th><th className="text-start px-4 py-2">Status</th><th className="text-start px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {subcategories.map((s: any) => (
                 <>
@@ -339,7 +339,7 @@ function ItemsTab({ items, categories, subcategories, groups, onChange }: any) {
           <p className="p-6 text-steel text-sm text-center">No items yet.</p>
         ) : (
           <table className="data-table">
-            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-left px-4 py-2">Code</th><th className="text-left px-4 py-2">Name</th><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">UOM</th><th className="text-left px-4 py-2">Status</th><th className="text-left px-4 py-2">Actions</th></tr></thead>
+            <thead className="bg-paper text-steel text-xs uppercase"><tr><th className="text-start px-4 py-2">Code</th><th className="text-start px-4 py-2">Name</th><th className="text-start px-4 py-2">Type</th><th className="text-start px-4 py-2">UOM</th><th className="text-start px-4 py-2">Status</th><th className="text-start px-4 py-2">Actions</th></tr></thead>
             <tbody>
               {items.map((it: any) => (
                 <>

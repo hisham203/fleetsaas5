@@ -109,22 +109,22 @@ export default function FleetCompliancePage() {
         {loading ? <LoadingState /> : (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-              <button onClick={() => setFilter(filter === "EXPIRED" ? "ALL" : "EXPIRED")} className="text-left">
+              <button onClick={() => setFilter(filter === "EXPIRED" ? "ALL" : "EXPIRED")} className="text-start">
                 <MetricCard label="Expired" value={expired.length}
                   accent={expired.length > 0 ? "danger" : "default"}
                   trendLabel={filter === "EXPIRED" ? "Showing" : "Click to filter"} />
               </button>
-              <button onClick={() => setFilter(filter === "EXPIRING" ? "ALL" : "EXPIRING")} className="text-left">
+              <button onClick={() => setFilter(filter === "EXPIRING" ? "ALL" : "EXPIRING")} className="text-start">
                 <MetricCard label="Expiring ≤30d" value={expiring.length}
                   accent={expiring.length > 0 ? "warn" : "default"}
                   trendLabel={filter === "EXPIRING" ? "Showing" : "Click to filter"} />
               </button>
-              <button onClick={() => setFilter(filter === "MISSING" ? "ALL" : "MISSING")} className="text-left">
+              <button onClick={() => setFilter(filter === "MISSING" ? "ALL" : "MISSING")} className="text-start">
                 <MetricCard label="No Date on File" value={missing.length}
                   accent={missing.length > 0 ? "warn" : "default"}
                   trendLabel={filter === "MISSING" ? "Showing" : "Click to filter"} />
               </button>
-              <button onClick={() => setFilter("ALL")} className="text-left">
+              <button onClick={() => setFilter("ALL")} className="text-start">
                 <MetricCard label="Valid" value={valid.length} accent="ok" />
               </button>
             </div>
@@ -145,7 +145,7 @@ export default function FleetCompliancePage() {
                     <thead>
                       <tr className="border-b border-slate-100 bg-paper">
                         {["Type", "Name", "Expiry Date", "Status", "Days Remaining", ""].map(h => (
-                          <th key={h} className="text-left text-xs font-semibold text-steel px-4 py-3">{h}</th>
+                          <th key={h} className="text-start text-xs font-semibold text-steel px-4 py-3">{h}</th>
                         ))}
                       </tr>
                     </thead>

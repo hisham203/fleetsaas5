@@ -160,7 +160,7 @@ function BulkOrderTab({ tenant, customer, locations, onOrderPlaced }: any) {
               </div>
             </label>
             {selected[loc.id] && (
-              <div className="flex gap-2 mt-2 ml-6">
+              <div className="flex gap-2 mt-2 ms-6">
                 <div className="flex-1">
                   <label className="text-xs text-steel">Quantity</label>
                   <input
@@ -360,7 +360,7 @@ function StatementTab({ statement }: { statement: any }) {
         <h3 className="font-medium mb-3">Invoices</h3>
         <table className="data-table">
           <thead>
-            <tr className="text-left text-steel border-b border-slate-100">
+            <tr className="text-start text-steel border-b border-slate-100">
               <th className="pb-2">Invoice #</th>
               <th className="pb-2">Total</th>
               <th className="pb-2">Status</th>
